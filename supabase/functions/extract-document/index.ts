@@ -374,6 +374,7 @@ Deno.serve(async (req) => {
               binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize));
             }
             const base64 = btoa(binary);
+            console.log("[extract] PDF size:", bytes.length, "bytes, base64 length:", base64.length);
 
             const aiResp = await fetch(
               "https://ai.gateway.lovable.dev/v1/chat/completions",
@@ -406,27 +407,45 @@ Deno.serve(async (req) => {
               }
             );
 
+            console.log("[extract] AI PDF response status:", aiResp.status);
             if (aiResp.ok) {
               const aiData = await aiResp.json();
               rawText = aiData.choices?.[0]?.message?.content || "";
-              if (rawText) {
-                await adminClient
-                  .from("documents")
-                  .update({ raw_text: rawText })
-                  .eq("id", document_id);
-              }
+              console.log("[extract] AI extracted text length:", rawText.length);
+            } else {
+              const errBody = await aiResp.text();
+              console.error("[extract] AI PDF extraction failed:", aiResp.status, errBody);
             }
           } catch (aiErr) {
-            console.error("AI text extraction failed:", aiErr);
+            console.error("[extract] AI text extraction error:", aiErr);
+          }
+
+          // Fallback: try reading PDF as text (works for text-based PDFs)
+          if (!rawText) {
+            console.log("[extract] AI failed, falling back to raw text extraction");
+            try {
+              rawText = await fileData.text();
+              // If it's binary garbage, discard it
+              const printable = rawText.replace(/[^\x20-\x7E\n\r\t]/g, "");
+              if (printable.length < rawText.length * 0.3) {
+                console.log("[extract] Raw text is mostly binary, discarding");
+                rawText = "";
+              } else {
+                rawText = printable;
+              }
+            } catch (e) {
+              console.error("[extract] Fallback text read failed:", e);
+            }
           }
         } else {
           rawText = await fileData.text();
-          if (rawText) {
-            await adminClient
-              .from("documents")
-              .update({ raw_text: rawText })
-              .eq("id", document_id);
-          }
+        }
+
+        if (rawText) {
+          await adminClient
+            .from("documents")
+            .update({ raw_text: rawText })
+            .eq("id", document_id);
         }
       }
     }
@@ -481,24 +500,40 @@ Deno.serve(async (req) => {
     // Schedule events
     const events = aiResult?.schedule_events || [];
     if (events.length > 0) {
+      // Helper: combine date + HH:MM into ISO timestamp
+      const toTimestamp = (date: string | undefined, time: string | undefined): string | null => {
+        if (!date || !time) return null;
+        try {
+          // time is HH:MM in 24h format
+          return `${date}T${time}:00`;
+        } catch { return null; }
+      };
+
       for (const evt of events) {
-        await adminClient.from("schedule_events").insert({
+        const insertResult = await adminClient.from("schedule_events").insert({
           tour_id: doc.tour_id,
           city: evt.city || null,
           venue: evt.venue || null,
           event_date: evt.event_date || null,
+          load_in: toTimestamp(evt.event_date, evt.load_in),
+          show_time: toTimestamp(evt.event_date, evt.show_time),
+          end_time: toTimestamp(evt.event_date, evt.end_time),
           confidence_score: 0.85,
           source_doc_id: document_id,
         });
+        if (insertResult.error) {
+          console.error("[extract] schedule_events insert error:", insertResult.error);
+        }
       }
       totalExtracted += events.length;
+      console.log("[extract] Inserted", events.length, "schedule events");
     }
 
     // Contacts
     const contacts = aiResult?.contacts || [];
     if (contacts.length > 0) {
       for (const c of contacts) {
-        await adminClient.from("contacts").insert({
+        const r = await adminClient.from("contacts").insert({
           tour_id: doc.tour_id,
           name: c.name,
           phone: c.phone || null,
@@ -506,8 +541,10 @@ Deno.serve(async (req) => {
           role: c.role || null,
           source_doc_id: document_id,
         });
+        if (r.error) console.error("[extract] contacts insert error:", r.error);
       }
       totalExtracted += contacts.length;
+      console.log("[extract] Inserted", contacts.length, "contacts");
     }
 
     // Finance
