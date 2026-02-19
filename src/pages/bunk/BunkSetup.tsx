@@ -52,18 +52,21 @@ const BunkSetup = () => {
     if (tourId) return tourId;
     if (!user) return null;
     try {
-      const { data, error } = await supabase
+      console.log("[BunkSetup] Creating tour for user:", user.id);
+      const { data, error, status } = await supabase
         .from("tours")
         .insert({ name: "New Tour", owner_id: user.id })
         .select("id")
         .single();
+      console.log("[BunkSetup] Tour insert result:", { data, error, status });
       if (error) throw error;
       setTourId(data.id);
       setSelectedTourId(data.id);
       reload();
       return data.id;
     } catch (err: any) {
-      toast({ title: "Error", description: err.message, variant: "destructive" });
+      console.error("[BunkSetup] Tour creation failed:", err);
+      toast({ title: "Upload failed", description: "Failed to create tour: " + err.message, variant: "destructive" });
       return null;
     }
   };
