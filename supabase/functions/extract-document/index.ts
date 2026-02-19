@@ -109,7 +109,7 @@ function detectDomain(filename: string, text: string): DomainResult {
 
 // ─── AI-Powered Structured Extraction ───
 
-const EXTRACTION_PROMPT = `You are a tour document extraction engine. Analyze the following tour document text and extract ALL structured data you can find.
+const EXTRACTION_PROMPT = `You are a tour document extraction engine. Analyze the following tour document and extract ALL structured data you can find.
 
 Return a JSON object with these fields (include only what you find, omit empty arrays):
 
@@ -141,7 +141,7 @@ Return a JSON object with these fields (include only what you find, omit empty a
     {
       "date": "YYYY-MM-DD",
       "type": "FLIGHT" | "BUS" | "VAN" | "HOTEL" | "OTHER",
-      "description": "Details (flight number, hotel name, pickup time, etc.)",
+      "description": "Details",
       "departure": "departure location or time",
       "arrival": "arrival location or time",
       "hotel_name": "hotel name if applicable",
@@ -245,8 +245,10 @@ interface AIExtractionResult {
   }>;
 }
 
-async function aiExtract(text: string, apiKey: string): Promise<AIExtractionResult | null> {
+// Single AI call: extract structured data directly from PDF or text
+async function aiExtractFromPdf(base64: string, apiKey: string): Promise<AIExtractionResult | null> {
   try {
+    console.log("[extract] Single-pass PDF structured extraction...");
     const resp = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
       headers: {
@@ -254,7 +256,50 @@ async function aiExtract(text: string, apiKey: string): Promise<AIExtractionResu
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "google/gemini-2.5-pro",
+        model: "google/gemini-2.5-flash",
+        messages: [
+          {
+            role: "user",
+            content: [
+              { type: "text", text: EXTRACTION_PROMPT },
+              {
+                type: "image_url",
+                image_url: { url: `data:application/pdf;base64,${base64}` },
+              },
+            ],
+          },
+        ],
+      }),
+    });
+
+    console.log("[extract] PDF extraction response status:", resp.status);
+    if (!resp.ok) {
+      const errBody = await resp.text();
+      console.error("[extract] PDF extraction failed:", resp.status, errBody);
+      return null;
+    }
+
+    const data = await resp.json();
+    let content = data.choices?.[0]?.message?.content || "";
+    content = content.replace(/^```(?:json)?\s*\n?/i, "").replace(/\n?```\s*$/i, "").trim();
+    return JSON.parse(content);
+  } catch (err) {
+    console.error("[extract] PDF structured extraction failed:", err);
+    return null;
+  }
+}
+
+async function aiExtractFromText(text: string, apiKey: string): Promise<AIExtractionResult | null> {
+  try {
+    console.log("[extract] Text structured extraction...");
+    const resp = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: "google/gemini-2.5-flash",
         messages: [
           { role: "system", content: EXTRACTION_PROMPT },
           { role: "user", content: text.substring(0, 60000) },
@@ -263,19 +308,16 @@ async function aiExtract(text: string, apiKey: string): Promise<AIExtractionResu
     });
 
     if (!resp.ok) {
-      console.error("AI extraction API error:", resp.status);
+      console.error("[extract] Text extraction API error:", resp.status);
       return null;
     }
 
     const data = await resp.json();
     let content = data.choices?.[0]?.message?.content || "";
-    
-    // Strip markdown code fences if present
     content = content.replace(/^```(?:json)?\s*\n?/i, "").replace(/\n?```\s*$/i, "").trim();
-
     return JSON.parse(content);
   } catch (err) {
-    console.error("AI extraction failed:", err);
+    console.error("[extract] Text extraction failed:", err);
     return null;
   }
 }
@@ -354,19 +396,19 @@ Deno.serve(async (req) => {
 
     let rawText = doc.raw_text || "";
     const filename = doc.filename || "";
+    let aiResult: AIExtractionResult | null = null;
 
-    // ── Stage 1: Get raw text from file if needed ──
-    if (!rawText && doc.file_path) {
+    // ── Single-pass extraction: PDF goes directly to structured extraction ──
+    if (!rawText && doc.file_path && apiKey) {
       const { data: fileData, error: dlErr } = await adminClient.storage
         .from("document-files")
         .download(doc.file_path);
 
       if (!dlErr && fileData) {
-        const isPdf = (filename).toLowerCase().endsWith(".pdf");
+        const isPdf = filename.toLowerCase().endsWith(".pdf");
 
-        if (isPdf && apiKey) {
-          // Try multiple models for PDF extraction
-          const modelsToTry = ["google/gemini-2.5-pro", "google/gemini-2.5-flash"];
+        if (isPdf) {
+          // Convert to base64 with chunked encoding
           const arrayBuf = await fileData.arrayBuffer();
           const bytes = new Uint8Array(arrayBuf);
           let binary = "";
@@ -377,120 +419,57 @@ Deno.serve(async (req) => {
           const base64 = btoa(binary);
           console.log("[extract] PDF size:", bytes.length, "bytes, base64 length:", base64.length);
 
-          for (const model of modelsToTry) {
-            if (rawText) break;
-            try {
-              console.log("[extract] Trying PDF extraction with model:", model);
-              const aiResp = await fetch(
-                "https://ai.gateway.lovable.dev/v1/chat/completions",
-                {
-                  method: "POST",
-                  headers: {
-                    Authorization: `Bearer ${apiKey}`,
-                    "Content-Type": "application/json",
-                  },
-                  body: JSON.stringify({
-                    model,
-                    messages: [
-                      {
-                        role: "user",
-                        content: [
-                          {
-                            type: "text",
-                            text: "Extract ALL text content from this PDF document. Return ONLY the raw text, preserving the structure (dates, times, names, emails, phone numbers, dollar amounts). Do not summarize or interpret — just extract the text verbatim.",
-                          },
-                          {
-                            type: "image_url",
-                            image_url: {
-                              url: `data:application/pdf;base64,${base64}`,
-                            },
-                          },
-                        ],
-                      },
-                    ],
-                  }),
-                }
-              );
+          // SINGLE AI call: send PDF directly for structured extraction
+          aiResult = await aiExtractFromPdf(base64, apiKey);
 
-              console.log("[extract] AI PDF response status:", aiResp.status, "model:", model);
-              if (aiResp.ok) {
-                const aiData = await aiResp.json();
-                rawText = aiData.choices?.[0]?.message?.content || "";
-                console.log("[extract] AI extracted text length:", rawText.length, "model:", model);
-              } else {
-                const errBody = await aiResp.text();
-                console.error("[extract] AI PDF failed:", model, aiResp.status, errBody);
-              }
-            } catch (aiErr) {
-              console.error("[extract] AI text extraction error:", model, aiErr);
-            }
-          }
-
-          // Fallback: extract text streams from PDF binary
-          if (!rawText) {
-            console.log("[extract] All AI models failed, extracting text from PDF streams");
-            try {
-              const rawStr = binary;
-              const textChunks: string[] = [];
-              
-              // Find text between parentheses in PDF operators
-              const parenMatches = rawStr.matchAll(/\(([^\)]{2,})\)/g);
-              for (const m of parenMatches) {
-                const chunk = m[1].replace(/\\n/g, "\n").replace(/\\\\/g, "\\").replace(/\\([()])/g, "$1");
-                if (/[a-zA-Z0-9@.]/.test(chunk) && chunk.length > 1) {
-                  textChunks.push(chunk);
-                }
-              }
-              
-              // Look for TJ text array operators
-              const tjMatches = rawStr.matchAll(/\[([^\]]*)\]\s*TJ/g);
-              for (const m of tjMatches) {
-                const parts = m[1].matchAll(/\(([^)]*)\)/g);
-                for (const p of parts) {
-                  if (p[1].length > 0) textChunks.push(p[1]);
-                }
-              }
-
-              if (textChunks.length > 10) {
-                rawText = textChunks.join(" ").replace(/\s+/g, " ").trim();
-                console.log("[extract] PDF stream extraction:", textChunks.length, "chunks, length:", rawText.length);
-              }
-            } catch (e) {
-              console.error("[extract] PDF stream extraction failed:", e);
-            }
+          if (aiResult) {
+            console.log("[extract] Single-pass extraction keys:", Object.keys(aiResult));
           }
         } else {
           rawText = await fileData.text();
         }
-
-        if (rawText) {
-          await adminClient
-            .from("documents")
-            .update({ raw_text: rawText })
-            .eq("id", document_id);
-        }
       }
     }
 
-    if (!rawText) {
+    // For text files or if PDF single-pass failed, do text-based extraction
+    if (!aiResult && rawText && apiKey) {
+      aiResult = await aiExtractFromText(rawText, apiKey);
+    }
+
+    // If we got text but no AI key, at least save raw text
+    if (rawText && !doc.raw_text) {
+      await adminClient
+        .from("documents")
+        .update({ raw_text: rawText })
+        .eq("id", document_id);
+    }
+
+    if (!aiResult) {
+      // Fallback: try deterministic domain detection on whatever text we have
+      if (rawText) {
+        const domain = detectDomain(filename, rawText);
+        await adminClient
+          .from("documents")
+          .update({ doc_type: domain.doc_type })
+          .eq("id", document_id);
+        return new Response(JSON.stringify({
+          doc_type: domain.doc_type,
+          domain_confidence: domain.confidence,
+          extracted_count: 0,
+          tour_name: null,
+          summary: { events: 0, contacts: 0, travel: 0, finance: 0, protocols: 0, venues: 0 },
+        }), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
       return new Response(
-        JSON.stringify({ error: "Could not extract text from document" }),
+        JSON.stringify({ error: "Could not extract from document" }),
         { status: 422, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    // ── Stage 2: Domain detection (deterministic) ──
-    const domain = detectDomain(filename, rawText);
-
-    // ── Stage 3: AI-powered structured extraction ──
-    let aiResult: AIExtractionResult | null = null;
-    if (apiKey) {
-      console.log("[extract] Running AI structured extraction...");
-      aiResult = await aiExtract(rawText, apiKey);
-      console.log("[extract] AI result keys:", aiResult ? Object.keys(aiResult) : "null");
-    }
-
-    // Use AI doc_type if detection was uncertain
+    // ── Domain detection for doc_type ──
+    const domain = detectDomain(filename, rawText || JSON.stringify(aiResult));
     const finalDocType = domain.confidence >= 0.30
       ? domain.doc_type
       : (aiResult?.doc_type || domain.doc_type);
@@ -500,7 +479,7 @@ Deno.serve(async (req) => {
       .update({ doc_type: finalDocType })
       .eq("id", document_id);
 
-    // ── Stage 4: Update tour name ──
+    // ── Update tour name ──
     const extractedTourName = aiResult?.tour_name || null;
     if (extractedTourName) {
       const { data: tourData } = await adminClient
@@ -516,117 +495,103 @@ Deno.serve(async (req) => {
       }
     }
 
-    // ── Stage 5: Persist extracted entities ──
+    // ── Persist extracted entities ──
     let totalExtracted = 0;
 
-    // Schedule events
+    // Schedule events - batch insert
     const events = aiResult?.schedule_events || [];
     if (events.length > 0) {
-      // Helper: combine date + HH:MM into ISO timestamp
       const toTimestamp = (date: string | undefined, time: string | undefined): string | null => {
         if (!date || !time) return null;
-        try {
-          // time is HH:MM in 24h format
-          return `${date}T${time}:00`;
-        } catch { return null; }
+        return `${date}T${time}:00`;
       };
 
-      for (const evt of events) {
-        const insertResult = await adminClient.from("schedule_events").insert({
-          tour_id: doc.tour_id,
-          city: evt.city || null,
-          venue: evt.venue || null,
-          event_date: evt.event_date || null,
-          load_in: toTimestamp(evt.event_date, evt.load_in),
-          show_time: toTimestamp(evt.event_date, evt.show_time),
-          end_time: toTimestamp(evt.event_date, evt.end_time),
-          confidence_score: 0.85,
-          source_doc_id: document_id,
-        });
-        if (insertResult.error) {
-          console.error("[extract] schedule_events insert error:", insertResult.error);
-        }
-      }
+      const rows = events.map(evt => ({
+        tour_id: doc.tour_id,
+        city: evt.city || null,
+        venue: evt.venue || null,
+        event_date: evt.event_date || null,
+        load_in: toTimestamp(evt.event_date, evt.load_in),
+        show_time: toTimestamp(evt.event_date, evt.show_time),
+        end_time: toTimestamp(evt.event_date, evt.end_time),
+        confidence_score: 0.85,
+        source_doc_id: document_id,
+      }));
+
+      const { error: evtErr } = await adminClient.from("schedule_events").insert(rows);
+      if (evtErr) console.error("[extract] schedule_events insert error:", evtErr);
+      else console.log("[extract] Inserted", events.length, "schedule events");
       totalExtracted += events.length;
-      console.log("[extract] Inserted", events.length, "schedule events");
     }
 
-    // Contacts
+    // Contacts - batch insert
     const contacts = aiResult?.contacts || [];
     if (contacts.length > 0) {
-      for (const c of contacts) {
-        const r = await adminClient.from("contacts").insert({
-          tour_id: doc.tour_id,
-          name: c.name,
-          phone: c.phone || null,
-          email: c.email || null,
-          role: c.role || null,
-          source_doc_id: document_id,
-        });
-        if (r.error) console.error("[extract] contacts insert error:", r.error);
-      }
+      const rows = contacts.map(c => ({
+        tour_id: doc.tour_id,
+        name: c.name,
+        phone: c.phone || null,
+        email: c.email || null,
+        role: c.role || null,
+        source_doc_id: document_id,
+      }));
+
+      const { error: cErr } = await adminClient.from("contacts").insert(rows);
+      if (cErr) console.error("[extract] contacts insert error:", cErr);
+      else console.log("[extract] Inserted", contacts.length, "contacts");
       totalExtracted += contacts.length;
-      console.log("[extract] Inserted", contacts.length, "contacts");
     }
 
-    // Finance
+    // Finance - batch insert
     const finance = aiResult?.finance || [];
     if (finance.length > 0) {
-      for (const fl of finance) {
-        await adminClient.from("finance_lines").insert({
-          tour_id: doc.tour_id,
-          category: fl.category || "Uncategorized",
-          amount: fl.amount || null,
-          venue: fl.venue || null,
-          line_date: fl.line_date || null,
-        });
-      }
+      const rows = finance.map(fl => ({
+        tour_id: doc.tour_id,
+        category: fl.category || "Uncategorized",
+        amount: fl.amount || null,
+        venue: fl.venue || null,
+        line_date: fl.line_date || null,
+      }));
+      await adminClient.from("finance_lines").insert(rows);
       totalExtracted += finance.length;
     }
 
-    // Travel — store as knowledge gaps with domain "TRAVEL" for now
-    // (until a dedicated travel table exists)
+    // Travel — store as knowledge gaps
     const travel = aiResult?.travel || [];
     if (travel.length > 0) {
-      for (const t of travel) {
-        const desc = [
+      const rows = travel.map(t => ({
+        tour_id: doc.tour_id,
+        question: `[TRAVEL ${t.date || ""}] ${[
           t.type || "",
           t.description || "",
           t.hotel_name ? `Hotel: ${t.hotel_name}` : "",
-          t.hotel_checkin ? `Check-in: ${t.hotel_checkin}` : "",
-          t.hotel_checkout ? `Check-out: ${t.hotel_checkout}` : "",
           t.departure ? `From: ${t.departure}` : "",
           t.arrival ? `To: ${t.arrival}` : "",
           t.confirmation ? `Conf#: ${t.confirmation}` : "",
-        ].filter(Boolean).join(" | ");
-
-        await adminClient.from("knowledge_gaps").insert({
-          tour_id: doc.tour_id,
-          question: `[TRAVEL ${t.date || ""}] ${desc}`,
-          domain: "TRAVEL",
-          resolved: true, // It's data, not an actual gap
-          user_id: user.id,
-        });
-      }
+        ].filter(Boolean).join(" | ")}`,
+        domain: "TRAVEL",
+        resolved: true,
+        user_id: user.id,
+      }));
+      await adminClient.from("knowledge_gaps").insert(rows);
       totalExtracted += travel.length;
     }
 
-    // Protocols — store as knowledge gaps with domain "PROTOCOL"
+    // Protocols
     const protocols = aiResult?.protocols || [];
     if (protocols.length > 0) {
-      for (const p of protocols) {
-        await adminClient.from("knowledge_gaps").insert({
-          tour_id: doc.tour_id,
-          question: `[${p.category || "PROTOCOL"}] ${p.title || "Protocol"}: ${p.details || ""}`,
-          domain: p.category || "PROTOCOL",
-          resolved: true,
-          user_id: user.id,
-        });
-      }
+      const rows = protocols.map(p => ({
+        tour_id: doc.tour_id,
+        question: `[${p.category || "PROTOCOL"}] ${p.title || "Protocol"}: ${p.details || ""}`,
+        domain: p.category || "PROTOCOL",
+        resolved: true,
+        user_id: user.id,
+      }));
+      await adminClient.from("knowledge_gaps").insert(rows);
       totalExtracted += protocols.length;
     }
 
-    // ── Stage 6: Activate document ──
+    // ── Activate document ──
     if (totalExtracted > 0) {
       await adminClient
         .from("documents")
