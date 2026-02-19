@@ -254,7 +254,7 @@ async function aiExtract(text: string, apiKey: string): Promise<AIExtractionResu
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "google/gemini-2.5-flash",
+        model: "google/gemini-2.5-pro",
         messages: [
           { role: "system", content: EXTRACTION_PROMPT },
           { role: "user", content: text.substring(0, 60000) },
@@ -365,76 +365,98 @@ Deno.serve(async (req) => {
         const isPdf = (filename).toLowerCase().endsWith(".pdf");
 
         if (isPdf && apiKey) {
-          try {
-            const arrayBuf = await fileData.arrayBuffer();
-            const bytes = new Uint8Array(arrayBuf);
-            let binary = "";
-            const chunkSize = 8192;
-            for (let i = 0; i < bytes.length; i += chunkSize) {
-              binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize));
-            }
-            const base64 = btoa(binary);
-            console.log("[extract] PDF size:", bytes.length, "bytes, base64 length:", base64.length);
+          // Try multiple models for PDF extraction
+          const modelsToTry = ["google/gemini-2.5-pro", "google/gemini-2.5-flash"];
+          const arrayBuf = await fileData.arrayBuffer();
+          const bytes = new Uint8Array(arrayBuf);
+          let binary = "";
+          const chunkSize = 8192;
+          for (let i = 0; i < bytes.length; i += chunkSize) {
+            binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize));
+          }
+          const base64 = btoa(binary);
+          console.log("[extract] PDF size:", bytes.length, "bytes, base64 length:", base64.length);
 
-            const aiResp = await fetch(
-              "https://ai.gateway.lovable.dev/v1/chat/completions",
-              {
-                method: "POST",
-                headers: {
-                  Authorization: `Bearer ${apiKey}`,
-                  "Content-Type": "application/json",
-                },
-                body: JSON.stringify({
-                  model: "google/gemini-2.5-flash",
-                  messages: [
-                    {
-                      role: "user",
-                      content: [
-                        {
-                          type: "text",
-                          text: "Extract ALL text content from this PDF document. Return ONLY the raw text, preserving the structure (dates, times, names, emails, phone numbers, dollar amounts). Do not summarize or interpret — just extract the text verbatim.",
-                        },
-                        {
-                          type: "image_url",
-                          image_url: {
-                            url: `data:application/pdf;base64,${base64}`,
+          for (const model of modelsToTry) {
+            if (rawText) break;
+            try {
+              console.log("[extract] Trying PDF extraction with model:", model);
+              const aiResp = await fetch(
+                "https://ai.gateway.lovable.dev/v1/chat/completions",
+                {
+                  method: "POST",
+                  headers: {
+                    Authorization: `Bearer ${apiKey}`,
+                    "Content-Type": "application/json",
+                  },
+                  body: JSON.stringify({
+                    model,
+                    messages: [
+                      {
+                        role: "user",
+                        content: [
+                          {
+                            type: "text",
+                            text: "Extract ALL text content from this PDF document. Return ONLY the raw text, preserving the structure (dates, times, names, emails, phone numbers, dollar amounts). Do not summarize or interpret — just extract the text verbatim.",
                           },
-                        },
-                      ],
-                    },
-                  ],
-                }),
-              }
-            );
+                          {
+                            type: "image_url",
+                            image_url: {
+                              url: `data:application/pdf;base64,${base64}`,
+                            },
+                          },
+                        ],
+                      },
+                    ],
+                  }),
+                }
+              );
 
-            console.log("[extract] AI PDF response status:", aiResp.status);
-            if (aiResp.ok) {
-              const aiData = await aiResp.json();
-              rawText = aiData.choices?.[0]?.message?.content || "";
-              console.log("[extract] AI extracted text length:", rawText.length);
-            } else {
-              const errBody = await aiResp.text();
-              console.error("[extract] AI PDF extraction failed:", aiResp.status, errBody);
+              console.log("[extract] AI PDF response status:", aiResp.status, "model:", model);
+              if (aiResp.ok) {
+                const aiData = await aiResp.json();
+                rawText = aiData.choices?.[0]?.message?.content || "";
+                console.log("[extract] AI extracted text length:", rawText.length, "model:", model);
+              } else {
+                const errBody = await aiResp.text();
+                console.error("[extract] AI PDF failed:", model, aiResp.status, errBody);
+              }
+            } catch (aiErr) {
+              console.error("[extract] AI text extraction error:", model, aiErr);
             }
-          } catch (aiErr) {
-            console.error("[extract] AI text extraction error:", aiErr);
           }
 
-          // Fallback: try reading PDF as text (works for text-based PDFs)
+          // Fallback: extract text streams from PDF binary
           if (!rawText) {
-            console.log("[extract] AI failed, falling back to raw text extraction");
+            console.log("[extract] All AI models failed, extracting text from PDF streams");
             try {
-              rawText = await fileData.text();
-              // If it's binary garbage, discard it
-              const printable = rawText.replace(/[^\x20-\x7E\n\r\t]/g, "");
-              if (printable.length < rawText.length * 0.3) {
-                console.log("[extract] Raw text is mostly binary, discarding");
-                rawText = "";
-              } else {
-                rawText = printable;
+              const rawStr = binary;
+              const textChunks: string[] = [];
+              
+              // Find text between parentheses in PDF operators
+              const parenMatches = rawStr.matchAll(/\(([^\)]{2,})\)/g);
+              for (const m of parenMatches) {
+                const chunk = m[1].replace(/\\n/g, "\n").replace(/\\\\/g, "\\").replace(/\\([()])/g, "$1");
+                if (/[a-zA-Z0-9@.]/.test(chunk) && chunk.length > 1) {
+                  textChunks.push(chunk);
+                }
+              }
+              
+              // Look for TJ text array operators
+              const tjMatches = rawStr.matchAll(/\[([^\]]*)\]\s*TJ/g);
+              for (const m of tjMatches) {
+                const parts = m[1].matchAll(/\(([^)]*)\)/g);
+                for (const p of parts) {
+                  if (p[1].length > 0) textChunks.push(p[1]);
+                }
+              }
+
+              if (textChunks.length > 10) {
+                rawText = textChunks.join(" ").replace(/\s+/g, " ").trim();
+                console.log("[extract] PDF stream extraction:", textChunks.length, "chunks, length:", rawText.length);
               }
             } catch (e) {
-              console.error("[extract] Fallback text read failed:", e);
+              console.error("[extract] PDF stream extraction failed:", e);
             }
           }
         } else {
