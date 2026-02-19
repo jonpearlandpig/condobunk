@@ -465,11 +465,42 @@ Deno.serve(async (req) => {
       .update({ doc_type: domain.doc_type })
       .eq("id", document_id);
 
+    // Stage 2.5: Extract tour name from document text
+    let extractedTourName: string | null = null;
+    const tourNamePatterns = [
+      /(?:tour\s*(?:name)?|artist|act)\s*[:–—-]\s*(.+)/i,
+      /^([A-Z][\w\s&']+(?:Tour|World Tour|Live|Concert Series|Festival))\b/im,
+      /(?:^|\n)\s*([A-Z][\w\s&']+(?:20\d{2}|'?\d{2})(?:\s+(?:Tour|World Tour|Live))?)\s*(?:\n|$)/m,
+    ];
+    for (const pat of tourNamePatterns) {
+      const m = rawText.match(pat);
+      if (m && m[1] && m[1].trim().length >= 3 && m[1].trim().length <= 100) {
+        extractedTourName = m[1].trim();
+        break;
+      }
+    }
+
+    // If we found a tour name, update the tour (only if it still has the placeholder name)
+    if (extractedTourName) {
+      const { data: tourData } = await adminClient
+        .from("tours")
+        .select("name")
+        .eq("id", doc.tour_id)
+        .single();
+      if (tourData && tourData.name.startsWith("New Tour")) {
+        await adminClient
+          .from("tours")
+          .update({ name: extractedTourName })
+          .eq("id", doc.tour_id);
+      }
+    }
+
     // Stage 3: Extract based on type
     let extractionResult: Record<string, unknown> = {
       doc_type: domain.doc_type,
       domain_confidence: domain.confidence,
       extracted_count: 0,
+      tour_name: extractedTourName,
     };
 
     if (domain.doc_type === "SCHEDULE") {
