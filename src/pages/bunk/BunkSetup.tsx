@@ -158,7 +158,15 @@ const BunkSetup = () => {
         }
       }
 
-      toast({ title: "Extracted", description: `${data.doc_type} — ${data.extracted_count} items` });
+      const parts = [];
+      if (data.summary?.events) parts.push(`${data.summary.events} dates`);
+      if (data.summary?.contacts) parts.push(`${data.summary.contacts} contacts`);
+      if (data.summary?.travel) parts.push(`${data.summary.travel} travel items`);
+      if (data.summary?.finance) parts.push(`${data.summary.finance} finance lines`);
+      if (data.summary?.protocols) parts.push(`${data.summary.protocols} protocols`);
+      if (data.summary?.venues) parts.push(`${data.summary.venues} venues`);
+      const desc = parts.length > 0 ? parts.join(", ") : `${data.extracted_count} items`;
+      toast({ title: "Extracted", description: `${data.doc_type} — ${desc}` });
 
       // Refresh tour name from DB
       if (tourId) {

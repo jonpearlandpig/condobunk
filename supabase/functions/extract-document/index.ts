@@ -54,7 +54,6 @@ function detectDomain(filename: string, text: string): DomainResult {
   const lowerText = text.toLowerCase();
   const scores: Record<string, number> = {};
 
-  // Filename heuristics (weight 0.45)
   for (const [dtype, hints] of Object.entries(FILENAME_HINTS)) {
     scores[dtype] = (scores[dtype] || 0);
     for (const hint of hints) {
@@ -65,7 +64,6 @@ function detectDomain(filename: string, text: string): DomainResult {
     }
   }
 
-  // Keyword scoring (weight 0.35)
   for (const [dtype, keywords] of Object.entries(KEYWORD_SETS)) {
     let matched = 0;
     for (const kw of keywords) {
@@ -75,7 +73,6 @@ function detectDomain(filename: string, text: string): DomainResult {
     scores[dtype] = (scores[dtype] || 0) + kwScore;
   }
 
-  // Structural patterns (weight 0.20)
   const timePattern = /\b\d{1,2}:\d{2}\s*(am|pm|AM|PM)?\b/g;
   const emailPattern = /[\w.+-]+@[\w-]+\.[\w.]+/g;
   const phonePattern = /(\+1|1)?[\s.-]?\(?\d{3}\)?[\s.-]?\d{3}[\s.-]?\d{4}/g;
@@ -97,7 +94,6 @@ function detectDomain(filename: string, text: string): DomainResult {
     scores["FINANCE"] = (scores["FINANCE"] || 0) + 0.20;
   }
 
-  // Find top
   let topType = "UNKNOWN";
   let topScore = 0;
   for (const [dtype, score] of Object.entries(scores)) {
@@ -108,192 +104,180 @@ function detectDomain(filename: string, text: string): DomainResult {
   }
 
   if (topScore < 0.30) topType = "UNKNOWN";
-
   return { doc_type: topType, confidence: topScore, scores };
 }
 
-// ─── Extractors ───
+// ─── AI-Powered Structured Extraction ───
 
-interface ScheduleEvent {
-  city?: string;
-  venue?: string;
-  event_date?: string;
-  load_in?: string;
-  show_time?: string;
-  end_time?: string;
-  confidence_score: number;
-}
+const EXTRACTION_PROMPT = `You are a tour document extraction engine. Analyze the following tour document text and extract ALL structured data you can find.
 
-function extractSchedule(text: string): ScheduleEvent[] {
-  const events: ScheduleEvent[] = [];
-  const lines = text.split("\n").map((l) => l.trim()).filter(Boolean);
+Return a JSON object with these fields (include only what you find, omit empty arrays):
 
-  // ISO date or common date patterns
-  const dateRegex =
-    /\b(\d{4}-\d{2}-\d{2}|\d{1,2}\/\d{1,2}\/\d{2,4}|\b(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\w*\s+\d{1,2},?\s*\d{2,4})\b/i;
-  const timeRegex = /\b(\d{1,2}:\d{2}\s*(?:am|pm|AM|PM)?)\b/;
-  const venueIndicators = /(?:venue|hall|arena|theater|theatre|club|room|amphitheater|stadium)/i;
-
-  let currentDate: string | undefined;
-  let currentVenue: string | undefined;
-  let currentCity: string | undefined;
-
-  for (const line of lines) {
-    const dateMatch = line.match(dateRegex);
-    if (dateMatch) {
-      currentDate = dateMatch[1];
+{
+  "tour_name": "Artist Name — Tour Name" or null,
+  "doc_type": "SCHEDULE" | "CONTACTS" | "RUN_OF_SHOW" | "FINANCE" | "TRAVEL" | "TECH" | "HOSPITALITY" | "LOGISTICS" | "CAST" | "VENUE" | "UNKNOWN",
+  "schedule_events": [
+    {
+      "event_date": "YYYY-MM-DD",
+      "city": "City Name",
+      "venue": "Venue Name",
+      "load_in": "HH:MM" (24h),
+      "show_time": "HH:MM" (24h),
+      "end_time": "HH:MM" (24h),
+      "doors": "HH:MM" (24h),
+      "soundcheck": "HH:MM" (24h),
+      "notes": "any special notes for this date"
     }
-
-    // Look for venue/city on lines with location-like content
-    if (venueIndicators.test(line) || (line.includes(",") && !timeRegex.test(line) && !dateMatch)) {
-      const parts = line.split(/[,\-–—|]/).map((p) => p.trim());
-      if (parts.length >= 2) {
-        currentVenue = parts[0].replace(/^(venue|at|@)\s*:?\s*/i, "");
-        currentCity = parts[1];
-      } else if (parts.length === 1) {
-        currentVenue = parts[0];
-      }
+  ],
+  "contacts": [
+    {
+      "name": "Full Name",
+      "role": "ROLE TITLE",
+      "phone": "phone number",
+      "email": "email@domain.com"
     }
-
-    // Extract times
-    const times = line.match(/\b\d{1,2}:\d{2}\s*(?:am|pm|AM|PM)?\b/g);
-    if (times && currentDate) {
-      let load_in: string | undefined;
-      let show_time: string | undefined;
-      let end_time: string | undefined;
-
-      const lowerLine = line.toLowerCase();
-      if (lowerLine.includes("load") || lowerLine.includes("li")) {
-        load_in = times[0];
-      }
-      if (lowerLine.includes("show") || lowerLine.includes("downbeat")) {
-        show_time = times[times.length > 1 ? 1 : 0];
-      }
-      if (lowerLine.includes("end") || lowerLine.includes("curfew")) {
-        end_time = times[times.length - 1];
-      }
-
-      // If no keywords, assign by position
-      if (!load_in && !show_time && !end_time) {
-        if (times.length >= 3) {
-          load_in = times[0];
-          show_time = times[1];
-          end_time = times[2];
-        } else if (times.length === 2) {
-          show_time = times[0];
-          end_time = times[1];
-        } else {
-          show_time = times[0];
-        }
-      }
-
-      let confidence = 0;
-      if (currentDate) confidence += 0.40;
-      if (currentVenue) confidence += 0.20;
-      if (currentCity) confidence += 0.15;
-      if (show_time) confidence += 0.15;
-      if (load_in) confidence += 0.10;
-
-      events.push({
-        event_date: currentDate,
-        venue: currentVenue,
-        city: currentCity,
-        load_in,
-        show_time,
-        end_time,
-        confidence_score: Math.round(confidence * 100) / 100,
-      });
+  ],
+  "travel": [
+    {
+      "date": "YYYY-MM-DD",
+      "type": "FLIGHT" | "BUS" | "VAN" | "HOTEL" | "OTHER",
+      "description": "Details (flight number, hotel name, pickup time, etc.)",
+      "departure": "departure location or time",
+      "arrival": "arrival location or time",
+      "hotel_name": "hotel name if applicable",
+      "hotel_checkin": "YYYY-MM-DD",
+      "hotel_checkout": "YYYY-MM-DD",
+      "confirmation": "confirmation number if found"
     }
-  }
-
-  return events;
-}
-
-interface Contact {
-  name: string;
-  phone?: string;
-  email?: string;
-  role?: string;
-}
-
-function extractContacts(text: string): Contact[] {
-  const contacts: Contact[] = [];
-  const lines = text.split("\n").map((l) => l.trim()).filter(Boolean);
-
-  const emailRegex = /[\w.+-]+@[\w-]+\.[\w.]+/;
-  const phoneRegex = /(\+?1?[\s.-]?\(?\d{3}\)?[\s.-]?\d{3}[\s.-]?\d{4})/;
-  const roleKeywords = [
-    "tm", "tour manager", "production", "foh", "monitor", "ld",
-    "lighting", "rigger", "backline", "merch", "promoter",
-    "manager", "agent", "catering", "runner", "driver", "security",
-  ];
-
-  for (const line of lines) {
-    const email = line.match(emailRegex)?.[0];
-    const phone = line.match(phoneRegex)?.[1];
-
-    if (!email && !phone) continue;
-
-    // Try to extract name (usually first part of line before phone/email/separator)
-    let name = line
-      .replace(emailRegex, "")
-      .replace(phoneRegex, "")
-      .split(/[|;–—\t]/)
-      .map((p) => p.trim())
-      .filter(Boolean)[0] || "";
-
-    // Detect role
-    let role: string | undefined;
-    const lowerLine = line.toLowerCase();
-    for (const rk of roleKeywords) {
-      if (lowerLine.includes(rk)) {
-        role = rk.toUpperCase();
-        // Remove role from name if it's there
-        name = name.replace(new RegExp(rk, "i"), "").trim();
-        break;
-      }
+  ],
+  "finance": [
+    {
+      "category": "Category name",
+      "amount": 1234.56,
+      "venue": "venue if applicable",
+      "line_date": "YYYY-MM-DD if applicable"
     }
-
-    // Clean up name
-    name = name.replace(/^[:\-–—,.\s]+|[:\-–—,.\s]+$/g, "").trim();
-    if (!name || name.length < 2) name = "Unknown";
-
-    contacts.push({ name, phone, email, role });
-  }
-
-  return contacts;
+  ],
+  "protocols": [
+    {
+      "category": "SECURITY" | "HOSPITALITY" | "PRODUCTION" | "CATERING" | "DRESSING_ROOM" | "OTHER",
+      "title": "Protocol title",
+      "details": "Full protocol text/requirements"
+    }
+  ],
+  "venues": [
+    {
+      "name": "Venue Name",
+      "city": "City",
+      "state": "State/Province",
+      "capacity": 1234,
+      "address": "Full address if available",
+      "contact_name": "Venue contact",
+      "contact_phone": "phone",
+      "contact_email": "email",
+      "notes": "any venue-specific notes"
+    }
+  ]
 }
 
-interface FinanceLine {
-  category?: string;
-  amount?: number;
-  venue?: string;
-  line_date?: string;
+IMPORTANT RULES:
+- Extract EVERYTHING you can find, even partial data
+- For dates, always use YYYY-MM-DD format. If only month/day given, assume the most likely year
+- For times, use 24-hour HH:MM format
+- For contacts, capture ALL people mentioned with any identifying info
+- For travel, capture flights, buses, hotels, ground transport — anything
+- For protocols, capture rider requirements, security protocols, hospitality needs, dressing room requirements, catering specs
+- Return ONLY valid JSON, no markdown formatting, no code blocks
+- If the document covers multiple categories (schedule + contacts + travel), extract ALL of them`;
+
+interface AIExtractionResult {
+  tour_name?: string | null;
+  doc_type?: string;
+  schedule_events?: Array<{
+    event_date?: string;
+    city?: string;
+    venue?: string;
+    load_in?: string;
+    show_time?: string;
+    end_time?: string;
+    doors?: string;
+    soundcheck?: string;
+    notes?: string;
+  }>;
+  contacts?: Array<{
+    name: string;
+    role?: string;
+    phone?: string;
+    email?: string;
+  }>;
+  travel?: Array<{
+    date?: string;
+    type?: string;
+    description?: string;
+    departure?: string;
+    arrival?: string;
+    hotel_name?: string;
+    hotel_checkin?: string;
+    hotel_checkout?: string;
+    confirmation?: string;
+  }>;
+  finance?: Array<{
+    category?: string;
+    amount?: number;
+    venue?: string;
+    line_date?: string;
+  }>;
+  protocols?: Array<{
+    category?: string;
+    title?: string;
+    details?: string;
+  }>;
+  venues?: Array<{
+    name?: string;
+    city?: string;
+    state?: string;
+    capacity?: number;
+    address?: string;
+    contact_name?: string;
+    contact_phone?: string;
+    contact_email?: string;
+    notes?: string;
+  }>;
 }
 
-function extractFinance(text: string): FinanceLine[] {
-  const lines_arr: FinanceLine[] = [];
-  const lines = text.split("\n").map((l) => l.trim()).filter(Boolean);
-  const amountRegex = /\$?([\d,]+\.?\d*)/;
-
-  for (const line of lines) {
-    const match = line.match(amountRegex);
-    if (!match) continue;
-
-    const amount = parseFloat(match[1].replace(/,/g, ""));
-    if (isNaN(amount)) continue;
-
-    const cleaned = line.replace(amountRegex, "").trim();
-    const parts = cleaned.split(/[|;–—\t,]/).map((p) => p.trim()).filter(Boolean);
-
-    lines_arr.push({
-      category: parts[0] || "Uncategorized",
-      amount,
-      venue: parts[1],
+async function aiExtract(text: string, apiKey: string): Promise<AIExtractionResult | null> {
+  try {
+    const resp = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: "google/gemini-2.5-flash",
+        messages: [
+          { role: "system", content: EXTRACTION_PROMPT },
+          { role: "user", content: text.substring(0, 60000) },
+        ],
+      }),
     });
-  }
 
-  return lines_arr;
+    if (!resp.ok) {
+      console.error("AI extraction API error:", resp.status);
+      return null;
+    }
+
+    const data = await resp.json();
+    let content = data.choices?.[0]?.message?.content || "";
+    
+    // Strip markdown code fences if present
+    content = content.replace(/^```(?:json)?\s*\n?/i, "").replace(/\n?```\s*$/i, "").trim();
+
+    return JSON.parse(content);
+  } catch (err) {
+    console.error("AI extraction failed:", err);
+    return null;
+  }
 }
 
 // ─── Main Handler ───
@@ -315,8 +299,8 @@ Deno.serve(async (req) => {
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseKey = Deno.env.get("SUPABASE_ANON_KEY")!;
     const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    const apiKey = Deno.env.get("LOVABLE_API_KEY");
 
-    // User client for auth validation
     const userClient = createClient(supabaseUrl, supabaseKey, {
       global: { headers: { Authorization: authHeader } },
     });
@@ -329,7 +313,6 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Service client for writes
     const adminClient = createClient(supabaseUrl, serviceKey);
 
     const { document_id } = await req.json();
@@ -372,79 +355,71 @@ Deno.serve(async (req) => {
     let rawText = doc.raw_text || "";
     const filename = doc.filename || "";
 
-    // If no raw_text, try to download from storage and extract
+    // ── Stage 1: Get raw text from file if needed ──
     if (!rawText && doc.file_path) {
       const { data: fileData, error: dlErr } = await adminClient.storage
         .from("document-files")
         .download(doc.file_path);
 
       if (!dlErr && fileData) {
-        const isPdf = (filename || "").toLowerCase().endsWith(".pdf");
+        const isPdf = (filename).toLowerCase().endsWith(".pdf");
 
-        if (isPdf) {
-          // Use AI to extract text from PDF
-          const apiKey = Deno.env.get("LOVABLE_API_KEY");
-          if (apiKey) {
-            try {
-              const arrayBuf = await fileData.arrayBuffer();
-              const bytes = new Uint8Array(arrayBuf);
-              let binary = "";
-              const chunkSize = 8192;
-              for (let i = 0; i < bytes.length; i += chunkSize) {
-                binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize));
-              }
-              const base64 = btoa(binary);
-
-              const aiResp = await fetch(
-                "https://ai.gateway.lovable.dev/v1/chat/completions",
-                {
-                  method: "POST",
-                  headers: {
-                    Authorization: `Bearer ${apiKey}`,
-                    "Content-Type": "application/json",
-                  },
-                  body: JSON.stringify({
-                    model: "google/gemini-2.5-flash",
-                    messages: [
-                      {
-                        role: "user",
-                        content: [
-                          {
-                            type: "text",
-                            text: "Extract ALL text content from this PDF document. Return ONLY the raw text, preserving the structure (dates, times, names, emails, phone numbers, dollar amounts). Do not summarize or interpret — just extract the text verbatim.",
-                          },
-                          {
-                            type: "image_url",
-                            image_url: {
-                              url: `data:application/pdf;base64,${base64}`,
-                            },
-                          },
-                        ],
-                      },
-                    ],
-                  }),
-                }
-              );
-
-              if (aiResp.ok) {
-                const aiData = await aiResp.json();
-                rawText =
-                  aiData.choices?.[0]?.message?.content || "";
-
-                // Save extracted text back to the document
-                if (rawText) {
-                  await adminClient
-                    .from("documents")
-                    .update({ raw_text: rawText })
-                    .eq("id", document_id);
-                }
-              }
-            } catch (aiErr) {
-              console.error("AI text extraction failed:", aiErr);
+        if (isPdf && apiKey) {
+          try {
+            const arrayBuf = await fileData.arrayBuffer();
+            const bytes = new Uint8Array(arrayBuf);
+            let binary = "";
+            const chunkSize = 8192;
+            for (let i = 0; i < bytes.length; i += chunkSize) {
+              binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize));
             }
+            const base64 = btoa(binary);
+
+            const aiResp = await fetch(
+              "https://ai.gateway.lovable.dev/v1/chat/completions",
+              {
+                method: "POST",
+                headers: {
+                  Authorization: `Bearer ${apiKey}`,
+                  "Content-Type": "application/json",
+                },
+                body: JSON.stringify({
+                  model: "google/gemini-2.5-flash",
+                  messages: [
+                    {
+                      role: "user",
+                      content: [
+                        {
+                          type: "text",
+                          text: "Extract ALL text content from this PDF document. Return ONLY the raw text, preserving the structure (dates, times, names, emails, phone numbers, dollar amounts). Do not summarize or interpret — just extract the text verbatim.",
+                        },
+                        {
+                          type: "image_url",
+                          image_url: {
+                            url: `data:application/pdf;base64,${base64}`,
+                          },
+                        },
+                      ],
+                    },
+                  ],
+                }),
+              }
+            );
+
+            if (aiResp.ok) {
+              const aiData = await aiResp.json();
+              rawText = aiData.choices?.[0]?.message?.content || "";
+              if (rawText) {
+                await adminClient
+                  .from("documents")
+                  .update({ raw_text: rawText })
+                  .eq("id", document_id);
+              }
+            }
+          } catch (aiErr) {
+            console.error("AI text extraction failed:", aiErr);
           }
         } else {
-          // Text-based file
           rawText = await fileData.text();
           if (rawText) {
             await adminClient
@@ -456,31 +431,36 @@ Deno.serve(async (req) => {
       }
     }
 
-    // Stage 2: Domain detection
-    const domain = detectDomain(filename, rawText);
-
-    // Update doc_type
-    await adminClient
-      .from("documents")
-      .update({ doc_type: domain.doc_type })
-      .eq("id", document_id);
-
-    // Stage 2.5: Extract tour name from document text
-    let extractedTourName: string | null = null;
-    const tourNamePatterns = [
-      /(?:tour\s*(?:name)?|artist|act)\s*[:–—-]\s*(.+)/i,
-      /^([A-Z][\w\s&']+(?:Tour|World Tour|Live|Concert Series|Festival))\b/im,
-      /(?:^|\n)\s*([A-Z][\w\s&']+(?:20\d{2}|'?\d{2})(?:\s+(?:Tour|World Tour|Live))?)\s*(?:\n|$)/m,
-    ];
-    for (const pat of tourNamePatterns) {
-      const m = rawText.match(pat);
-      if (m && m[1] && m[1].trim().length >= 3 && m[1].trim().length <= 100) {
-        extractedTourName = m[1].trim();
-        break;
-      }
+    if (!rawText) {
+      return new Response(
+        JSON.stringify({ error: "Could not extract text from document" }),
+        { status: 422, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
     }
 
-    // If we found a tour name, update the tour (only if it still has the placeholder name)
+    // ── Stage 2: Domain detection (deterministic) ──
+    const domain = detectDomain(filename, rawText);
+
+    // ── Stage 3: AI-powered structured extraction ──
+    let aiResult: AIExtractionResult | null = null;
+    if (apiKey) {
+      console.log("[extract] Running AI structured extraction...");
+      aiResult = await aiExtract(rawText, apiKey);
+      console.log("[extract] AI result keys:", aiResult ? Object.keys(aiResult) : "null");
+    }
+
+    // Use AI doc_type if detection was uncertain
+    const finalDocType = domain.confidence >= 0.30
+      ? domain.doc_type
+      : (aiResult?.doc_type || domain.doc_type);
+
+    await adminClient
+      .from("documents")
+      .update({ doc_type: finalDocType })
+      .eq("id", document_id);
+
+    // ── Stage 4: Update tour name ──
+    const extractedTourName = aiResult?.tour_name || null;
     if (extractedTourName) {
       const { data: tourData } = await adminClient
         .from("tours")
@@ -495,82 +475,135 @@ Deno.serve(async (req) => {
       }
     }
 
-    // Stage 3: Extract based on type
-    let extractionResult: Record<string, unknown> = {
-      doc_type: domain.doc_type,
-      domain_confidence: domain.confidence,
-      extracted_count: 0,
-      tour_name: extractedTourName,
-    };
+    // ── Stage 5: Persist extracted entities ──
+    let totalExtracted = 0;
 
-    if (domain.doc_type === "SCHEDULE") {
-      const events = extractSchedule(rawText);
+    // Schedule events
+    const events = aiResult?.schedule_events || [];
+    if (events.length > 0) {
       for (const evt of events) {
         await adminClient.from("schedule_events").insert({
           tour_id: doc.tour_id,
-          city: evt.city,
-          venue: evt.venue,
-          event_date: evt.event_date,
-          load_in: evt.load_in ? null : null, // timestamps need proper parsing
-          show_time: evt.show_time ? null : null,
-          end_time: evt.end_time ? null : null,
-          confidence_score: evt.confidence_score,
+          city: evt.city || null,
+          venue: evt.venue || null,
+          event_date: evt.event_date || null,
+          confidence_score: 0.85,
           source_doc_id: document_id,
         });
       }
-      extractionResult.extracted_count = events.length;
-      extractionResult.events = events;
-    } else if (domain.doc_type === "CONTACTS") {
-      const contacts = extractContacts(rawText);
+      totalExtracted += events.length;
+    }
+
+    // Contacts
+    const contacts = aiResult?.contacts || [];
+    if (contacts.length > 0) {
       for (const c of contacts) {
         await adminClient.from("contacts").insert({
           tour_id: doc.tour_id,
           name: c.name,
-          phone: c.phone,
-          email: c.email,
-          role: c.role,
+          phone: c.phone || null,
+          email: c.email || null,
+          role: c.role || null,
           source_doc_id: document_id,
         });
       }
-      extractionResult.extracted_count = contacts.length;
-    } else if (domain.doc_type === "FINANCE") {
-      const flines = extractFinance(rawText);
-      for (const fl of flines) {
-        await adminClient.from("finance_lines").insert({
-          tour_id: doc.tour_id,
-          category: fl.category,
-          amount: fl.amount,
-          venue: fl.venue,
-          line_date: fl.line_date,
-        });
-      }
-      extractionResult.extracted_count = flines.length;
+      totalExtracted += contacts.length;
     }
 
-    // Stage 5: Activate document if extraction succeeded
-    if (
-      extractionResult.extracted_count &&
-      (extractionResult.extracted_count as number) > 0
-    ) {
-      // Deactivate previous versions of same doc_type for this tour
+    // Finance
+    const finance = aiResult?.finance || [];
+    if (finance.length > 0) {
+      for (const fl of finance) {
+        await adminClient.from("finance_lines").insert({
+          tour_id: doc.tour_id,
+          category: fl.category || "Uncategorized",
+          amount: fl.amount || null,
+          venue: fl.venue || null,
+          line_date: fl.line_date || null,
+        });
+      }
+      totalExtracted += finance.length;
+    }
+
+    // Travel — store as knowledge gaps with domain "TRAVEL" for now
+    // (until a dedicated travel table exists)
+    const travel = aiResult?.travel || [];
+    if (travel.length > 0) {
+      for (const t of travel) {
+        const desc = [
+          t.type || "",
+          t.description || "",
+          t.hotel_name ? `Hotel: ${t.hotel_name}` : "",
+          t.hotel_checkin ? `Check-in: ${t.hotel_checkin}` : "",
+          t.hotel_checkout ? `Check-out: ${t.hotel_checkout}` : "",
+          t.departure ? `From: ${t.departure}` : "",
+          t.arrival ? `To: ${t.arrival}` : "",
+          t.confirmation ? `Conf#: ${t.confirmation}` : "",
+        ].filter(Boolean).join(" | ");
+
+        await adminClient.from("knowledge_gaps").insert({
+          tour_id: doc.tour_id,
+          question: `[TRAVEL ${t.date || ""}] ${desc}`,
+          domain: "TRAVEL",
+          resolved: true, // It's data, not an actual gap
+          user_id: user.id,
+        });
+      }
+      totalExtracted += travel.length;
+    }
+
+    // Protocols — store as knowledge gaps with domain "PROTOCOL"
+    const protocols = aiResult?.protocols || [];
+    if (protocols.length > 0) {
+      for (const p of protocols) {
+        await adminClient.from("knowledge_gaps").insert({
+          tour_id: doc.tour_id,
+          question: `[${p.category || "PROTOCOL"}] ${p.title || "Protocol"}: ${p.details || ""}`,
+          domain: p.category || "PROTOCOL",
+          resolved: true,
+          user_id: user.id,
+        });
+      }
+      totalExtracted += protocols.length;
+    }
+
+    // ── Stage 6: Activate document ──
+    if (totalExtracted > 0) {
       await adminClient
         .from("documents")
         .update({ is_active: false })
         .eq("tour_id", doc.tour_id)
-        .eq("doc_type", domain.doc_type)
+        .eq("doc_type", finalDocType)
         .neq("id", document_id);
 
-      // Activate this one
       await adminClient
         .from("documents")
         .update({ is_active: true })
         .eq("id", document_id);
     }
 
-    return new Response(JSON.stringify(extractionResult), {
+    const result = {
+      doc_type: finalDocType,
+      domain_confidence: domain.confidence,
+      extracted_count: totalExtracted,
+      tour_name: extractedTourName,
+      summary: {
+        events: events.length,
+        contacts: contacts.length,
+        travel: travel.length,
+        finance: finance.length,
+        protocols: protocols.length,
+        venues: (aiResult?.venues || []).length,
+      },
+    };
+
+    console.log("[extract] Final result:", JSON.stringify(result));
+
+    return new Response(JSON.stringify(result), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (err) {
+    console.error("[extract] Error:", err);
     return new Response(JSON.stringify({ error: (err as Error).message }), {
       status: 500,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
