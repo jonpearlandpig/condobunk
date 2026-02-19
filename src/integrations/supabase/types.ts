@@ -111,6 +111,8 @@ export type Database = {
         Row: {
           created_at: string
           doc_type: Database["public"]["Enums"]["doc_type"]
+          file_path: string | null
+          filename: string | null
           id: string
           is_active: boolean
           raw_text: string | null
@@ -120,6 +122,8 @@ export type Database = {
         Insert: {
           created_at?: string
           doc_type?: Database["public"]["Enums"]["doc_type"]
+          file_path?: string | null
+          filename?: string | null
           id?: string
           is_active?: boolean
           raw_text?: string | null
@@ -129,6 +133,8 @@ export type Database = {
         Update: {
           created_at?: string
           doc_type?: Database["public"]["Enums"]["doc_type"]
+          file_path?: string | null
+          filename?: string | null
           id?: string
           is_active?: boolean
           raw_text?: string | null
