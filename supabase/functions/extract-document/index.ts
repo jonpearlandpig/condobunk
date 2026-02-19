@@ -387,9 +387,13 @@ Deno.serve(async (req) => {
           if (apiKey) {
             try {
               const arrayBuf = await fileData.arrayBuffer();
-              const base64 = btoa(
-                String.fromCharCode(...new Uint8Array(arrayBuf))
-              );
+              const bytes = new Uint8Array(arrayBuf);
+              let binary = "";
+              const chunkSize = 8192;
+              for (let i = 0; i < bytes.length; i += chunkSize) {
+                binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize));
+              }
+              const base64 = btoa(binary);
 
               const aiResp = await fetch(
                 "https://ai.gateway.lovable.dev/v1/chat/completions",
