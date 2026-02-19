@@ -6,7 +6,6 @@ import { useTour } from "@/hooks/useTour";
 import { useToast } from "@/hooks/use-toast";
 import { motion, AnimatePresence } from "framer-motion";
 import {
-  Radio,
   Upload,
   Loader2,
   CheckCircle2,
@@ -16,10 +15,9 @@ import {
   Rocket,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 
-type Step = "create" | "upload" | "confirm";
+type Step = "upload" | "confirm";
 
 interface UploadedDoc {
   id: string;
@@ -29,9 +27,8 @@ interface UploadedDoc {
 }
 
 const STEPS: { key: Step; label: string; number: number }[] = [
-  { key: "create", label: "CREATE TOUR", number: 1 },
-  { key: "upload", label: "UPLOAD DOCS", number: 2 },
-  { key: "confirm", label: "CONFIRM", number: 3 },
+  { key: "upload", label: "UPLOAD DOCS", number: 1 },
+  { key: "confirm", label: "CONFIRM", number: 2 },
 ];
 
 const BunkSetup = () => {
@@ -40,42 +37,46 @@ const BunkSetup = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
 
-  const [step, setStep] = useState<Step>("create");
-  const [tourName, setTourName] = useState("");
+  const [step, setStep] = useState<Step>("upload");
   const [tourId, setTourId] = useState<string | null>(null);
-  const [creating, setCreating] = useState(false);
+  const [tourName, setTourName] = useState("New Tour");
   const [uploading, setUploading] = useState(false);
   const [extracting, setExtracting] = useState<string | null>(null);
   const [docs, setDocs] = useState<UploadedDoc[]>([]);
+  const [extractedContacts, setExtractedContacts] = useState<
+    { name: string; role?: string }[]
+  >([]);
 
-  const createTour = async () => {
-    if (!tourName.trim() || !user) return;
-    setCreating(true);
+  // Auto-create tour on first upload (placeholder name)
+  const ensureTour = async (): Promise<string | null> => {
+    if (tourId) return tourId;
+    if (!user) return null;
     try {
       const { data, error } = await supabase
         .from("tours")
-        .insert({ name: tourName.trim(), owner_id: user.id })
+        .insert({ name: "New Tour", owner_id: user.id })
         .select("id")
         .single();
       if (error) throw error;
       setTourId(data.id);
       setSelectedTourId(data.id);
       reload();
-      toast({ title: "Tour created" });
-      setStep("upload");
+      return data.id;
     } catch (err: any) {
       toast({ title: "Error", description: err.message, variant: "destructive" });
-    } finally {
-      setCreating(false);
+      return null;
     }
   };
 
   const handleFileUpload = useCallback(
     async (e: React.ChangeEvent<HTMLInputElement>) => {
       const file = e.target.files?.[0];
-      if (!file || !tourId || !user) return;
+      if (!file || !user) return;
       setUploading(true);
       try {
+        const activeTourId = await ensureTour();
+        if (!activeTourId) throw new Error("Failed to create tour");
+
         const isTextFile = /\.(txt|csv|tsv|md)$/i.test(file.name);
         let rawText: string | null = null;
         if (isTextFile) {
@@ -84,10 +85,10 @@ const BunkSetup = () => {
         const { count } = await supabase
           .from("documents")
           .select("*", { count: "exact", head: true })
-          .eq("tour_id", tourId);
+          .eq("tour_id", activeTourId);
         const nextVersion = (count ?? 0) + 1;
 
-        const filePath = `${tourId}/${Date.now()}_${file.name}`;
+        const filePath = `${activeTourId}/${Date.now()}_${file.name}`;
         const { error: storageErr } = await supabase.storage
           .from("document-files")
           .upload(filePath, file);
@@ -96,7 +97,7 @@ const BunkSetup = () => {
         const { data, error: docErr } = await supabase
           .from("documents")
           .insert({
-            tour_id: tourId,
+            tour_id: activeTourId,
             filename: file.name,
             file_path: filePath,
             raw_text: rawText,
@@ -130,12 +131,43 @@ const BunkSetup = () => {
         body: { document_id: docId },
       });
       if (error) throw error;
+
       setDocs((prev) =>
         prev.map((d) =>
           d.id === docId ? { ...d, doc_type: data.doc_type, extracted: true } : d
         )
       );
+
+      // If extraction returned a tour name, update local state
+      if (data.tour_name) {
+        setTourName(data.tour_name);
+      }
+
+      // If contacts were extracted, fetch them for display
+      if (data.doc_type === "CONTACTS" && tourId) {
+        const { data: contacts } = await supabase
+          .from("contacts")
+          .select("name, role")
+          .eq("tour_id", tourId)
+          .limit(10);
+        if (contacts) {
+          setExtractedContacts(contacts);
+        }
+      }
+
       toast({ title: "Extracted", description: `${data.doc_type} — ${data.extracted_count} items` });
+
+      // Refresh tour name from DB
+      if (tourId) {
+        const { data: freshTour } = await supabase
+          .from("tours")
+          .select("name")
+          .eq("id", tourId)
+          .single();
+        if (freshTour && freshTour.name !== "New Tour") {
+          setTourName(freshTour.name);
+        }
+      }
     } catch (err: any) {
       toast({ title: "Extraction failed", description: err.message, variant: "destructive" });
     } finally {
@@ -187,46 +219,6 @@ const BunkSetup = () => {
 
       {/* Step Content */}
       <AnimatePresence mode="wait">
-        {step === "create" && (
-          <motion.div
-            key="create"
-            initial={{ opacity: 0, y: 16 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -16 }}
-            className="rounded-lg border border-border bg-card p-8 space-y-6"
-          >
-            <div className="text-center">
-              <Radio className="h-10 w-10 text-primary mx-auto mb-3" />
-              <h2 className="text-xl font-bold">Name Your Tour</h2>
-              <p className="text-sm text-muted-foreground font-mono mt-1">
-                Step 1 of 3 — takes about 60 seconds total
-              </p>
-            </div>
-            <div className="space-y-3">
-              <Input
-                value={tourName}
-                onChange={(e) => setTourName(e.target.value)}
-                placeholder="Summer 2026 World Tour"
-                className="bg-muted font-mono text-sm text-center"
-                onKeyDown={(e) => e.key === "Enter" && createTour()}
-                autoFocus
-              />
-              <Button
-                onClick={createTour}
-                disabled={creating || !tourName.trim()}
-                className="w-full font-mono text-xs tracking-wider gap-2"
-              >
-                {creating ? (
-                  <Loader2 className="h-3 w-3 animate-spin" />
-                ) : (
-                  <ArrowRight className="h-3 w-3" />
-                )}
-                {creating ? "CREATING..." : "CREATE & CONTINUE"}
-              </Button>
-            </div>
-          </motion.div>
-        )}
-
         {step === "upload" && (
           <motion.div
             key="upload"
@@ -237,9 +229,9 @@ const BunkSetup = () => {
           >
             <div className="text-center">
               <Upload className="h-10 w-10 text-primary mx-auto mb-3" />
-              <h2 className="text-xl font-bold">Upload Documents</h2>
+              <h2 className="text-xl font-bold">Upload Tour Documents</h2>
               <p className="text-sm text-muted-foreground font-mono mt-1">
-                Drop your schedule, contacts, finance files
+                Drop your schedule, contacts, finance files — we'll pull the tour name & staff automatically
               </p>
             </div>
 
@@ -305,6 +297,35 @@ const BunkSetup = () => {
               </div>
             )}
 
+            {/* Extracted tour name preview */}
+            {tourName !== "New Tour" && (
+              <div className="rounded-lg border border-success/30 bg-success/5 px-4 py-3">
+                <span className="font-mono text-[10px] text-muted-foreground tracking-wider">
+                  DETECTED TOUR NAME
+                </span>
+                <p className="text-sm font-bold mt-0.5">{tourName}</p>
+              </div>
+            )}
+
+            {/* Extracted contacts preview */}
+            {extractedContacts.length > 0 && (
+              <div className="rounded-lg border border-success/30 bg-success/5 px-4 py-3 space-y-1">
+                <span className="font-mono text-[10px] text-muted-foreground tracking-wider">
+                  DETECTED STAFF / CONTACTS
+                </span>
+                {extractedContacts.map((c, i) => (
+                  <div key={i} className="flex items-center gap-2 text-sm">
+                    <span className="font-medium">{c.name}</span>
+                    {c.role && (
+                      <Badge variant="outline" className="font-mono text-[10px]">
+                        {c.role}
+                      </Badge>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+
             <div className="flex gap-3">
               <Button
                 variant="outline"
@@ -338,7 +359,7 @@ const BunkSetup = () => {
               <Rocket className="h-10 w-10 text-success mx-auto mb-3" />
               <h2 className="text-xl font-bold">Tour Ready</h2>
               <p className="text-sm text-muted-foreground font-mono mt-1">
-                Admin setup complete — review and launch
+                Review extracted info and launch
               </p>
             </div>
 
@@ -349,6 +370,25 @@ const BunkSetup = () => {
                 </span>
                 <span className="text-sm font-medium">{tourName}</span>
               </div>
+              {extractedContacts.length > 0 && (
+                <div>
+                  <span className="font-mono text-[10px] text-muted-foreground tracking-wider">
+                    STAFF
+                  </span>
+                  <div className="mt-1 space-y-1">
+                    {extractedContacts.map((c, i) => (
+                      <div key={i} className="flex items-center justify-between text-sm">
+                        <span>{c.name}</span>
+                        {c.role && (
+                          <Badge variant="outline" className="font-mono text-[10px]">
+                            {c.role}
+                          </Badge>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
               <div className="flex items-center justify-between">
                 <span className="font-mono text-[10px] text-muted-foreground tracking-wider">
                   DOCUMENTS
