@@ -369,8 +369,88 @@ Deno.serve(async (req) => {
       });
     }
 
-    const rawText = doc.raw_text || "";
+    let rawText = doc.raw_text || "";
     const filename = doc.filename || "";
+
+    // If no raw_text, try to download from storage and extract
+    if (!rawText && doc.file_path) {
+      const { data: fileData, error: dlErr } = await adminClient.storage
+        .from("document-files")
+        .download(doc.file_path);
+
+      if (!dlErr && fileData) {
+        const isPdf = (filename || "").toLowerCase().endsWith(".pdf");
+
+        if (isPdf) {
+          // Use AI to extract text from PDF
+          const apiKey = Deno.env.get("LOVABLE_API_KEY");
+          if (apiKey) {
+            try {
+              const arrayBuf = await fileData.arrayBuffer();
+              const base64 = btoa(
+                String.fromCharCode(...new Uint8Array(arrayBuf))
+              );
+
+              const aiResp = await fetch(
+                "https://ai.gateway.lovable.dev/v1/chat/completions",
+                {
+                  method: "POST",
+                  headers: {
+                    Authorization: `Bearer ${apiKey}`,
+                    "Content-Type": "application/json",
+                  },
+                  body: JSON.stringify({
+                    model: "google/gemini-2.5-flash",
+                    messages: [
+                      {
+                        role: "user",
+                        content: [
+                          {
+                            type: "text",
+                            text: "Extract ALL text content from this PDF document. Return ONLY the raw text, preserving the structure (dates, times, names, emails, phone numbers, dollar amounts). Do not summarize or interpret — just extract the text verbatim.",
+                          },
+                          {
+                            type: "image_url",
+                            image_url: {
+                              url: `data:application/pdf;base64,${base64}`,
+                            },
+                          },
+                        ],
+                      },
+                    ],
+                  }),
+                }
+              );
+
+              if (aiResp.ok) {
+                const aiData = await aiResp.json();
+                rawText =
+                  aiData.choices?.[0]?.message?.content || "";
+
+                // Save extracted text back to the document
+                if (rawText) {
+                  await adminClient
+                    .from("documents")
+                    .update({ raw_text: rawText })
+                    .eq("id", document_id);
+                }
+              }
+            } catch (aiErr) {
+              console.error("AI text extraction failed:", aiErr);
+            }
+          }
+        } else {
+          // Text-based file
+          rawText = await fileData.text();
+          if (rawText) {
+            await adminClient
+              .from("documents")
+              .update({ raw_text: rawText })
+              .eq("id", document_id);
+          }
+        }
+      }
+    }
 
     // Stage 2: Domain detection
     const domain = detectDomain(filename, rawText);
