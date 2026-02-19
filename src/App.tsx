@@ -15,6 +15,7 @@ import BunkGaps from "./pages/bunk/BunkGaps";
 import BunkConflicts from "./pages/bunk/BunkConflicts";
 import BunkCoverage from "./pages/bunk/BunkCoverage";
 import BunkAdmin from "./pages/bunk/BunkAdmin";
+import BunkSetup from "./pages/bunk/BunkSetup";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -45,6 +46,7 @@ const App = () => (
               <Route path="conflicts" element={<BunkConflicts />} />
               <Route path="coverage" element={<BunkCoverage />} />
               <Route path="admin" element={<BunkAdmin />} />
+              <Route path="setup" element={<BunkSetup />} />
             </Route>
             <Route path="*" element={<NotFound />} />
           </Routes>
