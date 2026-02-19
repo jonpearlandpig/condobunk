@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
+import { useTour } from "@/hooks/useTour";
 import { motion } from "framer-motion";
 import {
   Activity,
@@ -9,11 +11,13 @@ import {
   BarChart3,
   Radio,
   Plus,
+  ChevronRight,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
   DialogTrigger,
@@ -22,29 +26,17 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 
-interface Tour {
-  id: string;
-  name: string;
-  akb_state: string;
-  status: string;
-}
-
 const stateColors: Record<string, string> = {
   BUILDING: "text-info",
   SOVEREIGN: "text-success",
   CONFLICT: "text-destructive",
 };
 
-const stateLabels: Record<string, string> = {
-  BUILDING: "BUILDING",
-  SOVEREIGN: "SOVEREIGN",
-  CONFLICT: "CONFLICT",
-};
-
 const BunkOverview = () => {
   const { user } = useAuth();
+  const { tours, selectedTourId, setSelectedTourId, reload } = useTour();
+  const navigate = useNavigate();
   const { toast } = useToast();
-  const [tours, setTours] = useState<Tour[]>([]);
   const [gapCount, setGapCount] = useState(0);
   const [conflictCount, setConflictCount] = useState(0);
   const [eventCount, setEventCount] = useState(0);
@@ -54,16 +46,10 @@ const BunkOverview = () => {
 
   useEffect(() => {
     if (!user) return;
-    loadData();
+    loadCounts();
   }, [user]);
 
-  const loadData = async () => {
-    const { data: tourData } = await supabase
-      .from("tours")
-      .select("*")
-      .eq("status", "ACTIVE");
-    if (tourData) setTours(tourData as Tour[]);
-
+  const loadCounts = async () => {
     const { count: gaps } = await supabase
       .from("knowledge_gaps")
       .select("*", { count: "exact", head: true })
@@ -94,7 +80,8 @@ const BunkOverview = () => {
       toast({ title: "Tour created" });
       setNewTourName("");
       setDialogOpen(false);
-      loadData();
+      reload();
+      loadCounts();
     } catch (err: any) {
       toast({ title: "Error", description: err.message, variant: "destructive" });
     } finally {
@@ -102,31 +89,16 @@ const BunkOverview = () => {
     }
   };
 
+  const handleTourClick = (tourId: string) => {
+    setSelectedTourId(tourId);
+    navigate("/bunk/documents");
+  };
+
   const cards = [
-    {
-      label: "ACTIVE TOURS",
-      value: tours.length,
-      icon: Radio,
-      color: "text-primary",
-    },
-    {
-      label: "SCHEDULE EVENTS",
-      value: eventCount,
-      icon: BarChart3,
-      color: "text-info",
-    },
-    {
-      label: "OPEN GAPS",
-      value: gapCount,
-      icon: HelpCircle,
-      color: "text-warning",
-    },
-    {
-      label: "CONFLICTS",
-      value: conflictCount,
-      icon: AlertTriangle,
-      color: "text-destructive",
-    },
+    { label: "ACTIVE TOURS", value: tours.length, icon: Radio, color: "text-primary" },
+    { label: "SCHEDULE EVENTS", value: eventCount, icon: BarChart3, color: "text-info" },
+    { label: "OPEN GAPS", value: gapCount, icon: HelpCircle, color: "text-warning" },
+    { label: "CONFLICTS", value: conflictCount, icon: AlertTriangle, color: "text-destructive" },
   ];
 
   return (
@@ -148,6 +120,9 @@ const BunkOverview = () => {
           <DialogContent className="bg-card border-border">
             <DialogHeader>
               <DialogTitle className="font-mono tracking-wider">CREATE TOUR</DialogTitle>
+              <DialogDescription className="font-mono text-xs text-muted-foreground">
+                Launch a new tour to start building the knowledge base.
+              </DialogDescription>
             </DialogHeader>
             <div className="space-y-4">
               <div className="space-y-2">
@@ -196,7 +171,7 @@ const BunkOverview = () => {
       {/* Tour List */}
       <div>
         <h2 className="text-sm font-mono text-muted-foreground tracking-wider mb-4">
-          ACTIVE TOURS
+          ACTIVE TOURS — click to manage
         </h2>
         {tours.length === 0 ? (
           <div className="rounded-lg border border-border border-dashed bg-card/50 p-8 text-center">
@@ -208,12 +183,13 @@ const BunkOverview = () => {
         ) : (
           <div className="space-y-2">
             {tours.map((tour, i) => (
-              <motion.div
+              <motion.button
                 key={tour.id}
                 initial={{ opacity: 0, x: -8 }}
                 animate={{ opacity: 1, x: 0 }}
                 transition={{ delay: i * 0.05 }}
-                className="flex items-center justify-between rounded-lg border border-border bg-card px-5 py-4"
+                onClick={() => handleTourClick(tour.id)}
+                className="w-full flex items-center justify-between rounded-lg border border-border bg-card px-5 py-4 hover:border-primary/50 hover:bg-card/80 transition-colors text-left group cursor-pointer"
               >
                 <div>
                   <p className="font-medium">{tour.name}</p>
@@ -225,7 +201,7 @@ const BunkOverview = () => {
                   <span
                     className={`font-mono text-xs tracking-wider font-semibold ${stateColors[tour.akb_state] ?? "text-muted-foreground"}`}
                   >
-                    {stateLabels[tour.akb_state] ?? tour.akb_state}
+                    {tour.akb_state}
                   </span>
                   <div
                     className={`h-2 w-2 rounded-full ${
@@ -236,8 +212,9 @@ const BunkOverview = () => {
                         : "bg-info animate-pulse"
                     }`}
                   />
+                  <ChevronRight className="h-4 w-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
                 </div>
-              </motion.div>
+              </motion.button>
             ))}
           </div>
         )}

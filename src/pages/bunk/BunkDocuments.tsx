@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
+import { useTour } from "@/hooks/useTour";
 import { useToast } from "@/hooks/use-toast";
 import { motion, AnimatePresence } from "framer-motion";
 import {
@@ -28,11 +29,6 @@ import {
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
 
-interface Tour {
-  id: string;
-  name: string;
-}
-
 interface DocRow {
   id: string;
   tour_id: string;
@@ -57,39 +53,22 @@ const DOC_TYPE_COLORS: Record<string, string> = {
 
 const BunkDocuments = () => {
   const { user } = useAuth();
+  const { tours, selectedTourId, setSelectedTourId } = useTour();
   const { toast } = useToast();
-  const [tours, setTours] = useState<Tour[]>([]);
-  const [selectedTour, setSelectedTour] = useState<string>("");
   const [documents, setDocuments] = useState<DocRow[]>([]);
   const [uploading, setUploading] = useState(false);
   const [extracting, setExtracting] = useState<string | null>(null);
   const [expandedDoc, setExpandedDoc] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!user) return;
-    loadTours();
-  }, [user]);
-
-  useEffect(() => {
-    if (selectedTour) loadDocuments();
-  }, [selectedTour]);
-
-  const loadTours = async () => {
-    const { data } = await supabase
-      .from("tours")
-      .select("id, name")
-      .eq("status", "ACTIVE");
-    if (data && data.length > 0) {
-      setTours(data);
-      setSelectedTour(data[0].id);
-    }
-  };
+    if (selectedTourId) loadDocuments();
+  }, [selectedTourId]);
 
   const loadDocuments = async () => {
     const { data } = await supabase
       .from("documents")
       .select("*")
-      .eq("tour_id", selectedTour)
+      .eq("tour_id", selectedTourId)
       .order("created_at", { ascending: false });
     if (data) setDocuments(data as DocRow[]);
   };
@@ -97,31 +76,27 @@ const BunkDocuments = () => {
   const handleFileUpload = useCallback(
     async (e: React.ChangeEvent<HTMLInputElement>) => {
       const file = e.target.files?.[0];
-      if (!file || !selectedTour || !user) return;
+      if (!file || !selectedTourId || !user) return;
 
       setUploading(true);
       try {
-        // Read file as text
         const rawText = await file.text();
 
-        // Get next version number for this tour
         const { count } = await supabase
           .from("documents")
           .select("*", { count: "exact", head: true })
-          .eq("tour_id", selectedTour);
+          .eq("tour_id", selectedTourId);
         const nextVersion = (count ?? 0) + 1;
 
-        // Upload file to storage
-        const filePath = `${selectedTour}/${Date.now()}_${file.name}`;
+        const filePath = `${selectedTourId}/${Date.now()}_${file.name}`;
         const { error: storageErr } = await supabase.storage
           .from("document-files")
           .upload(filePath, file);
 
         if (storageErr) throw storageErr;
 
-        // Create document record
         const { error: docErr } = await supabase.from("documents").insert({
-          tour_id: selectedTour,
+          tour_id: selectedTourId,
           filename: file.name,
           file_path: filePath,
           raw_text: rawText,
@@ -142,11 +117,10 @@ const BunkDocuments = () => {
         });
       } finally {
         setUploading(false);
-        // Reset input
         e.target.value = "";
       }
     },
-    [selectedTour, user]
+    [selectedTourId, user]
   );
 
   const runExtraction = async (docId: string) => {
@@ -177,7 +151,6 @@ const BunkDocuments = () => {
   const toggleActive = async (doc: DocRow) => {
     try {
       if (!doc.is_active) {
-        // Deactivate others of same type first
         await supabase
           .from("documents")
           .update({ is_active: false })
@@ -214,7 +187,7 @@ const BunkDocuments = () => {
         </div>
         <div className="flex items-center gap-3">
           {tours.length > 0 && (
-            <Select value={selectedTour} onValueChange={setSelectedTour}>
+            <Select value={selectedTourId} onValueChange={setSelectedTourId}>
               <SelectTrigger className="w-48 font-mono text-xs bg-muted">
                 <SelectValue placeholder="Select tour" />
               </SelectTrigger>
@@ -236,7 +209,7 @@ const BunkDocuments = () => {
           type="file"
           accept=".txt,.csv,.tsv,.md,.doc,.docx,.pdf"
           onChange={handleFileUpload}
-          disabled={uploading || !selectedTour}
+          disabled={uploading || !selectedTourId}
           className="absolute inset-0 w-full h-full opacity-0 cursor-pointer disabled:cursor-not-allowed"
         />
         {uploading ? (
@@ -247,7 +220,7 @@ const BunkDocuments = () => {
         <p className="text-sm text-muted-foreground font-mono">
           {uploading
             ? "Uploading..."
-            : !selectedTour
+            : !selectedTourId
             ? "Select a tour first"
             : "Drop a file or click to upload (.txt, .csv, .md)"}
         </p>
