@@ -14,17 +14,6 @@ import {
   ChevronRight,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { useToast } from "@/hooks/use-toast";
 
 const stateColors: Record<string, string> = {
   BUILDING: "text-info",
@@ -34,15 +23,11 @@ const stateColors: Record<string, string> = {
 
 const BunkOverview = () => {
   const { user } = useAuth();
-  const { tours, selectedTourId, setSelectedTourId, reload } = useTour();
+  const { tours, setSelectedTourId } = useTour();
   const navigate = useNavigate();
-  const { toast } = useToast();
   const [gapCount, setGapCount] = useState(0);
   const [conflictCount, setConflictCount] = useState(0);
   const [eventCount, setEventCount] = useState(0);
-  const [newTourName, setNewTourName] = useState("");
-  const [dialogOpen, setDialogOpen] = useState(false);
-  const [creating, setCreating] = useState(false);
 
   useEffect(() => {
     if (!user) return;
@@ -68,26 +53,6 @@ const BunkOverview = () => {
     setEventCount(events ?? 0);
   };
 
-  const createTour = async () => {
-    if (!newTourName.trim() || !user) return;
-    setCreating(true);
-    try {
-      const { error } = await supabase.from("tours").insert({
-        name: newTourName.trim(),
-        owner_id: user.id,
-      });
-      if (error) throw error;
-      toast({ title: "Tour created" });
-      setNewTourName("");
-      setDialogOpen(false);
-      reload();
-      loadCounts();
-    } catch (err: any) {
-      toast({ title: "Error", description: err.message, variant: "destructive" });
-    } finally {
-      setCreating(false);
-    }
-  };
 
   const handleTourClick = (tourId: string) => {
     setSelectedTourId(tourId);
@@ -110,40 +75,10 @@ const BunkOverview = () => {
             Real-time tour intelligence
           </p>
         </div>
-        <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-          <DialogTrigger asChild>
-            <Button size="sm" className="font-mono text-xs tracking-wider">
+        <Button size="sm" className="font-mono text-xs tracking-wider" onClick={() => navigate("/bunk/setup")}>
               <Plus className="mr-2 h-3 w-3" />
               NEW TOUR
             </Button>
-          </DialogTrigger>
-          <DialogContent className="bg-card border-border">
-            <DialogHeader>
-              <DialogTitle className="font-mono tracking-wider">CREATE TOUR</DialogTitle>
-              <DialogDescription className="font-mono text-xs text-muted-foreground">
-                Launch a new tour to start building the knowledge base.
-              </DialogDescription>
-            </DialogHeader>
-            <div className="space-y-4">
-              <div className="space-y-2">
-                <Label className="font-mono text-xs text-muted-foreground">TOUR NAME</Label>
-                <Input
-                  value={newTourName}
-                  onChange={(e) => setNewTourName(e.target.value)}
-                  placeholder="Summer 2026 World Tour"
-                  className="bg-muted font-mono text-sm"
-                />
-              </div>
-              <Button
-                onClick={createTour}
-                disabled={creating || !newTourName.trim()}
-                className="w-full font-mono text-xs tracking-wider"
-              >
-                {creating ? "CREATING..." : "LAUNCH TOUR"}
-              </Button>
-            </div>
-          </DialogContent>
-        </Dialog>
       </div>
 
       {/* Stat Cards */}
