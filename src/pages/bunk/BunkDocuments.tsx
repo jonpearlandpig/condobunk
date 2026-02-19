@@ -80,8 +80,11 @@ const BunkDocuments = () => {
 
       setUploading(true);
       try {
-        const rawText = await file.text();
-
+        const isTextFile = /\.(txt|csv|tsv|md)$/i.test(file.name);
+        let rawText: string | null = null;
+        if (isTextFile) {
+          rawText = await file.text();
+        }
         const { count } = await supabase
           .from("documents")
           .select("*", { count: "exact", head: true })
