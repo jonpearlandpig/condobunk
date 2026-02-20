@@ -348,7 +348,7 @@ const BunkDocuments = () => {
         <div>
           <h1 className="text-2xl font-bold tracking-tight">AKB Builder</h1>
           <p className="text-sm text-muted-foreground font-mono mt-1">
-            Upload documents — TELA extracts and authors sovereign artifacts for your AKB
+            Upload documents
           </p>
         </div>
         {tours.length > 0 && (
