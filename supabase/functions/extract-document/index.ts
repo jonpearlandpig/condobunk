@@ -184,6 +184,7 @@ IMPORTANT RULES:
 - Extract EVERYTHING you can find, even partial data
 - For dates, always use YYYY-MM-DD format. If only month/day given, assume the most likely year
 - For times, use 24-hour HH:MM format
+- CRITICAL: If a time (load_in, show_time, end_time, doors, soundcheck) is NOT explicitly stated in the document, set it to null. NEVER guess or infer times. Only include times that are literally written in the source text.
 - For contacts, capture ALL people mentioned with any identifying info
 - For travel, capture flights, buses, hotels, ground transport — anything
 - For protocols, capture rider requirements, security protocols, hospitality needs, dressing room requirements, catering specs
