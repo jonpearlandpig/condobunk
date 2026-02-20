@@ -680,19 +680,8 @@ Deno.serve(async (req) => {
       await adminClient.from("knowledge_gaps").insert(rows);
       totalExtracted += venues.length;
     }
-    if (totalExtracted > 0) {
-      await adminClient
-        .from("documents")
-        .update({ is_active: false })
-        .eq("tour_id", doc.tour_id)
-        .eq("doc_type", finalDocType)
-        .neq("id", document_id);
-
-      await adminClient
-        .from("documents")
-        .update({ is_active: true })
-        .eq("id", document_id);
-    }
+    // Don't auto-activate — leave document pending for user review/approval
+    // The frontend will activate after the user reviews and approves the extraction
 
     const result = {
       doc_type: finalDocType,

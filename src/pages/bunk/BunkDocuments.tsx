@@ -14,6 +14,7 @@ import {
   Zap,
   Eye,
 } from "lucide-react";
+import ExtractionReviewDialog from "@/components/bunk/ExtractionReviewDialog";
 import { Button } from "@/components/ui/button";
 import {
   Select,
@@ -59,6 +60,8 @@ const BunkDocuments = () => {
   const [uploading, setUploading] = useState(false);
   const [extracting, setExtracting] = useState<string | null>(null);
   const [expandedDoc, setExpandedDoc] = useState<string | null>(null);
+  const [reviewDocId, setReviewDocId] = useState<string | null>(null);
+  const [reviewSummary, setReviewSummary] = useState<any>(null);
 
   useEffect(() => {
     if (selectedTourId) loadDocuments();
@@ -137,8 +140,10 @@ const BunkDocuments = () => {
 
       toast({
         title: "Extraction complete",
-        description: `Type: ${data.doc_type} — ${data.extracted_count} items extracted`,
+        description: `Type: ${data.doc_type} — ${data.extracted_count} items. Review before approving.`,
       });
+      setReviewSummary(data);
+      setReviewDocId(docId);
       loadDocuments();
     } catch (err: any) {
       toast({
@@ -364,6 +369,21 @@ const BunkDocuments = () => {
           </div>
         )}
       </div>
+      {reviewDocId && (
+        <ExtractionReviewDialog
+          open={!!reviewDocId}
+          onOpenChange={(open) => {
+            if (!open) {
+              setReviewDocId(null);
+              setReviewSummary(null);
+            }
+          }}
+          documentId={reviewDocId}
+          tourId={selectedTourId}
+          extractionSummary={reviewSummary}
+          onApproved={loadDocuments}
+        />
+      )}
     </div>
   );
 };
