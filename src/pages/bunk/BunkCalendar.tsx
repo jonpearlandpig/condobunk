@@ -1,25 +1,37 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useTour } from "@/hooks/useTour";
-import { format, parseISO } from "date-fns";
+import {
+  format,
+  parseISO,
+  startOfWeek,
+  endOfWeek,
+  addWeeks,
+  subWeeks,
+  eachDayOfInterval,
+  isSameDay,
+  isToday,
+} from "date-fns";
 import { motion } from "framer-motion";
 import {
   MapPin,
-  Clock,
   Plane,
   Hotel,
   Bus,
   Music,
   Calendar as CalendarIcon,
   Loader2,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 
 type EventCategory = "SHOW" | "TRAVEL";
 
 interface CalendarEntry {
   id: string;
-  date: string; // YYYY-MM-DD
+  date: string;
   category: EventCategory;
   title: string;
   subtitle?: string;
@@ -35,20 +47,34 @@ const TRAVEL_ICONS: Record<string, typeof Plane> = {
   HOTEL: Hotel,
 };
 
+const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
 const BunkCalendar = () => {
   const { selectedTourId } = useTour();
   const [entries, setEntries] = useState<CalendarEntry[]>([]);
   const [loading, setLoading] = useState(true);
+  const [currentWeekStart, setCurrentWeekStart] = useState(() =>
+    startOfWeek(new Date(), { weekStartsOn: 0 })
+  );
 
   useEffect(() => {
     if (selectedTourId) loadCalendar();
   }, [selectedTourId]);
 
+  // Jump to first event week when data loads
+  useEffect(() => {
+    if (entries.length > 0) {
+      const firstDate = parseISO(entries[0].date);
+      if (!isNaN(firstDate.getTime())) {
+        setCurrentWeekStart(startOfWeek(firstDate, { weekStartsOn: 0 }));
+      }
+    }
+  }, [entries]);
+
   const loadCalendar = async () => {
     setLoading(true);
     const merged: CalendarEntry[] = [];
 
-    // 1) SHOW events from schedule_events
     const { data: shows } = await supabase
       .from("schedule_events")
       .select("*")
@@ -79,7 +105,6 @@ const BunkCalendar = () => {
       }
     }
 
-    // 2) TRAVEL entries from knowledge_gaps (domain = 'TRAVEL')
     const { data: travelGaps } = await supabase
       .from("knowledge_gaps")
       .select("*")
@@ -89,7 +114,6 @@ const BunkCalendar = () => {
 
     if (travelGaps) {
       for (const t of travelGaps) {
-        // Parse the encoded question: [TRAVEL YYYY-MM-DD] TYPE | details...
         const q = t.question || "";
         const dateMatch = q.match(/\[TRAVEL\s*(\d{4}-\d{2}-\d{2})?\]/);
         const travelDate = dateMatch?.[1] || "9999-12-31";
@@ -110,61 +134,111 @@ const BunkCalendar = () => {
       }
     }
 
-    // Sort by date
     merged.sort((a, b) => a.date.localeCompare(b.date));
     setEntries(merged);
     setLoading(false);
   };
 
-  // Group entries by date
-  const grouped: Record<string, CalendarEntry[]> = {};
-  for (const e of entries) {
-    if (!grouped[e.date]) grouped[e.date] = [];
-    grouped[e.date].push(e);
-  }
+  const weekEnd = endOfWeek(currentWeekStart, { weekStartsOn: 0 });
+  const weekDays = eachDayOfInterval({ start: currentWeekStart, end: weekEnd });
 
-  const categoryColor = (cat: EventCategory) =>
-    cat === "SHOW"
-      ? "bg-primary/10 text-primary border-primary/20"
-      : "bg-accent/60 text-accent-foreground border-accent";
+  const entriesByDate = useMemo(() => {
+    const map: Record<string, CalendarEntry[]> = {};
+    for (const e of entries) {
+      if (!map[e.date]) map[e.date] = [];
+      map[e.date].push(e);
+    }
+    return map;
+  }, [entries]);
+
+  // Count events in current week
+  const weekEventCount = weekDays.reduce((sum, day) => {
+    const key = format(day, "yyyy-MM-dd");
+    return sum + (entriesByDate[key]?.length || 0);
+  }, 0);
 
   return (
-    <div className="space-y-6 max-w-4xl">
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight">Calendar</h1>
-        <p className="text-sm text-muted-foreground font-mono mt-1">
-          Auto-populated from AKB — shows & travel
-        </p>
+    <div className="space-y-4 max-w-5xl">
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight">Calendar</h1>
+          <p className="text-sm text-muted-foreground font-mono mt-1">
+            {format(currentWeekStart, "MMM d")} – {format(weekEnd, "MMM d, yyyy")}
+            {weekEventCount > 0 && (
+              <span className="ml-2 text-primary">· {weekEventCount} events</span>
+            )}
+          </p>
+        </div>
+        <div className="flex items-center gap-1">
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8"
+            onClick={() => setCurrentWeekStart(subWeeks(currentWeekStart, 1))}
+          >
+            <ChevronLeft className="h-4 w-4" />
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            className="font-mono text-xs h-8"
+            onClick={() => setCurrentWeekStart(startOfWeek(new Date(), { weekStartsOn: 0 }))}
+          >
+            Today
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8"
+            onClick={() => setCurrentWeekStart(addWeeks(currentWeekStart, 1))}
+          >
+            <ChevronRight className="h-4 w-4" />
+          </Button>
+        </div>
       </div>
 
       {loading ? (
         <div className="flex items-center justify-center py-16">
           <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
         </div>
-      ) : entries.length === 0 ? (
-        <div className="rounded-lg border border-border border-dashed bg-card/50 p-12 text-center">
-          <CalendarIcon className="h-8 w-8 text-muted-foreground/40 mx-auto mb-3" />
-          <p className="text-sm text-muted-foreground font-mono">
-            No events yet. Upload documents to auto-populate the calendar.
-          </p>
-        </div>
       ) : (
-        <div className="space-y-6">
-          {Object.entries(grouped).map(([date, dayEntries]) => {
-            let formattedDate = "TBD";
-            try {
-              formattedDate = format(parseISO(date), "EEEE, MMM d, yyyy");
-            } catch {}
+        <div className="grid grid-cols-7 gap-px bg-border rounded-lg overflow-hidden border border-border">
+          {/* Header row */}
+          {WEEKDAYS.map((day) => (
+            <div
+              key={day}
+              className="bg-muted/50 px-2 py-2 text-center text-[11px] font-mono tracking-wider text-muted-foreground uppercase"
+            >
+              {day}
+            </div>
+          ))}
+
+          {/* Day cells */}
+          {weekDays.map((day) => {
+            const key = format(day, "yyyy-MM-dd");
+            const dayEntries = entriesByDate[key] || [];
+            const today = isToday(day);
 
             return (
-              <div key={date}>
-                <div className="flex items-center gap-3 mb-2">
-                  <div className="h-2 w-2 rounded-full bg-primary" />
-                  <h3 className="font-mono text-xs tracking-wider text-muted-foreground uppercase">
-                    {formattedDate}
-                  </h3>
+              <div
+                key={key}
+                className={`bg-card min-h-[140px] p-2 flex flex-col ${
+                  today ? "ring-1 ring-inset ring-primary/40" : ""
+                }`}
+              >
+                <div className="flex items-center justify-between mb-1.5">
+                  <span
+                    className={`text-xs font-mono ${
+                      today
+                        ? "bg-primary text-primary-foreground rounded-full w-6 h-6 flex items-center justify-center font-bold"
+                        : "text-muted-foreground"
+                    }`}
+                  >
+                    {format(day, "d")}
+                  </span>
                 </div>
-                <div className="space-y-2 ml-4 border-l border-border pl-4">
+
+                <div className="flex-1 space-y-1 overflow-y-auto">
                   {dayEntries.map((entry, i) => {
                     const Icon =
                       entry.category === "SHOW"
@@ -174,49 +248,31 @@ const BunkCalendar = () => {
                     return (
                       <motion.div
                         key={entry.id}
-                        initial={{ opacity: 0, x: -8 }}
-                        animate={{ opacity: 1, x: 0 }}
-                        transition={{ delay: i * 0.04 }}
-                        className="flex items-start gap-3 rounded-lg border border-border bg-card p-3"
+                        initial={{ opacity: 0, scale: 0.95 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        transition={{ delay: i * 0.03 }}
+                        className={`rounded px-1.5 py-1 text-[10px] leading-tight cursor-default ${
+                          entry.category === "SHOW"
+                            ? "bg-primary/10 text-primary border border-primary/20"
+                            : "bg-accent/60 text-accent-foreground border border-accent"
+                        }`}
                       >
-                        <div className={`mt-0.5 rounded-md p-1.5 ${categoryColor(entry.category)}`}>
-                          <Icon className="h-3.5 w-3.5" />
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2">
-                            <span className="font-medium text-sm truncate">
-                              {entry.title}
-                            </span>
-                            <Badge
-                              variant="outline"
-                              className="text-[10px] font-mono shrink-0"
-                            >
-                              {entry.category}
-                            </Badge>
-                          </div>
-                          {entry.subtitle && (
-                            <div className="flex items-center gap-1 mt-0.5">
-                              <MapPin className="h-3 w-3 text-muted-foreground" />
-                              <span className="text-xs text-muted-foreground">
-                                {entry.subtitle}
-                              </span>
-                            </div>
-                          )}
-                          {entry.details.length > 0 && (
-                            <div className="flex flex-wrap gap-3 mt-1.5 font-mono text-[11px] text-muted-foreground">
-                              {entry.details.map((d, j) => (
-                                <span key={j} className="flex items-center gap-1">
-                                  <Clock className="h-3 w-3" />
-                                  {d}
-                                </span>
-                              ))}
-                            </div>
-                          )}
-                        </div>
-                        {entry.confidence !== undefined && (
-                          <span className="font-mono text-[10px] text-muted-foreground/50 shrink-0">
-                            {(entry.confidence * 100).toFixed(0)}%
+                        <div className="flex items-center gap-1">
+                          <Icon className="h-2.5 w-2.5 shrink-0" />
+                          <span className="font-medium truncate">
+                            {entry.title}
                           </span>
+                        </div>
+                        {entry.subtitle && (
+                          <div className="flex items-center gap-0.5 mt-0.5 text-muted-foreground">
+                            <MapPin className="h-2 w-2 shrink-0" />
+                            <span className="truncate">{entry.subtitle}</span>
+                          </div>
+                        )}
+                        {entry.details.length > 0 && (
+                          <p className="text-muted-foreground mt-0.5 truncate">
+                            {entry.details[0]}
+                          </p>
                         )}
                       </motion.div>
                     );
@@ -225,6 +281,15 @@ const BunkCalendar = () => {
               </div>
             );
           })}
+        </div>
+      )}
+
+      {!loading && entries.length === 0 && (
+        <div className="rounded-lg border border-border border-dashed bg-card/50 p-12 text-center">
+          <CalendarIcon className="h-8 w-8 text-muted-foreground/40 mx-auto mb-3" />
+          <p className="text-sm text-muted-foreground font-mono">
+            No events yet. Upload documents to auto-populate the calendar.
+          </p>
         </div>
       )}
     </div>
