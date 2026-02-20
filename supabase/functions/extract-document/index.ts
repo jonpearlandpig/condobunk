@@ -126,7 +126,7 @@ Return a JSON object with these fields (include only what you find, omit empty a
       "end_time": "HH:MM" (24h),
       "doors": "HH:MM" (24h),
       "soundcheck": "HH:MM" (24h),
-      "notes": "any special notes for this date"
+      "notes": "CRITICAL: This must contain the FULL detailed daily schedule. Format as: First line = day title/description (e.g. 'Band Only Rehearsal'). Following lines = every scheduled activity with times, one per line (e.g. 'Production Crew Call Time: 9:00 AM', 'LUNCH: 1:00 PM - 1:30 PM', 'Rehearsals: 1:30 PM - 6:30 PM'). Include ALL call times, load-ins, soundchecks, rehearsals, meals, breaks, tech checks, cue-to-cues, load outs — every single time block from the document for that day."
     }
   ],
   "contacts": [
@@ -185,6 +185,8 @@ IMPORTANT RULES:
 - For dates, always use YYYY-MM-DD format. If only month/day given, assume the most likely year
 - For times, use 24-hour HH:MM format
 - CRITICAL: If a time (load_in, show_time, end_time, doors, soundcheck) is NOT explicitly stated in the document, set it to null. NEVER guess or infer times. Only include times that are literally written in the source text.
+- CRITICAL: The "notes" field for each schedule_events entry MUST contain the COMPLETE detailed daily production schedule. Each day in a production document typically has a full breakdown of activities (crew calls, load-ins, soundchecks, rehearsals, meals, tech checks, cue-to-cues, load outs). Capture ALL of these as newline-separated entries with their times. This is the most important field for production schedules.
+- If a document has one page per day with a detailed schedule table, create one schedule_event per day with ALL the schedule items in the notes field.
 - For contacts, capture ALL people mentioned with any identifying info
 - For travel, capture flights, buses, hotels, ground transport — anything
 - For protocols, capture rider requirements, security protocols, hospitality needs, dressing room requirements, catering specs
