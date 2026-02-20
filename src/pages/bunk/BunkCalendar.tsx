@@ -6,15 +6,20 @@ import {
   parseISO,
   startOfWeek,
   endOfWeek,
+  startOfMonth,
+  endOfMonth,
   addWeeks,
   subWeeks,
+  addMonths,
+  subMonths,
   eachDayOfInterval,
-  isSameDay,
   isToday,
+  isSameMonth,
 } from "date-fns";
 import { motion } from "framer-motion";
 import {
   MapPin,
+  Clock,
   Plane,
   Hotel,
   Bus,
@@ -26,8 +31,15 @@ import {
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 
 type EventCategory = "SHOW" | "TRAVEL";
+type ViewMode = "week" | "month";
 
 interface CalendarEntry {
   id: string;
@@ -53,20 +65,19 @@ const BunkCalendar = () => {
   const { selectedTourId } = useTour();
   const [entries, setEntries] = useState<CalendarEntry[]>([]);
   const [loading, setLoading] = useState(true);
-  const [currentWeekStart, setCurrentWeekStart] = useState(() =>
-    startOfWeek(new Date(), { weekStartsOn: 0 })
-  );
+  const [viewMode, setViewMode] = useState<ViewMode>("week");
+  const [currentDate, setCurrentDate] = useState(new Date());
+  const [selectedEntry, setSelectedEntry] = useState<CalendarEntry | null>(null);
 
   useEffect(() => {
     if (selectedTourId) loadCalendar();
   }, [selectedTourId]);
 
-  // Jump to first event week when data loads
   useEffect(() => {
     if (entries.length > 0) {
       const firstDate = parseISO(entries[0].date);
       if (!isNaN(firstDate.getTime())) {
-        setCurrentWeekStart(startOfWeek(firstDate, { weekStartsOn: 0 }));
+        setCurrentDate(firstDate);
       }
     }
   }, [entries]);
@@ -139,9 +150,6 @@ const BunkCalendar = () => {
     setLoading(false);
   };
 
-  const weekEnd = endOfWeek(currentWeekStart, { weekStartsOn: 0 });
-  const weekDays = eachDayOfInterval({ start: currentWeekStart, end: weekEnd });
-
   const entriesByDate = useMemo(() => {
     const map: Record<string, CalendarEntry[]> = {};
     for (const e of entries) {
@@ -151,59 +159,111 @@ const BunkCalendar = () => {
     return map;
   }, [entries]);
 
-  // Count events in current week
-  const weekEventCount = weekDays.reduce((sum, day) => {
+  // Compute visible days
+  const visibleDays = useMemo(() => {
+    if (viewMode === "week") {
+      const ws = startOfWeek(currentDate, { weekStartsOn: 0 });
+      const we = endOfWeek(currentDate, { weekStartsOn: 0 });
+      return eachDayOfInterval({ start: ws, end: we });
+    } else {
+      const ms = startOfMonth(currentDate);
+      const me = endOfMonth(currentDate);
+      const gridStart = startOfWeek(ms, { weekStartsOn: 0 });
+      const gridEnd = endOfWeek(me, { weekStartsOn: 0 });
+      return eachDayOfInterval({ start: gridStart, end: gridEnd });
+    }
+  }, [currentDate, viewMode]);
+
+  const navigate = (dir: -1 | 1) => {
+    if (viewMode === "week") {
+      setCurrentDate(dir === 1 ? addWeeks(currentDate, 1) : subWeeks(currentDate, 1));
+    } else {
+      setCurrentDate(dir === 1 ? addMonths(currentDate, 1) : subMonths(currentDate, 1));
+    }
+  };
+
+  const headerLabel =
+    viewMode === "week"
+      ? `${format(visibleDays[0], "MMM d")} – ${format(visibleDays[6], "MMM d, yyyy")}`
+      : format(currentDate, "MMMM yyyy");
+
+  const visibleEventCount = visibleDays.reduce((sum, day) => {
     const key = format(day, "yyyy-MM-dd");
     return sum + (entriesByDate[key]?.length || 0);
   }, 0);
 
+  const isMonthView = viewMode === "month";
+  const cellMinH = isMonthView ? "min-h-[90px]" : "min-h-[140px]";
+
   return (
     <div className="space-y-4 max-w-5xl">
+      {/* Header */}
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Calendar</h1>
           <p className="text-sm text-muted-foreground font-mono mt-1">
-            {format(currentWeekStart, "MMM d")} – {format(weekEnd, "MMM d, yyyy")}
-            {weekEventCount > 0 && (
-              <span className="ml-2 text-primary">· {weekEventCount} events</span>
+            {headerLabel}
+            {visibleEventCount > 0 && (
+              <span className="ml-2 text-primary">· {visibleEventCount} events</span>
             )}
           </p>
         </div>
-        <div className="flex items-center gap-1">
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-8 w-8"
-            onClick={() => setCurrentWeekStart(subWeeks(currentWeekStart, 1))}
-          >
+        <div className="flex items-center gap-2">
+          {/* View toggle */}
+          <div className="flex rounded-md border border-border overflow-hidden">
+            <button
+              onClick={() => setViewMode("week")}
+              className={`px-3 py-1.5 text-[11px] font-mono tracking-wider transition-colors ${
+                viewMode === "week"
+                  ? "bg-primary text-primary-foreground"
+                  : "bg-card text-muted-foreground hover:bg-muted"
+              }`}
+            >
+              WEEK
+            </button>
+            <button
+              onClick={() => setViewMode("month")}
+              className={`px-3 py-1.5 text-[11px] font-mono tracking-wider transition-colors ${
+                viewMode === "month"
+                  ? "bg-primary text-primary-foreground"
+                  : "bg-card text-muted-foreground hover:bg-muted"
+              }`}
+            >
+              MONTH
+            </button>
+          </div>
+          {/* Nav */}
+          <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => navigate(-1)}>
             <ChevronLeft className="h-4 w-4" />
           </Button>
           <Button
             variant="outline"
             size="sm"
             className="font-mono text-xs h-8"
-            onClick={() => setCurrentWeekStart(startOfWeek(new Date(), { weekStartsOn: 0 }))}
+            onClick={() => setCurrentDate(new Date())}
           >
             Today
           </Button>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-8 w-8"
-            onClick={() => setCurrentWeekStart(addWeeks(currentWeekStart, 1))}
-          >
+          <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => navigate(1)}>
             <ChevronRight className="h-4 w-4" />
           </Button>
         </div>
       </div>
 
+      {/* Grid */}
       {loading ? (
         <div className="flex items-center justify-center py-16">
           <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
         </div>
+      ) : entries.length === 0 ? (
+        <div className="rounded-lg border border-border border-dashed bg-card/50 p-12 text-center">
+          <CalendarIcon className="h-8 w-8 text-muted-foreground/40 mx-auto mb-3" />
+          <p className="text-sm text-muted-foreground font-mono">
+            No events yet. Upload documents to auto-populate the calendar.
+          </p>
+        </div>
       ) : (
         <div className="grid grid-cols-7 gap-px bg-border rounded-lg overflow-hidden border border-border">
-          {/* Header row */}
           {WEEKDAYS.map((day) => (
             <div
               key={day}
@@ -213,24 +273,26 @@ const BunkCalendar = () => {
             </div>
           ))}
 
-          {/* Day cells */}
-          {weekDays.map((day) => {
+          {visibleDays.map((day) => {
             const key = format(day, "yyyy-MM-dd");
             const dayEntries = entriesByDate[key] || [];
             const today = isToday(day);
+            const dimmed = isMonthView && !isSameMonth(day, currentDate);
+            const maxVisible = isMonthView ? 2 : 4;
+            const overflow = dayEntries.length - maxVisible;
 
             return (
               <div
                 key={key}
-                className={`bg-card min-h-[140px] p-2 flex flex-col ${
+                className={`bg-card ${cellMinH} p-1.5 flex flex-col ${
                   today ? "ring-1 ring-inset ring-primary/40" : ""
-                }`}
+                } ${dimmed ? "opacity-40" : ""}`}
               >
-                <div className="flex items-center justify-between mb-1.5">
+                <div className="flex items-center justify-between mb-1">
                   <span
                     className={`text-xs font-mono ${
                       today
-                        ? "bg-primary text-primary-foreground rounded-full w-6 h-6 flex items-center justify-center font-bold"
+                        ? "bg-primary text-primary-foreground rounded-full w-5 h-5 flex items-center justify-center text-[10px] font-bold"
                         : "text-muted-foreground"
                     }`}
                   >
@@ -238,45 +300,38 @@ const BunkCalendar = () => {
                   </span>
                 </div>
 
-                <div className="flex-1 space-y-1 overflow-y-auto">
-                  {dayEntries.map((entry, i) => {
+                <div className="flex-1 space-y-0.5 overflow-hidden">
+                  {dayEntries.slice(0, maxVisible).map((entry, i) => {
                     const Icon =
                       entry.category === "SHOW"
                         ? Music
                         : TRAVEL_ICONS[entry.travelType || ""] || Plane;
 
                     return (
-                      <motion.div
+                      <motion.button
                         key={entry.id}
-                        initial={{ opacity: 0, scale: 0.95 }}
-                        animate={{ opacity: 1, scale: 1 }}
-                        transition={{ delay: i * 0.03 }}
-                        className={`rounded px-1.5 py-1 text-[10px] leading-tight cursor-default ${
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        transition={{ delay: i * 0.02 }}
+                        onClick={() => setSelectedEntry(entry)}
+                        className={`w-full text-left rounded px-1.5 py-0.5 text-[10px] leading-tight transition-colors ${
                           entry.category === "SHOW"
-                            ? "bg-primary/10 text-primary border border-primary/20"
-                            : "bg-accent/60 text-accent-foreground border border-accent"
+                            ? "bg-primary/10 text-primary border border-primary/20 hover:bg-primary/20"
+                            : "bg-accent/60 text-accent-foreground border border-accent hover:bg-accent/80"
                         }`}
                       >
                         <div className="flex items-center gap-1">
                           <Icon className="h-2.5 w-2.5 shrink-0" />
-                          <span className="font-medium truncate">
-                            {entry.title}
-                          </span>
+                          <span className="font-medium truncate">{entry.title}</span>
                         </div>
-                        {entry.subtitle && (
-                          <div className="flex items-center gap-0.5 mt-0.5 text-muted-foreground">
-                            <MapPin className="h-2 w-2 shrink-0" />
-                            <span className="truncate">{entry.subtitle}</span>
-                          </div>
-                        )}
-                        {entry.details.length > 0 && (
-                          <p className="text-muted-foreground mt-0.5 truncate">
-                            {entry.details[0]}
-                          </p>
-                        )}
-                      </motion.div>
+                      </motion.button>
                     );
                   })}
+                  {overflow > 0 && (
+                    <p className="text-[9px] font-mono text-muted-foreground pl-1">
+                      +{overflow} more
+                    </p>
+                  )}
                 </div>
               </div>
             );
@@ -284,14 +339,80 @@ const BunkCalendar = () => {
         </div>
       )}
 
-      {!loading && entries.length === 0 && (
-        <div className="rounded-lg border border-border border-dashed bg-card/50 p-12 text-center">
-          <CalendarIcon className="h-8 w-8 text-muted-foreground/40 mx-auto mb-3" />
-          <p className="text-sm text-muted-foreground font-mono">
-            No events yet. Upload documents to auto-populate the calendar.
-          </p>
-        </div>
-      )}
+      {/* Event Detail Dialog */}
+      <Dialog open={!!selectedEntry} onOpenChange={(open) => !open && setSelectedEntry(null)}>
+        <DialogContent className="sm:max-w-md">
+          {selectedEntry && (
+            <>
+              <DialogHeader>
+                <div className="flex items-center gap-2">
+                  {selectedEntry.category === "SHOW" ? (
+                    <div className="rounded-md p-1.5 bg-primary/10 text-primary">
+                      <Music className="h-4 w-4" />
+                    </div>
+                  ) : (
+                    <div className="rounded-md p-1.5 bg-accent/60 text-accent-foreground">
+                      {(() => {
+                        const TIcon = TRAVEL_ICONS[selectedEntry.travelType || ""] || Plane;
+                        return <TIcon className="h-4 w-4" />;
+                      })()}
+                    </div>
+                  )}
+                  <div>
+                    <DialogTitle className="text-base">{selectedEntry.title}</DialogTitle>
+                    <p className="text-xs text-muted-foreground font-mono mt-0.5">
+                      {(() => {
+                        try {
+                          return format(parseISO(selectedEntry.date), "EEEE, MMM d, yyyy");
+                        } catch {
+                          return "TBD";
+                        }
+                      })()}
+                    </p>
+                  </div>
+                </div>
+              </DialogHeader>
+
+              <div className="space-y-3 pt-2">
+                <div className="flex items-center gap-2">
+                  <Badge variant="outline" className="font-mono text-[10px] tracking-wider">
+                    {selectedEntry.category}
+                  </Badge>
+                  {selectedEntry.confidence !== undefined && (
+                    <span className="font-mono text-[10px] text-muted-foreground">
+                      {(selectedEntry.confidence * 100).toFixed(0)}% confidence
+                    </span>
+                  )}
+                </div>
+
+                {selectedEntry.subtitle && (
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                    <MapPin className="h-3.5 w-3.5 shrink-0" />
+                    <span>{selectedEntry.subtitle}</span>
+                  </div>
+                )}
+
+                {selectedEntry.details.length > 0 && (
+                  <div className="space-y-1.5 rounded-md bg-muted/50 p-3">
+                    {selectedEntry.details.map((d, j) => (
+                      <div key={j} className="flex items-center gap-2 text-sm font-mono text-muted-foreground">
+                        <Clock className="h-3 w-3 shrink-0" />
+                        <span>{d}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {selectedEntry.details.length === 0 && !selectedEntry.subtitle && (
+                  <p className="text-sm text-muted-foreground font-mono italic">
+                    No additional details available.
+                  </p>
+                )}
+              </div>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
