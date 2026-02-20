@@ -28,6 +28,7 @@ import {
   Loader2,
   ChevronLeft,
   ChevronRight,
+  Globe,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -37,6 +38,13 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 type EventCategory = "SHOW" | "TRAVEL";
 type ViewMode = "week" | "month";
@@ -52,6 +60,8 @@ interface CalendarEntry {
   details: string[];
   confidence?: number;
   travelType?: string;
+  tourId: string;
+  tourName: string;
 }
 
 const TRAVEL_ICONS: Record<string, typeof Plane> = {
@@ -63,6 +73,14 @@ const TRAVEL_ICONS: Record<string, typeof Plane> = {
 
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
+// Tour color palette — cycles through for each tour
+const TOUR_COLORS = [
+  { bg: "bg-primary/10", text: "text-primary", border: "border-primary/20", hover: "hover:bg-primary/20", dot: "bg-primary" },
+  { bg: "bg-info/10", text: "text-info", border: "border-info/20", hover: "hover:bg-info/20", dot: "bg-info" },
+  { bg: "bg-success/10", text: "text-success", border: "border-success/20", hover: "hover:bg-success/20", dot: "bg-success" },
+  { bg: "bg-warning/10", text: "text-warning", border: "border-warning/20", hover: "hover:bg-warning/20", dot: "bg-warning" },
+];
+
 /** Times are stored as UTC but represent local venue times. Read UTC values directly. */
 const formatStoredTime = (ts: string): string => {
   const d = new Date(ts);
@@ -73,65 +91,66 @@ const formatStoredTime = (ts: string): string => {
 };
 
 const BunkCalendar = () => {
-  const { selectedTourId } = useTour();
+  const { tours, selectedTourId } = useTour();
   const [entries, setEntries] = useState<CalendarEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [viewMode, setViewMode] = useState<ViewMode>("week");
   const [currentDate, setCurrentDate] = useState(() => new Date());
   const [selectedEntry, setSelectedEntry] = useState<CalendarEntry | null>(null);
+  // "all" = global mode; a tour ID = scoped mode
+  const [tourFilter, setTourFilter] = useState<string>("all");
+
+  // Build a stable map of tourId → color index
+  const tourColorMap = useMemo(() => {
+    const map: Record<string, number> = {};
+    tours.forEach((t, i) => { map[t.id] = i % TOUR_COLORS.length; });
+    return map;
+  }, [tours]);
+
+  const activeTourIds = useMemo(() => tours.map(t => t.id), [tours]);
+  const filteredTourIds = tourFilter === "all" ? activeTourIds : [tourFilter];
 
   useEffect(() => {
-    if (selectedTourId) loadCalendar();
-  }, [selectedTourId]);
+    if (activeTourIds.length > 0) loadCalendar();
+  }, [activeTourIds, tourFilter]);
 
-  // Auto-resync: listen for changes to schedule_events and knowledge_gaps
+  // Realtime: subscribe to all active tours
   useEffect(() => {
-    if (!selectedTourId) return;
-
-    const channel = supabase
-      .channel(`calendar-sync-${selectedTourId}`)
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "schedule_events", filter: `tour_id=eq.${selectedTourId}` },
-        () => loadCalendar()
-      )
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "knowledge_gaps", filter: `tour_id=eq.${selectedTourId}` },
-        () => loadCalendar()
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [selectedTourId]);
-
-  // Always start on today — no auto-jump to first event date
+    if (activeTourIds.length === 0) return;
+    const channels = activeTourIds.map(tid =>
+      supabase
+        .channel(`calendar-sync-${tid}`)
+        .on("postgres_changes", { event: "*", schema: "public", table: "schedule_events", filter: `tour_id=eq.${tid}` }, () => loadCalendar())
+        .on("postgres_changes", { event: "*", schema: "public", table: "knowledge_gaps", filter: `tour_id=eq.${tid}` }, () => loadCalendar())
+        .subscribe()
+    );
+    return () => { channels.forEach(c => supabase.removeChannel(c)); };
+  }, [activeTourIds]);
 
   const loadCalendar = async () => {
     setLoading(true);
     const merged: CalendarEntry[] = [];
+    const tourIds = tourFilter === "all" ? activeTourIds : [tourFilter];
+
+    if (tourIds.length === 0) { setEntries([]); setLoading(false); return; }
+
+    // Build tourId → name map
+    const tourNameMap: Record<string, string> = {};
+    tours.forEach(t => { tourNameMap[t.id] = t.name; });
 
     const { data: shows } = await supabase
       .from("schedule_events")
       .select("*")
-      .eq("tour_id", selectedTourId)
+      .in("tour_id", tourIds)
       .order("event_date", { ascending: true });
 
     if (shows) {
       for (const s of shows) {
         const details: string[] = [];
-        if (s.load_in) {
-          try { details.push(`Load-in: ${formatStoredTime(s.load_in)}`); } catch {}
-        }
-        if (s.show_time) {
-          try { details.push(`Show: ${formatStoredTime(s.show_time)}`); } catch {}
-        }
-        if (s.end_time) {
-          try { details.push(`End: ${formatStoredTime(s.end_time)}`); } catch {}
-        }
-        // Parse notes for address and other info
+        if (s.load_in) { try { details.push(`Load-in: ${formatStoredTime(s.load_in)}`); } catch {} }
+        if (s.show_time) { try { details.push(`Show: ${formatStoredTime(s.show_time)}`); } catch {} }
+        if (s.end_time) { try { details.push(`End: ${formatStoredTime(s.end_time)}`); } catch {} }
+
         const notes = (s as any).notes as string | null;
         let address: string | undefined;
         const noteLines: string[] = [];
@@ -155,6 +174,8 @@ const BunkCalendar = () => {
           notes: noteLines.length > 0 ? noteLines.join("\n") : undefined,
           details,
           confidence: s.confidence_score ?? undefined,
+          tourId: s.tour_id,
+          tourName: tourNameMap[s.tour_id] || "Unknown Tour",
         });
       }
     }
@@ -162,7 +183,7 @@ const BunkCalendar = () => {
     const { data: travelGaps } = await supabase
       .from("knowledge_gaps")
       .select("*")
-      .eq("tour_id", selectedTourId)
+      .in("tour_id", tourIds)
       .eq("domain", "TRAVEL")
       .eq("resolved", true);
 
@@ -175,7 +196,6 @@ const BunkCalendar = () => {
         const parts = payload.split(" | ").filter(Boolean);
         const travelType = parts[0] || "OTHER";
         const detailParts = parts.slice(1);
-
         merged.push({
           id: t.id,
           date: travelDate,
@@ -184,6 +204,8 @@ const BunkCalendar = () => {
           subtitle: travelType !== detailParts[0] ? travelType : undefined,
           details: detailParts.slice(1),
           travelType,
+          tourId: t.tour_id,
+          tourName: tourNameMap[t.tour_id] || "Unknown Tour",
         });
       }
     }
@@ -202,22 +224,17 @@ const BunkCalendar = () => {
     return map;
   }, [entries]);
 
-  // Compute visible days
   const visibleDays = useMemo(() => {
     if (viewMode === "week") {
-      const ws = startOfWeek(currentDate, { weekStartsOn: 0 });
-      const we = endOfWeek(currentDate, { weekStartsOn: 0 });
-      return eachDayOfInterval({ start: ws, end: we });
+      return eachDayOfInterval({ start: startOfWeek(currentDate, { weekStartsOn: 0 }), end: endOfWeek(currentDate, { weekStartsOn: 0 }) });
     } else {
       const ms = startOfMonth(currentDate);
       const me = endOfMonth(currentDate);
-      const gridStart = startOfWeek(ms, { weekStartsOn: 0 });
-      const gridEnd = endOfWeek(me, { weekStartsOn: 0 });
-      return eachDayOfInterval({ start: gridStart, end: gridEnd });
+      return eachDayOfInterval({ start: startOfWeek(ms, { weekStartsOn: 0 }), end: endOfWeek(me, { weekStartsOn: 0 }) });
     }
   }, [currentDate, viewMode]);
 
-  const navigate = (dir: -1 | 1) => {
+  const nav = (dir: -1 | 1) => {
     if (viewMode === "week") {
       setCurrentDate(dir === 1 ? addWeeks(currentDate, 1) : subWeeks(currentDate, 1));
     } else {
@@ -237,11 +254,12 @@ const BunkCalendar = () => {
 
   const isMonthView = viewMode === "month";
   const cellMinH = isMonthView ? "min-h-[90px]" : "min-h-[140px]";
+  const isGlobal = tourFilter === "all";
 
   return (
     <div className="space-y-4 max-w-5xl">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Calendar</h1>
           <p className="text-sm text-muted-foreground font-mono mt-1">
@@ -251,15 +269,33 @@ const BunkCalendar = () => {
             )}
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          {/* Tour filter */}
+          {tours.length > 1 && (
+            <Select value={tourFilter} onValueChange={setTourFilter}>
+              <SelectTrigger className="w-44 font-mono text-xs bg-muted h-8">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all" className="font-mono text-xs">
+                  <span className="flex items-center gap-1.5">
+                    <Globe className="h-3 w-3" /> All Tours
+                  </span>
+                </SelectItem>
+                {tours.map(t => (
+                  <SelectItem key={t.id} value={t.id} className="font-mono text-xs">
+                    {t.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
           {/* View toggle */}
           <div className="flex rounded-md border border-border overflow-hidden">
             <button
               onClick={() => setViewMode("week")}
               className={`px-3 py-1.5 text-[11px] font-mono tracking-wider transition-colors ${
-                viewMode === "week"
-                  ? "bg-primary text-primary-foreground"
-                  : "bg-card text-muted-foreground hover:bg-muted"
+                viewMode === "week" ? "bg-primary text-primary-foreground" : "bg-card text-muted-foreground hover:bg-muted"
               }`}
             >
               WEEK
@@ -267,31 +303,43 @@ const BunkCalendar = () => {
             <button
               onClick={() => setViewMode("month")}
               className={`px-3 py-1.5 text-[11px] font-mono tracking-wider transition-colors ${
-                viewMode === "month"
-                  ? "bg-primary text-primary-foreground"
-                  : "bg-card text-muted-foreground hover:bg-muted"
+                viewMode === "month" ? "bg-primary text-primary-foreground" : "bg-card text-muted-foreground hover:bg-muted"
               }`}
             >
               MONTH
             </button>
           </div>
           {/* Nav */}
-          <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => navigate(-1)}>
+          <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => nav(-1)}>
             <ChevronLeft className="h-4 w-4" />
           </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            className="font-mono text-xs h-8"
-            onClick={() => setCurrentDate(new Date())}
-          >
+          <Button variant="outline" size="sm" className="font-mono text-xs h-8" onClick={() => setCurrentDate(new Date())}>
             Today
           </Button>
-          <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => navigate(1)}>
+          <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => nav(1)}>
             <ChevronRight className="h-4 w-4" />
           </Button>
         </div>
       </div>
+
+      {/* Tour legend (global mode, multiple tours) */}
+      {isGlobal && tours.length > 1 && (
+        <div className="flex items-center gap-3 flex-wrap">
+          {tours.map((t, i) => {
+            const colors = TOUR_COLORS[i % TOUR_COLORS.length];
+            return (
+              <button
+                key={t.id}
+                onClick={() => setTourFilter(t.id)}
+                className="flex items-center gap-1.5 text-[11px] font-mono text-muted-foreground hover:text-foreground transition-colors"
+              >
+                <span className={`h-2 w-2 rounded-full ${colors.dot}`} />
+                {t.name}
+              </button>
+            );
+          })}
+        </div>
+      )}
 
       {/* Grid */}
       {loading ? (
@@ -308,10 +356,7 @@ const BunkCalendar = () => {
       ) : (
         <div className="grid grid-cols-7 gap-px bg-border rounded-lg overflow-hidden border border-border">
           {WEEKDAYS.map((day) => (
-            <div
-              key={day}
-              className="bg-muted/50 px-2 py-2 text-center text-[11px] font-mono tracking-wider text-muted-foreground uppercase"
-            >
+            <div key={day} className="bg-muted/50 px-2 py-2 text-center text-[11px] font-mono tracking-wider text-muted-foreground uppercase">
               {day}
             </div>
           ))}
@@ -327,28 +372,19 @@ const BunkCalendar = () => {
             return (
               <div
                 key={key}
-                className={`bg-card ${cellMinH} p-1.5 flex flex-col ${
-                  today ? "ring-1 ring-inset ring-primary/40" : ""
-                } ${dimmed ? "opacity-40" : ""}`}
+                className={`bg-card ${cellMinH} p-1.5 flex flex-col ${today ? "ring-1 ring-inset ring-primary/40" : ""} ${dimmed ? "opacity-40" : ""}`}
               >
                 <div className="flex items-center justify-between mb-1">
-                  <span
-                    className={`text-xs font-mono ${
-                      today
-                        ? "bg-primary text-primary-foreground rounded-full w-5 h-5 flex items-center justify-center text-[10px] font-bold"
-                        : "text-muted-foreground"
-                    }`}
-                  >
+                  <span className={`text-xs font-mono ${today ? "bg-primary text-primary-foreground rounded-full w-5 h-5 flex items-center justify-center text-[10px] font-bold" : "text-muted-foreground"}`}>
                     {format(day, "d")}
                   </span>
                 </div>
 
                 <div className="flex-1 space-y-0.5 overflow-hidden">
                   {dayEntries.slice(0, maxVisible).map((entry, i) => {
-                    const Icon =
-                      entry.category === "SHOW"
-                        ? Music
-                        : TRAVEL_ICONS[entry.travelType || ""] || Plane;
+                    const colorIdx = tourColorMap[entry.tourId] ?? 0;
+                    const colors = TOUR_COLORS[colorIdx];
+                    const Icon = entry.category === "SHOW" ? Music : (TRAVEL_ICONS[entry.travelType || ""] || Plane);
 
                     return (
                       <motion.button
@@ -357,10 +393,10 @@ const BunkCalendar = () => {
                         animate={{ opacity: 1 }}
                         transition={{ delay: i * 0.02 }}
                         onClick={() => setSelectedEntry(entry)}
-                        className={`w-full text-left rounded px-1.5 py-0.5 text-[10px] leading-tight transition-colors ${
+                        className={`w-full text-left rounded px-1.5 py-0.5 text-[10px] leading-tight transition-colors border ${
                           entry.category === "SHOW"
-                            ? "bg-primary/10 text-primary border border-primary/20 hover:bg-primary/20"
-                            : "bg-accent/60 text-accent-foreground border border-accent hover:bg-accent/80"
+                            ? `${colors.bg} ${colors.text} ${colors.border} ${colors.hover}`
+                            : "bg-accent/60 text-accent-foreground border-accent hover:bg-accent/80"
                         }`}
                       >
                         <div className="flex items-center gap-1">
@@ -370,13 +406,15 @@ const BunkCalendar = () => {
                         {entry.subtitle && (
                           <div className="text-[9px] opacity-70 truncate pl-3.5">{entry.subtitle}</div>
                         )}
+                        {/* Show tour name in global mode */}
+                        {isGlobal && tours.length > 1 && (
+                          <div className="text-[9px] opacity-50 truncate pl-3.5 font-mono">{entry.tourName}</div>
+                        )}
                       </motion.button>
                     );
                   })}
                   {overflow > 0 && (
-                    <p className="text-[9px] font-mono text-muted-foreground pl-1">
-                      +{overflow} more
-                    </p>
+                    <p className="text-[9px] font-mono text-muted-foreground pl-1">+{overflow} more</p>
                   )}
                 </div>
               </div>
@@ -393,37 +431,31 @@ const BunkCalendar = () => {
               <DialogHeader>
                 <div className="flex items-center gap-2">
                   {selectedEntry.category === "SHOW" ? (
-                    <div className="rounded-md p-1.5 bg-primary/10 text-primary">
+                    <div className={`rounded-md p-1.5 ${TOUR_COLORS[tourColorMap[selectedEntry.tourId] ?? 0].bg} ${TOUR_COLORS[tourColorMap[selectedEntry.tourId] ?? 0].text}`}>
                       <Music className="h-4 w-4" />
                     </div>
                   ) : (
                     <div className="rounded-md p-1.5 bg-accent/60 text-accent-foreground">
-                      {(() => {
-                        const TIcon = TRAVEL_ICONS[selectedEntry.travelType || ""] || Plane;
-                        return <TIcon className="h-4 w-4" />;
-                      })()}
+                      {(() => { const TIcon = TRAVEL_ICONS[selectedEntry.travelType || ""] || Plane; return <TIcon className="h-4 w-4" />; })()}
                     </div>
                   )}
                   <div>
                     <DialogTitle className="text-base">{selectedEntry.title}</DialogTitle>
                     <p className="text-xs text-muted-foreground font-mono mt-0.5">
-                      {(() => {
-                        try {
-                          return format(parseISO(selectedEntry.date), "EEEE, MMM d, yyyy");
-                        } catch {
-                          return "TBD";
-                        }
-                      })()}
+                      {(() => { try { return format(parseISO(selectedEntry.date), "EEEE, MMM d, yyyy"); } catch { return "TBD"; } })()}
                     </p>
                   </div>
                 </div>
               </DialogHeader>
 
               <div className="space-y-3 pt-2">
-                <div className="flex items-center gap-2">
-                  <Badge variant="outline" className="font-mono text-[10px] tracking-wider">
-                    {selectedEntry.category}
-                  </Badge>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <Badge variant="outline" className="font-mono text-[10px] tracking-wider">{selectedEntry.category}</Badge>
+                  {isGlobal && tours.length > 1 && (
+                    <Badge variant="outline" className={`font-mono text-[10px] tracking-wider ${TOUR_COLORS[tourColorMap[selectedEntry.tourId] ?? 0].text}`}>
+                      {selectedEntry.tourName}
+                    </Badge>
+                  )}
                   {selectedEntry.confidence !== undefined && (
                     <span className="font-mono text-[10px] text-muted-foreground">
                       {(selectedEntry.confidence * 100).toFixed(0)}% confidence
@@ -464,9 +496,7 @@ const BunkCalendar = () => {
                 )}
 
                 {selectedEntry.details.length === 0 && !selectedEntry.subtitle && (
-                  <p className="text-sm text-muted-foreground font-mono italic">
-                    No additional details available.
-                  </p>
+                  <p className="text-sm text-muted-foreground font-mono italic">No additional details available.</p>
                 )}
               </div>
             </>
