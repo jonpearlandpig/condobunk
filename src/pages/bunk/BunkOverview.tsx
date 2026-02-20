@@ -17,6 +17,8 @@ import {
   Trash2,
   Check,
   X,
+  Zap,
+  Loader2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -48,11 +50,19 @@ const BunkOverview = () => {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState("");
   const [deletingTour, setDeletingTour] = useState<{ id: string; name: string } | null>(null);
+  const [tldr, setTldr] = useState<string[]>([]);
+  const [tldrLoading, setTldrLoading] = useState(false);
 
   useEffect(() => {
     if (!user) return;
     loadCounts();
   }, [user]);
+
+  useEffect(() => {
+    if (tours.length > 0 && eventCount > 0) {
+      generateTldr();
+    }
+  }, [tours, eventCount]);
 
   const loadCounts = async () => {
     const { count: gaps } = await supabase
@@ -71,6 +81,90 @@ const BunkOverview = () => {
       .from("schedule_events")
       .select("*", { count: "exact", head: true });
     setEventCount(events ?? 0);
+  };
+
+  const generateTldr = async () => {
+    setTldrLoading(true);
+    try {
+      // Gather data for the briefing
+      const today = new Date().toISOString().split("T")[0];
+      const tourIds = tours.map(t => t.id);
+
+      const [eventsRes, gapsRes, conflictsRes] = await Promise.all([
+        supabase
+          .from("schedule_events")
+          .select("event_date, venue, city, notes")
+          .in("tour_id", tourIds)
+          .gte("event_date", today)
+          .order("event_date", { ascending: true })
+          .limit(15),
+        supabase
+          .from("knowledge_gaps")
+          .select("question, domain")
+          .in("tour_id", tourIds)
+          .eq("resolved", false)
+          .limit(10),
+        supabase
+          .from("calendar_conflicts")
+          .select("conflict_type, severity")
+          .in("tour_id", tourIds)
+          .eq("resolved", false)
+          .limit(10),
+      ]);
+
+      const upcomingEvents = eventsRes.data || [];
+      const openGaps = gapsRes.data || [];
+      const openConflicts = conflictsRes.data || [];
+
+      if (upcomingEvents.length === 0 && openGaps.length === 0 && openConflicts.length === 0) {
+        setTldr(["No upcoming events or open items. Upload documents to populate your tour data."]);
+        setTldrLoading(false);
+        return;
+      }
+
+      const context = JSON.stringify({
+        today,
+        tours: tours.map(t => ({ name: t.name, state: t.akb_state })),
+        upcoming_events: upcomingEvents.map(e => ({
+          date: e.event_date,
+          venue: e.venue,
+          city: e.city,
+          day_title: e.notes?.split("\n")[0] || null,
+        })),
+        open_gaps: openGaps.map(g => ({ question: g.question?.substring(0, 80), domain: g.domain })),
+        open_conflicts: openConflicts.map(c => ({ type: c.conflict_type, severity: c.severity })),
+      });
+
+      const resp = await supabase.functions.invoke("generate-tldr", {
+        body: { context },
+      });
+
+      if (resp.data?.lines) {
+        setTldr(resp.data.lines);
+      } else {
+        // Fallback: generate a simple client-side summary
+        const lines: string[] = [];
+        if (upcomingEvents.length > 0) {
+          const next = upcomingEvents[0];
+          lines.push(`Next up: ${next.notes?.split("\n")[0] || next.venue || "Event"} on ${next.event_date}${next.city ? ` in ${next.city}` : ""}.`);
+        }
+        if (openConflicts.length > 0) {
+          lines.push(`⚠ ${openConflicts.length} unresolved conflict${openConflicts.length > 1 ? "s" : ""} need attention.`);
+        }
+        if (openGaps.length > 0) {
+          lines.push(`${openGaps.length} open knowledge gap${openGaps.length > 1 ? "s" : ""} — missing info that could block advance.`);
+        }
+        if (upcomingEvents.length > 1) {
+          lines.push(`${upcomingEvents.length} events on the horizon across ${tours.length} tour${tours.length > 1 ? "s" : ""}.`);
+        }
+        if (lines.length === 0) lines.push("All clear — no urgent items right now.");
+        setTldr(lines);
+      }
+    } catch (err) {
+      console.error("TLDR generation failed:", err);
+      setTldr(["Unable to generate briefing. Check back shortly."]);
+    }
+    setTldrLoading(false);
   };
 
   const handleTourClick = (tourId: string) => {
@@ -139,6 +233,36 @@ const BunkOverview = () => {
           NEW TOUR
         </Button>
       </div>
+
+      {/* TLDR Briefing */}
+      <motion.div
+        initial={{ opacity: 0, y: 12 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.1 }}
+        className="rounded-lg border border-primary/20 bg-primary/5 p-5"
+      >
+        <div className="flex items-center gap-2 mb-3">
+          <Zap className="h-4 w-4 text-primary" />
+          <span className="font-mono text-[10px] tracking-[0.15em] text-primary font-semibold">
+            DAILY BRIEFING
+          </span>
+        </div>
+        {tldrLoading ? (
+          <div className="flex items-center gap-2 py-2">
+            <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />
+            <span className="text-xs text-muted-foreground font-mono">Generating briefing...</span>
+          </div>
+        ) : (
+          <div className="space-y-1.5">
+            {tldr.map((line, i) => (
+              <p key={i} className="text-sm text-foreground/90 leading-relaxed font-mono">
+                <span className="text-primary/60 mr-2">▸</span>
+                {line}
+              </p>
+            ))}
+          </div>
+        )}
+      </motion.div>
 
       {/* Stat Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
