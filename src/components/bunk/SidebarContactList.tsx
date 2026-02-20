@@ -1,7 +1,8 @@
 import { useState } from "react";
-import { Phone, Mail, MessageSquare, Pencil, Check, X, Trash2 } from "lucide-react";
+import { Phone, Mail, MessageSquare, Pencil, Check, X, Trash2, MessageCircle } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import type { SidebarContact } from "@/hooks/useSidebarContacts";
+import { useIsMobile } from "@/hooks/use-mobile";
 import {
   Tooltip,
   TooltipContent,
@@ -19,7 +20,9 @@ interface SidebarContactListProps {
 
 const SidebarContactList = ({ contacts, onNavigate, onUpdate, onDelete }: SidebarContactListProps) => {
   const navigate = useNavigate();
+  const isMobile = useIsMobile();
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState({ name: "", role: "", phone: "", email: "" });
 
   const handleChat = (contact: SidebarContact) => {
@@ -30,6 +33,7 @@ const SidebarContactList = ({ contacts, onNavigate, onUpdate, onDelete }: Sideba
 
   const startEdit = (c: SidebarContact) => {
     setEditingId(c.id);
+    setExpandedId(null);
     setEditForm({
       name: c.name,
       role: c.role || "",
@@ -65,6 +69,10 @@ const SidebarContactList = ({ contacts, onNavigate, onUpdate, onDelete }: Sideba
       </p>
     );
   }
+
+  const toggleExpand = (id: string) => {
+    setExpandedId(prev => prev === id ? null : id);
+  };
 
   return (
     <TooltipProvider delayDuration={300}>
@@ -133,78 +141,131 @@ const SidebarContactList = ({ contacts, onNavigate, onUpdate, onDelete }: Sideba
               </div>
             </div>
           ) : (
-            <div
-              key={c.id}
-              className="group flex items-center justify-between px-4 py-1.5 hover:bg-sidebar-accent/50 rounded-md transition-colors"
-            >
-              <div className="min-w-0 flex-1">
-                <p className="text-sm text-sidebar-foreground truncate leading-tight">
-                  {c.name}
-                </p>
-                {c.role && (
-                  <p className="text-[10px] font-mono text-muted-foreground/60 truncate leading-tight">
-                    {c.role}
+            <div key={c.id}>
+              <div
+                className="group flex items-center justify-between px-4 py-1.5 hover:bg-sidebar-accent/50 rounded-md transition-colors cursor-pointer"
+                onClick={() => isMobile && toggleExpand(c.id)}
+              >
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm text-sidebar-foreground truncate leading-tight">
+                    {c.name}
                   </p>
+                  {c.role && (
+                    <p className="text-[10px] font-mono text-muted-foreground/60 truncate leading-tight">
+                      {c.role}
+                    </p>
+                  )}
+                </div>
+
+                {/* Desktop: hover-reveal actions */}
+                {!isMobile && (
+                  <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity shrink-0 ml-2">
+                    {onUpdate && (
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <button
+                            onClick={() => startEdit(c)}
+                            className="p-1 rounded text-muted-foreground hover:text-primary transition-colors"
+                            aria-label="Edit"
+                          >
+                            <Pencil className="h-3.5 w-3.5" />
+                          </button>
+                        </TooltipTrigger>
+                        <TooltipContent side="top" className="text-xs">Edit</TooltipContent>
+                      </Tooltip>
+                    )}
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <button
+                          onClick={() => handleChat(c)}
+                          className="p-1 rounded text-muted-foreground hover:text-primary transition-colors"
+                          aria-label="Ask TELA"
+                        >
+                          <MessageSquare className="h-3.5 w-3.5" />
+                        </button>
+                      </TooltipTrigger>
+                      <TooltipContent side="top" className="text-xs">Ask TELA</TooltipContent>
+                    </Tooltip>
+                    {c.phone && (
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <a href={`tel:${c.phone}`} className="p-1 rounded text-muted-foreground hover:text-primary transition-colors" aria-label="Call">
+                            <Phone className="h-3.5 w-3.5" />
+                          </a>
+                        </TooltipTrigger>
+                        <TooltipContent side="top" className="text-xs">{c.phone}</TooltipContent>
+                      </Tooltip>
+                    )}
+                    {c.email && (
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <a href={`mailto:${c.email}`} className="p-1 rounded text-muted-foreground hover:text-primary transition-colors" aria-label="Email">
+                            <Mail className="h-3.5 w-3.5" />
+                          </a>
+                        </TooltipTrigger>
+                        <TooltipContent side="top" className="text-xs">{c.email}</TooltipContent>
+                      </Tooltip>
+                    )}
+                  </div>
+                )}
+
+                {/* Mobile: show chevron / indicator for expandable */}
+                {isMobile && (
+                  <div className="flex items-center gap-1 shrink-0 ml-2">
+                    {c.phone && <Phone className="h-3 w-3 text-muted-foreground/40" />}
+                    {c.email && <Mail className="h-3 w-3 text-muted-foreground/40" />}
+                  </div>
                 )}
               </div>
-              <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity shrink-0 ml-2">
-                {onUpdate && (
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <button
-                        onClick={() => startEdit(c)}
-                        className="p-1 rounded text-muted-foreground hover:text-primary transition-colors"
-                        aria-label="Edit"
-                      >
-                        <Pencil className="h-3.5 w-3.5" />
-                      </button>
-                    </TooltipTrigger>
-                    <TooltipContent side="top" className="text-xs">Edit</TooltipContent>
-                  </Tooltip>
-                )}
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <button
-                      onClick={() => handleChat(c)}
-                      className="p-1 rounded text-muted-foreground hover:text-primary transition-colors"
-                      aria-label="Ask TELA"
-                    >
-                      <MessageSquare className="h-3.5 w-3.5" />
-                    </button>
-                  </TooltipTrigger>
-                  <TooltipContent side="top" className="text-xs">Ask TELA</TooltipContent>
-                </Tooltip>
 
-                {c.phone && (
-                  <Tooltip>
-                    <TooltipTrigger asChild>
+              {/* Mobile: expanded action bar */}
+              {isMobile && expandedId === c.id && (
+                <div className="flex items-center gap-1 px-4 py-2 bg-sidebar-accent/30 rounded-b-md mx-1 mb-0.5">
+                  <button
+                    onClick={() => { handleChat(c); setExpandedId(null); }}
+                    className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-md bg-primary/10 text-primary text-xs font-mono font-medium active:bg-primary/20 transition-colors"
+                  >
+                    <MessageSquare className="h-3.5 w-3.5" />
+                    TELA
+                  </button>
+                  {c.phone && (
+                    <>
+                      <a
+                        href={`sms:${c.phone}`}
+                        className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-md bg-info/10 text-info text-xs font-mono font-medium active:bg-info/20 transition-colors"
+                      >
+                        <MessageCircle className="h-3.5 w-3.5" />
+                        TEXT
+                      </a>
                       <a
                         href={`tel:${c.phone}`}
-                        className="p-1 rounded text-muted-foreground hover:text-primary transition-colors"
-                        aria-label="Call"
+                        className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-md bg-success/10 text-success text-xs font-mono font-medium active:bg-success/20 transition-colors"
                       >
                         <Phone className="h-3.5 w-3.5" />
+                        CALL
                       </a>
-                    </TooltipTrigger>
-                    <TooltipContent side="top" className="text-xs">{c.phone}</TooltipContent>
-                  </Tooltip>
-                )}
-
-                {c.email && (
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <a
-                        href={`mailto:${c.email}`}
-                        className="p-1 rounded text-muted-foreground hover:text-primary transition-colors"
-                        aria-label="Email"
-                      >
-                        <Mail className="h-3.5 w-3.5" />
-                      </a>
-                    </TooltipTrigger>
-                    <TooltipContent side="top" className="text-xs">{c.email}</TooltipContent>
-                  </Tooltip>
-                )}
-              </div>
+                    </>
+                  )}
+                  {c.email && (
+                    <a
+                      href={`mailto:${c.email}`}
+                      className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-md bg-warning/10 text-warning text-xs font-mono font-medium active:bg-warning/20 transition-colors"
+                    >
+                      <Mail className="h-3.5 w-3.5" />
+                      EMAIL
+                    </a>
+                  )}
+                  {onUpdate && (
+                    <button
+                      onClick={() => startEdit(c)}
+                      className="p-2 rounded-md bg-muted/50 text-muted-foreground active:bg-muted transition-colors"
+                      aria-label="Edit"
+                    >
+                      <Pencil className="h-3.5 w-3.5" />
+                    </button>
+                  )}
+                </div>
+              )}
             </div>
           )
         )}
