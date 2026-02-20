@@ -290,15 +290,6 @@ const BunkDocuments = () => {
                           >
                             {doc.doc_type}
                           </Badge>
-                          {doc.is_active ? (
-                            <Badge
-                              variant="outline"
-                              className="font-mono text-[10px] tracking-wider bg-success/20 text-success border-success/30"
-                            >
-                              ACTIVE
-                            </Badge>
-                          ) : null}
-
                           {doc.doc_type === "UNKNOWN" && (
                             <Button
                               size="sm"
@@ -316,19 +307,17 @@ const BunkDocuments = () => {
                             </Button>
                           )}
 
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            className="font-mono text-[10px] h-7 gap-1"
+                          <button
                             onClick={() => toggleActive(doc)}
+                            className={`flex items-center gap-1.5 font-mono text-[10px] tracking-wider px-2.5 py-1 rounded-full border transition-colors ${
+                              doc.is_active
+                                ? "bg-success/15 text-success border-success/30 hover:bg-success/25"
+                                : "bg-muted/50 text-muted-foreground border-border hover:bg-muted"
+                            }`}
                           >
-                            {doc.is_active ? (
-                              <XCircle className="h-3 w-3" />
-                            ) : (
-                              <CheckCircle2 className="h-3 w-3" />
-                            )}
-                            {doc.is_active ? "DEACTIVATE" : "ACTIVATE"}
-                          </Button>
+                            <span className={`h-1.5 w-1.5 rounded-full ${doc.is_active ? "bg-success" : "bg-muted-foreground/40"}`} />
+                            {doc.is_active ? "IN AKB" : "NOT IN AKB"}
+                          </button>
 
                           <CollapsibleTrigger asChild>
                             <Button
