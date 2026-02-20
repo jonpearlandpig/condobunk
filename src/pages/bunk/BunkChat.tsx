@@ -1,11 +1,12 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { MessageSquare, ArrowLeft, Send, Loader2, Zap } from "lucide-react";
+import { ArrowLeft, Send, Loader2, Zap } from "lucide-react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { SidebarTrigger } from "@/components/ui/sidebar";
 import { useTour } from "@/hooks/useTour";
 import ReactMarkdown from "react-markdown";
 import { parseTelaActions } from "@/hooks/useTelaActions";
 import TelaActionCard from "@/components/bunk/TelaActionCard";
+import MessageActions from "@/components/bunk/MessageActions";
 
 type Msg = { role: "user" | "assistant"; content: string };
 
@@ -242,6 +243,7 @@ const BunkChat = () => {
                 ) : (
                   <p className="text-[14px] leading-relaxed">{msg.content}</p>
                 )}
+                <MessageActions content={msg.content} role={msg.role} />
               </div>
             </div>
           ))}
