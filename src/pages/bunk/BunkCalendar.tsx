@@ -133,7 +133,7 @@ const BunkCalendar = () => {
           id: s.id,
           date: s.event_date || "9999-12-31",
           category: "SHOW",
-          title: notes ? notes.split("\n")[0] : (s.venue || "TBD Venue"),
+          title: s.venue || "TBD Venue",
           subtitle: s.city || undefined,
           details,
           confidence: s.confidence_score ?? undefined,
