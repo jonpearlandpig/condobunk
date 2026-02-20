@@ -32,20 +32,37 @@ Deno.serve(async (req) => {
       admin.from("contacts").select("id, name, role, email, phone, scope, venue").eq("tour_id", tour_id).limit(50),
       admin.from("knowledge_gaps").select("id, question, domain, resolved").eq("tour_id", tour_id).limit(20),
       admin.from("calendar_conflicts").select("id, conflict_type, severity, resolved, event_id").eq("tour_id", tour_id).limit(20),
-      admin.from("documents").select("id, filename, doc_type, raw_text").eq("tour_id", tour_id).eq("is_active", true).limit(5),
+      admin.from("documents").select("id, filename, doc_type, raw_text, file_path").eq("tour_id", tour_id).eq("is_active", true).limit(10),
     ]);
+
+    // Generate signed URLs for documents that have files in storage
+    const docsWithUrls = await Promise.all(
+      (docsRes.data || []).map(async (d: any) => {
+        let fileUrl: string | null = null;
+        if (d.file_path) {
+          const { data: signedData } = await admin.storage
+            .from("document-files")
+            .createSignedUrl(d.file_path, 3600); // 1 hour expiry
+          if (signedData?.signedUrl) {
+            fileUrl = signedData.signedUrl;
+          }
+        }
+        return {
+          id: d.id,
+          filename: d.filename,
+          doc_type: d.doc_type,
+          file_url: fileUrl,
+          excerpt: d.raw_text?.substring(0, 2000) || "(visual/binary document — no text extracted)",
+        };
+      })
+    );
 
     const akbContext = {
       schedule: eventsRes.data || [],
       contacts: contactsRes.data || [],
       knowledge_gaps: gapsRes.data || [],
       conflicts: conflictsRes.data || [],
-      documents: (docsRes.data || []).map(d => ({
-        id: d.id,
-        filename: d.filename,
-        doc_type: d.doc_type,
-        excerpt: d.raw_text?.substring(0, 2000) || "",
-      })),
+      documents: docsWithUrls,
     };
 
     const systemPrompt = `You are TELA (Touring Efficiency Liaison Assistant) — the single source of truth for this tour. Your responses here are the EXACT same answers that crew and production teams receive when they text the TourText SMS number (888-340-0564). Every answer must be deterministic, factual, and sourced from the verified tour data below.
@@ -94,7 +111,8 @@ ${JSON.stringify(akbContext.knowledge_gaps, null, 1)}
 ${JSON.stringify(akbContext.conflicts, null, 1)}
 
 ### Active Documents:
-${akbContext.documents.map(d => `[${d.doc_type}] ${d.filename} (id: ${d.id}):\n${d.excerpt}`).join("\n---\n")}
+### Active Documents (with download links):
+${akbContext.documents.map(d => `[${d.doc_type}] ${d.filename} (id: ${d.id})${d.file_url ? `\nDownload: ${d.file_url}` : ""}:\n${d.excerpt}`).join("\n---\n")}
 
 ## Rules:
 - ONLY answer from the tour data above. NEVER fabricate, assume, or guess ANY information.
@@ -103,6 +121,7 @@ ${akbContext.documents.map(d => `[${d.doc_type}] ${d.filename} (id: ${d.id}):\n$
 - Only present data that is explicitly stored and approved in the AKB. If it's not there, it doesn't exist yet.
 - If the data doesn't contain the answer, say exactly what's missing and tell the user to upload the relevant document so both this chat AND TourText SMS will have the answer.
 - Be direct, specific, and reference exact dates/venues/names FROM THE DATA ONLY.
+- When a document has a download link, ALWAYS include a markdown link so the user can view or download the file. Format: [filename](url). This is especially important for visual documents like parking maps, venue layouts, floor plans, and tech riders.
 - When identifying issues, ALWAYS propose a fix with an action block if possible.
 - Format responses with clear structure. Use **bold** for key info.
 - Keep responses concise — tour managers are busy.
