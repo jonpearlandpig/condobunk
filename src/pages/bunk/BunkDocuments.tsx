@@ -158,14 +158,6 @@ const BunkDocuments = () => {
 
   const toggleActive = async (doc: DocRow) => {
     try {
-      if (!doc.is_active) {
-        await supabase
-          .from("documents")
-          .update({ is_active: false })
-          .eq("tour_id", doc.tour_id)
-          .eq("doc_type", doc.doc_type as any);
-      }
-
       await supabase
         .from("documents")
         .update({ is_active: !doc.is_active })
@@ -173,7 +165,7 @@ const BunkDocuments = () => {
 
       loadDocuments();
       toast({
-        title: doc.is_active ? "Document deactivated" : "Document activated",
+        title: doc.is_active ? "Removed from AKB" : "Added to AKB",
       });
     } catch (err: any) {
       toast({
