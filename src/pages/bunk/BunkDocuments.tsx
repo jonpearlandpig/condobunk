@@ -247,15 +247,47 @@ const BunkDocuments = () => {
 
   const handleArchive = async (doc: DocRow) => {
     try {
-      // Remove all AKB data extracted from this document
+      // 1. Find event IDs and tech spec IDs linked to this document
+      const [eventsRes, techSpecsRes] = await Promise.all([
+        supabase.from("schedule_events").select("id").eq("source_doc_id", doc.id),
+        supabase.from("venue_tech_specs").select("id").eq("source_doc_id", doc.id),
+      ]);
+
+      const eventIds = (eventsRes.data || []).map(e => e.id);
+      const techSpecIds = (techSpecsRes.data || []).map(t => t.id);
+
+      // 2. Delete dependents that reference these IDs
+      if (eventIds.length > 0) {
+        await supabase.from("calendar_conflicts").delete().in("event_id", eventIds);
+      }
+      if (techSpecIds.length > 0) {
+        await supabase.from("venue_risk_flags").delete().in("tech_spec_id", techSpecIds);
+        await supabase.from("venue_scores").delete().in("tech_spec_id", techSpecIds);
+      }
+
+      // 3. Delete the primary AKB rows
       await Promise.all([
         supabase.from("schedule_events").delete().eq("source_doc_id", doc.id),
         supabase.from("contacts").delete().eq("source_doc_id", doc.id),
         supabase.from("venue_tech_specs").delete().eq("source_doc_id", doc.id),
       ]);
-      // venue_risk_flags and venue_scores cascade from tech_specs FK, but clean up explicitly
-      // finance_lines don't have source_doc_id, so they stay
 
+      // 4. Also clean up orphaned conflicts/gaps for this tour with no remaining events
+      // Delete conflicts that have null event_id (tour-level) if no active docs remain
+      const remainingDocs = await supabase
+        .from("documents")
+        .select("id", { count: "exact", head: true })
+        .eq("tour_id", doc.tour_id)
+        .is("archived_at", null)
+        .neq("id", doc.id);
+
+      if ((remainingDocs.count ?? 0) === 0) {
+        // No active docs left — clear all tour-level gaps and conflicts
+        await supabase.from("knowledge_gaps").delete().eq("tour_id", doc.tour_id);
+        await supabase.from("calendar_conflicts").delete().eq("tour_id", doc.tour_id);
+      }
+
+      // 5. Archive the document
       await supabase.from("documents").update({ archived_at: new Date().toISOString(), is_active: false }).eq("id", doc.id);
       toast({ title: "Document archived", description: "All extracted data has been removed from the AKB." });
       loadDocuments();
