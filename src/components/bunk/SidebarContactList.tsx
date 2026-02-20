@@ -20,9 +20,11 @@ interface SidebarContactListProps {
   onUpdate?: (id: string, updates: Partial<Pick<SidebarContact, "name" | "role" | "phone" | "email">>) => Promise<void>;
   onDelete?: (id: string) => Promise<void>;
   onlineUserIds?: Set<string>;
+  /** When true, contacts are grouped by venue name with quick-access actions always visible */
+  grouped?: boolean;
 }
 
-const SidebarContactList = ({ contacts, onNavigate, onUpdate, onDelete, onlineUserIds }: SidebarContactListProps) => {
+const SidebarContactList = ({ contacts, onNavigate, onUpdate, onDelete, onlineUserIds, grouped }: SidebarContactListProps) => {
   const navigate = useNavigate();
   const isMobile = useIsMobile();
   const { user } = useAuth();
@@ -170,204 +172,278 @@ const SidebarContactList = ({ contacts, onNavigate, onUpdate, onDelete, onlineUs
     return aOnline - bOnline;
   });
 
+  // Build a contact row renderer (shared between grouped and flat modes)
+  const renderContact = (c: SidebarContact, showQuickActions: boolean) => {
+    if (editingId === c.id) {
+      return (
+        <div key={c.id} className="px-3 py-2 space-y-1.5 bg-sidebar-accent/30 rounded-md mx-1">
+          <input value={editForm.name} onChange={(e) => setEditForm(p => ({ ...p, name: e.target.value }))} placeholder="Name" className="w-full bg-background/80 border border-border rounded px-2 py-1 text-sm text-foreground outline-none focus:border-primary" autoFocus />
+          <input value={editForm.role} onChange={(e) => setEditForm(p => ({ ...p, role: e.target.value }))} placeholder="Role" className="w-full bg-background/80 border border-border rounded px-2 py-1 text-xs text-foreground outline-none focus:border-primary font-mono" />
+          <input value={editForm.phone} onChange={(e) => setEditForm(p => ({ ...p, phone: e.target.value }))} placeholder="Phone" className="w-full bg-background/80 border border-border rounded px-2 py-1 text-xs text-foreground outline-none focus:border-primary font-mono" />
+          <input value={editForm.email} onChange={(e) => setEditForm(p => ({ ...p, email: e.target.value }))} placeholder="Email" className="w-full bg-background/80 border border-border rounded px-2 py-1 text-xs text-foreground outline-none focus:border-primary font-mono" />
+          <div className="flex items-center justify-between pt-0.5">
+            {onDelete && (
+              <button onClick={async () => { try { await onDelete(c.id); toast.success("Contact deleted"); setEditingId(null); } catch { toast.error("Failed to delete"); } }} className="p-1 rounded text-muted-foreground hover:text-destructive transition-colors" aria-label="Delete">
+                <Trash2 className="h-3.5 w-3.5" />
+              </button>
+            )}
+            <div className="flex items-center gap-1">
+              <button onClick={cancelEdit} className="p-1 rounded text-muted-foreground hover:text-destructive transition-colors" aria-label="Cancel"><X className="h-3.5 w-3.5" /></button>
+              <button onClick={saveEdit} disabled={!editForm.name.trim()} className="p-1 rounded text-muted-foreground hover:text-primary transition-colors disabled:opacity-30" aria-label="Save"><Check className="h-3.5 w-3.5" /></button>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    return (
+      <div key={c.id}>
+        <div
+          className="group flex items-center justify-between px-4 py-1.5 hover:bg-sidebar-accent/50 rounded-md transition-colors cursor-pointer"
+          onClick={() => isMobile && toggleExpand(c.id)}
+        >
+          <div className="min-w-0 flex-1 flex items-center gap-2">
+            {c.appUserId && (
+              <span className={`h-2 w-2 rounded-full shrink-0 ${isContactOnline(c) ? "bg-success" : "bg-muted-foreground/30"}`} />
+            )}
+            <div className="min-w-0 flex-1">
+              <p className="text-sm text-sidebar-foreground truncate leading-tight">{c.name}</p>
+              {c.role && <p className="text-[10px] font-mono text-muted-foreground/60 truncate leading-tight">{c.role}</p>}
+            </div>
+          </div>
+
+          {/* Quick actions: always visible for grouped/venue, hover for flat/tour */}
+          {!isMobile && (
+            <div className={`flex items-center gap-0.5 shrink-0 ml-2 ${showQuickActions ? "" : "opacity-0 group-hover:opacity-100"} transition-opacity`}>
+              {/* Always-visible email & text for venue contacts */}
+              {showQuickActions && c.phone && (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <a href={`sms:${c.phone}`} className="p-1 rounded text-muted-foreground hover:text-info transition-colors" aria-label="Text">
+                      <MessageCircle className="h-3.5 w-3.5" />
+                    </a>
+                  </TooltipTrigger>
+                  <TooltipContent side="top" className="text-xs">Text {c.phone}</TooltipContent>
+                </Tooltip>
+              )}
+              {showQuickActions && c.email && (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <a href={`mailto:${c.email}`} className="p-1 rounded text-muted-foreground hover:text-warning transition-colors" aria-label="Email">
+                      <Mail className="h-3.5 w-3.5" />
+                    </a>
+                  </TooltipTrigger>
+                  <TooltipContent side="top" className="text-xs">{c.email}</TooltipContent>
+                </Tooltip>
+              )}
+              {/* Standard actions (hover-reveal for venue too) */}
+              {!showQuickActions && (c.appUserId || c.phone) && (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <button
+                      onClick={() => handleMessage(c)}
+                      className={`p-1 rounded transition-colors ${
+                        isContactOnline(c)
+                          ? "text-success hover:text-success/80"
+                          : "text-muted-foreground hover:text-primary"
+                      }`}
+                      aria-label="Message"
+                    >
+                      <MessageCircle className="h-3.5 w-3.5" />
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent side="top" className="text-xs">
+                    {isContactOnline(c) ? "Bunk Chat (online)" : c.phone ? "Text (offline)" : "Not available"}
+                  </TooltipContent>
+                </Tooltip>
+              )}
+              {onUpdate && (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <button onClick={() => startEdit(c)} className={`p-1 rounded text-muted-foreground hover:text-primary transition-colors ${showQuickActions ? "opacity-0 group-hover:opacity-100" : ""}`} aria-label="Edit"><Pencil className="h-3.5 w-3.5" /></button>
+                  </TooltipTrigger>
+                  <TooltipContent side="top" className="text-xs">Edit</TooltipContent>
+                </Tooltip>
+              )}
+              {!showQuickActions && (
+                <>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <button onClick={() => handleChat(c)} className="p-1 rounded text-muted-foreground hover:text-primary transition-colors" aria-label="Ask TELA"><MessageSquare className="h-3.5 w-3.5" /></button>
+                    </TooltipTrigger>
+                    <TooltipContent side="top" className="text-xs">Ask TELA</TooltipContent>
+                  </Tooltip>
+                  {c.phone && (
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <a href={`tel:${c.phone}`} className="p-1 rounded text-muted-foreground hover:text-primary transition-colors" aria-label="Call"><Phone className="h-3.5 w-3.5" /></a>
+                      </TooltipTrigger>
+                      <TooltipContent side="top" className="text-xs">{c.phone}</TooltipContent>
+                    </Tooltip>
+                  )}
+                  {c.email && (
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <a href={`mailto:${c.email}`} className="p-1 rounded text-muted-foreground hover:text-primary transition-colors" aria-label="Email"><Mail className="h-3.5 w-3.5" /></a>
+                      </TooltipTrigger>
+                      <TooltipContent side="top" className="text-xs">{c.email}</TooltipContent>
+                    </Tooltip>
+                  )}
+                </>
+              )}
+            </div>
+          )}
+
+          {/* Mobile: quick actions always visible for venue */}
+          {isMobile && showQuickActions && (
+            <div className="flex items-center gap-1 shrink-0 ml-2">
+              {c.phone && (
+                <a href={`sms:${c.phone}`} className="p-1 rounded text-info" aria-label="Text">
+                  <MessageCircle className="h-3.5 w-3.5" />
+                </a>
+              )}
+              {c.email && (
+                <a href={`mailto:${c.email}`} className="p-1 rounded text-warning" aria-label="Email">
+                  <Mail className="h-3.5 w-3.5" />
+                </a>
+              )}
+            </div>
+          )}
+
+          {/* Mobile: indicators for non-grouped */}
+          {isMobile && !showQuickActions && (
+            <div className="flex items-center gap-1 shrink-0 ml-2">
+              {c.appUserId && (
+                <span className={`h-1.5 w-1.5 rounded-full ${isContactOnline(c) ? "bg-success" : "bg-muted-foreground/30"}`} />
+              )}
+              {c.phone && <Phone className="h-3 w-3 text-muted-foreground/40" />}
+              {c.email && <Mail className="h-3 w-3 text-muted-foreground/40" />}
+            </div>
+          )}
+        </div>
+
+        {/* Mobile: expanded action bar (tour team only) */}
+        {isMobile && !showQuickActions && expandedId === c.id && (
+          <div className="flex items-center gap-1 px-4 py-2 bg-sidebar-accent/30 rounded-b-md mx-1 mb-0.5">
+            {(c.appUserId || c.phone) && (
+              <button
+                onClick={() => handleMessage(c)}
+                className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-md text-xs font-mono font-medium transition-colors ${
+                  isContactOnline(c)
+                    ? "bg-success/10 text-success active:bg-success/20"
+                    : "bg-info/10 text-info active:bg-info/20"
+                }`}
+              >
+                <MessageCircle className="h-3.5 w-3.5" />
+                {isContactOnline(c) ? "BUNK" : "TEXT"}
+              </button>
+            )}
+            <button
+              onClick={() => { handleChat(c); setExpandedId(null); }}
+              className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-md bg-primary/10 text-primary text-xs font-mono font-medium active:bg-primary/20 transition-colors"
+            >
+              <MessageSquare className="h-3.5 w-3.5" />
+              TELA
+            </button>
+            {c.phone && (
+              <a href={`tel:${c.phone}`} className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-md bg-success/10 text-success text-xs font-mono font-medium active:bg-success/20 transition-colors">
+                <Phone className="h-3.5 w-3.5" />
+                CALL
+              </a>
+            )}
+            {c.email && (
+              <a href={`mailto:${c.email}`} className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-md bg-warning/10 text-warning text-xs font-mono font-medium active:bg-warning/20 transition-colors">
+                <Mail className="h-3.5 w-3.5" />
+                EMAIL
+              </a>
+            )}
+            {onUpdate && (
+              <button onClick={() => startEdit(c)} className="p-2 rounded-md bg-muted/50 text-muted-foreground active:bg-muted transition-colors" aria-label="Edit">
+                <Pencil className="h-3.5 w-3.5" />
+              </button>
+            )}
+          </div>
+        )}
+
+        {/* Inline Bunk Chat */}
+        {chattingWith === c.id && c.appUserId && (
+          <div className="mx-1 mb-1 rounded-md border border-border bg-background/80 overflow-hidden">
+            <div className="px-3 py-1.5 border-b border-border bg-muted/30 flex items-center justify-between">
+              <span className="text-[10px] font-mono text-muted-foreground tracking-wider">BUNK CHAT</span>
+              <button onClick={() => setChattingWith(null)} className="p-0.5 text-muted-foreground hover:text-foreground"><X className="h-3 w-3" /></button>
+            </div>
+            <div className="max-h-40 overflow-y-auto px-3 py-2 space-y-1.5">
+              {chatMessages.length === 0 && (
+                <p className="text-[10px] text-muted-foreground/50 italic text-center py-2">No messages yet</p>
+              )}
+              {chatMessages.map((msg) => (
+                <div key={msg.id} className={`flex ${msg.sender_id === user?.id ? "justify-end" : "justify-start"}`}>
+                  <div className={`max-w-[85%] px-2.5 py-1.5 rounded-lg text-xs ${
+                    msg.sender_id === user?.id
+                      ? "bg-primary/15 text-foreground"
+                      : "bg-muted text-foreground"
+                  }`}>
+                    {msg.message_text}
+                  </div>
+                </div>
+              ))}
+              <div ref={chatEndRef} />
+            </div>
+            <div className="flex items-center gap-1.5 px-2 py-1.5 border-t border-border">
+              <input
+                value={chatInput}
+                onChange={(e) => setChatInput(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMessage(c); } }}
+                placeholder="Message..."
+                className="flex-1 bg-transparent text-xs outline-none placeholder:text-muted-foreground/40"
+                autoFocus
+              />
+              <button
+                onClick={() => sendMessage(c)}
+                disabled={!chatInput.trim() || sending}
+                className="p-1 text-primary hover:text-primary/80 disabled:opacity-30 transition-colors"
+              >
+                <Send className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  // Group contacts by venue if grouped mode
+  if (grouped) {
+    const groups: Record<string, SidebarContact[]> = {};
+    for (const c of sorted) {
+      const key = c.venue || "Other";
+      if (!groups[key]) groups[key] = [];
+      groups[key].push(c);
+    }
+    const groupEntries = Object.entries(groups);
+
+    return (
+      <TooltipProvider delayDuration={300}>
+        <div className="space-y-2">
+          {groupEntries.map(([venue, members]) => (
+            <div key={venue}>
+              <p className="px-4 py-1 text-[10px] font-mono tracking-wider text-muted-foreground/70 uppercase truncate">
+                {venue}
+              </p>
+              <div className="space-y-0.5">
+                {members.map((c) => renderContact(c, true))}
+              </div>
+            </div>
+          ))}
+        </div>
+      </TooltipProvider>
+    );
+  }
+
   return (
     <TooltipProvider delayDuration={300}>
       <div className="space-y-0.5">
-        {sorted.map((c) =>
-          editingId === c.id ? (
-            <div key={c.id} className="px-3 py-2 space-y-1.5 bg-sidebar-accent/30 rounded-md mx-1">
-              <input value={editForm.name} onChange={(e) => setEditForm(p => ({ ...p, name: e.target.value }))} placeholder="Name" className="w-full bg-background/80 border border-border rounded px-2 py-1 text-sm text-foreground outline-none focus:border-primary" autoFocus />
-              <input value={editForm.role} onChange={(e) => setEditForm(p => ({ ...p, role: e.target.value }))} placeholder="Role" className="w-full bg-background/80 border border-border rounded px-2 py-1 text-xs text-foreground outline-none focus:border-primary font-mono" />
-              <input value={editForm.phone} onChange={(e) => setEditForm(p => ({ ...p, phone: e.target.value }))} placeholder="Phone" className="w-full bg-background/80 border border-border rounded px-2 py-1 text-xs text-foreground outline-none focus:border-primary font-mono" />
-              <input value={editForm.email} onChange={(e) => setEditForm(p => ({ ...p, email: e.target.value }))} placeholder="Email" className="w-full bg-background/80 border border-border rounded px-2 py-1 text-xs text-foreground outline-none focus:border-primary font-mono" />
-              <div className="flex items-center justify-between pt-0.5">
-                {onDelete && (
-                  <button onClick={async () => { try { await onDelete(c.id); toast.success("Contact deleted"); setEditingId(null); } catch { toast.error("Failed to delete"); } }} className="p-1 rounded text-muted-foreground hover:text-destructive transition-colors" aria-label="Delete">
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </button>
-                )}
-                <div className="flex items-center gap-1">
-                  <button onClick={cancelEdit} className="p-1 rounded text-muted-foreground hover:text-destructive transition-colors" aria-label="Cancel"><X className="h-3.5 w-3.5" /></button>
-                  <button onClick={saveEdit} disabled={!editForm.name.trim()} className="p-1 rounded text-muted-foreground hover:text-primary transition-colors disabled:opacity-30" aria-label="Save"><Check className="h-3.5 w-3.5" /></button>
-                </div>
-              </div>
-            </div>
-          ) : (
-            <div key={c.id}>
-              <div
-                className="group flex items-center justify-between px-4 py-1.5 hover:bg-sidebar-accent/50 rounded-md transition-colors cursor-pointer"
-                onClick={() => isMobile && toggleExpand(c.id)}
-              >
-                <div className="min-w-0 flex-1 flex items-center gap-2">
-                  {/* Online indicator */}
-                  {c.appUserId && (
-                    <span className={`h-2 w-2 rounded-full shrink-0 ${isContactOnline(c) ? "bg-success" : "bg-muted-foreground/30"}`} />
-                  )}
-                  <div className="min-w-0 flex-1">
-                    <p className="text-sm text-sidebar-foreground truncate leading-tight">{c.name}</p>
-                    {c.role && <p className="text-[10px] font-mono text-muted-foreground/60 truncate leading-tight">{c.role}</p>}
-                  </div>
-                </div>
-
-                {/* Desktop: hover-reveal actions */}
-                {!isMobile && (
-                  <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity shrink-0 ml-2">
-                    {/* Message button - auto-routes based on presence */}
-                    {(c.appUserId || c.phone) && (
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <button
-                            onClick={() => handleMessage(c)}
-                            className={`p-1 rounded transition-colors ${
-                              isContactOnline(c)
-                                ? "text-success hover:text-success/80"
-                                : "text-muted-foreground hover:text-primary"
-                            }`}
-                            aria-label="Message"
-                          >
-                            <MessageCircle className="h-3.5 w-3.5" />
-                          </button>
-                        </TooltipTrigger>
-                        <TooltipContent side="top" className="text-xs">
-                          {isContactOnline(c) ? "Bunk Chat (online)" : c.phone ? "Text (offline)" : "Not available"}
-                        </TooltipContent>
-                      </Tooltip>
-                    )}
-                    {onUpdate && (
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <button onClick={() => startEdit(c)} className="p-1 rounded text-muted-foreground hover:text-primary transition-colors" aria-label="Edit"><Pencil className="h-3.5 w-3.5" /></button>
-                        </TooltipTrigger>
-                        <TooltipContent side="top" className="text-xs">Edit</TooltipContent>
-                      </Tooltip>
-                    )}
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <button onClick={() => handleChat(c)} className="p-1 rounded text-muted-foreground hover:text-primary transition-colors" aria-label="Ask TELA"><MessageSquare className="h-3.5 w-3.5" /></button>
-                      </TooltipTrigger>
-                      <TooltipContent side="top" className="text-xs">Ask TELA</TooltipContent>
-                    </Tooltip>
-                    {c.phone && (
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <a href={`tel:${c.phone}`} className="p-1 rounded text-muted-foreground hover:text-primary transition-colors" aria-label="Call"><Phone className="h-3.5 w-3.5" /></a>
-                        </TooltipTrigger>
-                        <TooltipContent side="top" className="text-xs">{c.phone}</TooltipContent>
-                      </Tooltip>
-                    )}
-                    {c.email && (
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <a href={`mailto:${c.email}`} className="p-1 rounded text-muted-foreground hover:text-primary transition-colors" aria-label="Email"><Mail className="h-3.5 w-3.5" /></a>
-                        </TooltipTrigger>
-                        <TooltipContent side="top" className="text-xs">{c.email}</TooltipContent>
-                      </Tooltip>
-                    )}
-                  </div>
-                )}
-
-                {/* Mobile: indicators */}
-                {isMobile && (
-                  <div className="flex items-center gap-1 shrink-0 ml-2">
-                    {c.appUserId && (
-                      <span className={`h-1.5 w-1.5 rounded-full ${isContactOnline(c) ? "bg-success" : "bg-muted-foreground/30"}`} />
-                    )}
-                    {c.phone && <Phone className="h-3 w-3 text-muted-foreground/40" />}
-                    {c.email && <Mail className="h-3 w-3 text-muted-foreground/40" />}
-                  </div>
-                )}
-              </div>
-
-              {/* Mobile: expanded action bar */}
-              {isMobile && expandedId === c.id && (
-                <div className="flex items-center gap-1 px-4 py-2 bg-sidebar-accent/30 rounded-b-md mx-1 mb-0.5">
-                  {/* Smart message button */}
-                  {(c.appUserId || c.phone) && (
-                    <button
-                      onClick={() => handleMessage(c)}
-                      className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-md text-xs font-mono font-medium transition-colors ${
-                        isContactOnline(c)
-                          ? "bg-success/10 text-success active:bg-success/20"
-                          : "bg-info/10 text-info active:bg-info/20"
-                      }`}
-                    >
-                      <MessageCircle className="h-3.5 w-3.5" />
-                      {isContactOnline(c) ? "BUNK" : "TEXT"}
-                    </button>
-                  )}
-                  <button
-                    onClick={() => { handleChat(c); setExpandedId(null); }}
-                    className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-md bg-primary/10 text-primary text-xs font-mono font-medium active:bg-primary/20 transition-colors"
-                  >
-                    <MessageSquare className="h-3.5 w-3.5" />
-                    TELA
-                  </button>
-                  {c.phone && (
-                    <a href={`tel:${c.phone}`} className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-md bg-success/10 text-success text-xs font-mono font-medium active:bg-success/20 transition-colors">
-                      <Phone className="h-3.5 w-3.5" />
-                      CALL
-                    </a>
-                  )}
-                  {c.email && (
-                    <a href={`mailto:${c.email}`} className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-md bg-warning/10 text-warning text-xs font-mono font-medium active:bg-warning/20 transition-colors">
-                      <Mail className="h-3.5 w-3.5" />
-                      EMAIL
-                    </a>
-                  )}
-                  {onUpdate && (
-                    <button onClick={() => startEdit(c)} className="p-2 rounded-md bg-muted/50 text-muted-foreground active:bg-muted transition-colors" aria-label="Edit">
-                      <Pencil className="h-3.5 w-3.5" />
-                    </button>
-                  )}
-                </div>
-              )}
-
-              {/* Inline Bunk Chat */}
-              {chattingWith === c.id && c.appUserId && (
-                <div className="mx-1 mb-1 rounded-md border border-border bg-background/80 overflow-hidden">
-                  <div className="px-3 py-1.5 border-b border-border bg-muted/30 flex items-center justify-between">
-                    <span className="text-[10px] font-mono text-muted-foreground tracking-wider">BUNK CHAT</span>
-                    <button onClick={() => setChattingWith(null)} className="p-0.5 text-muted-foreground hover:text-foreground"><X className="h-3 w-3" /></button>
-                  </div>
-                  <div className="max-h-40 overflow-y-auto px-3 py-2 space-y-1.5">
-                    {chatMessages.length === 0 && (
-                      <p className="text-[10px] text-muted-foreground/50 italic text-center py-2">No messages yet</p>
-                    )}
-                    {chatMessages.map((msg) => (
-                      <div key={msg.id} className={`flex ${msg.sender_id === user?.id ? "justify-end" : "justify-start"}`}>
-                        <div className={`max-w-[85%] px-2.5 py-1.5 rounded-lg text-xs ${
-                          msg.sender_id === user?.id
-                            ? "bg-primary/15 text-foreground"
-                            : "bg-muted text-foreground"
-                        }`}>
-                          {msg.message_text}
-                        </div>
-                      </div>
-                    ))}
-                    <div ref={chatEndRef} />
-                  </div>
-                  <div className="flex items-center gap-1.5 px-2 py-1.5 border-t border-border">
-                    <input
-                      value={chatInput}
-                      onChange={(e) => setChatInput(e.target.value)}
-                      onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMessage(c); } }}
-                      placeholder="Message..."
-                      className="flex-1 bg-transparent text-xs outline-none placeholder:text-muted-foreground/40"
-                      autoFocus
-                    />
-                    <button
-                      onClick={() => sendMessage(c)}
-                      disabled={!chatInput.trim() || sending}
-                      className="p-1 text-primary hover:text-primary/80 disabled:opacity-30 transition-colors"
-                    >
-                      <Send className="h-3.5 w-3.5" />
-                    </button>
-                  </div>
-                </div>
-              )}
-            </div>
-          )
-        )}
+        {sorted.map((c) => renderContact(c, false))}
       </div>
     </TooltipProvider>
   );
