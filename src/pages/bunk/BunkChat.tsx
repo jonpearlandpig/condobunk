@@ -190,8 +190,8 @@ const BunkChat = () => {
       </div>
 
       {/* Messages */}
-      <div ref={scrollRef} className="flex-1 overflow-auto px-4 py-6">
-        <div className="max-w-2xl mx-auto space-y-6">
+      <div ref={scrollRef} className="flex-1 overflow-auto px-4 md:px-8 py-6">
+        <div className="max-w-2xl md:max-w-3xl mx-auto space-y-6">
           {messages.length === 0 && !isStreaming && (
             <div className="flex flex-col items-center justify-center pt-16 text-center">
              <Zap className="h-10 w-10 text-primary/30 mb-4" />
@@ -223,7 +223,7 @@ const BunkChat = () => {
                     const { cleanText, actions } = parseTelaActions(msg.content);
                     return (
                       <>
-                        <div className="prose prose-sm prose-invert max-w-none text-[14px] leading-relaxed [&_p]:mb-2 [&_li]:mb-1 [&_strong]:text-foreground [&_a]:text-primary [&_a]:underline">
+                        <div className="prose prose-sm md:prose-base prose-invert max-w-none text-[14px] md:text-[15px] leading-relaxed md:leading-7 [&_p]:mb-2 md:[&_p]:mb-3 [&_li]:mb-1 md:[&_li]:mb-2 [&_strong]:text-foreground [&_a]:text-primary [&_a]:underline">
                           <ReactMarkdown
                             components={{
                               a: ({ href, children }) => (
@@ -241,7 +241,7 @@ const BunkChat = () => {
                     );
                   })()
                 ) : (
-                  <p className="text-[14px] leading-relaxed">{msg.content}</p>
+                  <p className="text-[14px] md:text-[15px] leading-relaxed md:leading-7">{msg.content}</p>
                 )}
                 <MessageActions content={msg.content} role={msg.role} />
               </div>
@@ -260,8 +260,8 @@ const BunkChat = () => {
 
       {/* Input bar */}
       <div className="shrink-0 border-t border-border bg-background px-4 py-3">
-        <div className="max-w-2xl mx-auto">
-          <div className="flex items-end gap-2 bg-card rounded-2xl border border-border px-3 py-2">
+        <div className="max-w-2xl md:max-w-3xl mx-auto">
+          <div className="flex items-end gap-2 bg-card rounded-2xl border border-border px-3 py-2 md:px-4 md:py-3">
             <textarea
               ref={textareaRef}
               value={input}
@@ -270,7 +270,7 @@ const BunkChat = () => {
               placeholder={tourId ? "Ask TELA..." : "No active tour"}
               disabled={!tourId || isStreaming}
               rows={1}
-              className="flex-1 bg-transparent text-[15px] text-foreground placeholder:text-muted-foreground/50 resize-none outline-none py-1.5 min-h-[28px] max-h-32 leading-snug disabled:opacity-50"
+              className="flex-1 bg-transparent text-[15px] md:text-base text-foreground placeholder:text-muted-foreground/50 resize-none outline-none py-1.5 min-h-[28px] max-h-32 leading-snug disabled:opacity-50"
               style={{ fontFamily: "var(--font-display)" }}
             />
             <button
