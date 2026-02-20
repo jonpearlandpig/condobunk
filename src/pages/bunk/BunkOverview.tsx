@@ -55,9 +55,9 @@ const BunkOverview = () => {
   const [tldrLoading, setTldrLoading] = useState(false);
 
   useEffect(() => {
-    if (!user) return;
+    if (!user || tours.length === 0) return;
     loadCounts();
-  }, [user]);
+  }, [user, tours]);
 
   useEffect(() => {
     if (tours.length > 0 && eventCount > 0) {
@@ -66,22 +66,34 @@ const BunkOverview = () => {
   }, [tours, eventCount]);
 
   const loadCounts = async () => {
-    const { count: gaps } = await supabase
-      .from("knowledge_gaps")
-      .select("*", { count: "exact", head: true })
-      .eq("resolved", false);
-    setGapCount(gaps ?? 0);
+    const tourIds = tours.map(t => t.id);
+    if (tourIds.length === 0) {
+      setGapCount(0);
+      setConflictCount(0);
+      setEventCount(0);
+      return;
+    }
 
-    const { count: conflicts } = await supabase
-      .from("calendar_conflicts")
-      .select("*", { count: "exact", head: true })
-      .eq("resolved", false);
-    setConflictCount(conflicts ?? 0);
+    const [gapsRes, conflictsRes, eventsRes] = await Promise.all([
+      supabase
+        .from("knowledge_gaps")
+        .select("*", { count: "exact", head: true })
+        .in("tour_id", tourIds)
+        .eq("resolved", false),
+      supabase
+        .from("calendar_conflicts")
+        .select("*", { count: "exact", head: true })
+        .in("tour_id", tourIds)
+        .eq("resolved", false),
+      supabase
+        .from("schedule_events")
+        .select("*", { count: "exact", head: true })
+        .in("tour_id", tourIds),
+    ]);
 
-    const { count: events } = await supabase
-      .from("schedule_events")
-      .select("*", { count: "exact", head: true });
-    setEventCount(events ?? 0);
+    setGapCount(gapsRes.count ?? 0);
+    setConflictCount(conflictsRes.count ?? 0);
+    setEventCount(eventsRes.count ?? 0);
   };
 
   const generateTldr = async () => {
