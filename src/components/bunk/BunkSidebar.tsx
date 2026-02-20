@@ -31,7 +31,7 @@ const navItems = [
   { title: "Overview", url: "/bunk", icon: LayoutDashboard },
   { title: "Calendar", url: "/bunk/calendar", icon: CalendarDays },
   { title: "TELA", url: "/bunk/chat", icon: MessageSquare },
-  { title: "Documents", url: "/bunk/documents", icon: FileText },
+  { title: "AKB Builder", url: "/bunk/documents", icon: FileText },
   { title: "Coverage", url: "/bunk/coverage", icon: BarChart3 },
   { title: "Admin", url: "/bunk/admin", icon: Settings },
 ];
