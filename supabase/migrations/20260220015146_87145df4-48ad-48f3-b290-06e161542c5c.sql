@@ -1,0 +1,1 @@
+ALTER TABLE public.schedule_events ADD COLUMN notes text;
