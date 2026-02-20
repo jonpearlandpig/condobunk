@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback } from "react";
+import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { useTour } from "@/hooks/useTour";
@@ -18,6 +19,7 @@ import {
   MoreVertical,
   Archive,
   RotateCcw,
+  MessageSquare,
 } from "lucide-react";
 import ExtractionReviewDialog from "@/components/bunk/ExtractionReviewDialog";
 import TechPackReviewDialog from "@/components/bunk/TechPackReviewDialog";
@@ -79,7 +81,8 @@ const DOC_TYPE_COLORS: Record<string, string> = {
 
 const BunkDocuments = () => {
   const { user } = useAuth();
-  const { tours, selectedTourId, setSelectedTourId } = useTour();
+  const { tours, selectedTourId, setSelectedTourId, selectedTour } = useTour();
+  const navigate = useNavigate();
   const { toast } = useToast();
   const [documents, setDocuments] = useState<DocRow[]>([]);
   const [uploading, setUploading] = useState(false);
@@ -352,18 +355,31 @@ const BunkDocuments = () => {
           </p>
         </div>
         {tours.length > 0 && (
-          <Select value={selectedTourId} onValueChange={setSelectedTourId}>
-            <SelectTrigger className="w-full sm:w-48 font-mono text-xs bg-muted">
-              <SelectValue placeholder="Select tour" />
-            </SelectTrigger>
-            <SelectContent>
-              {tours.map((t) => (
-                <SelectItem key={t.id} value={t.id} className="font-mono text-xs">
-                  {t.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <div className="flex items-center gap-2 flex-wrap">
+            <Select value={selectedTourId} onValueChange={setSelectedTourId}>
+              <SelectTrigger className="w-full sm:w-48 font-mono text-xs bg-muted">
+                <SelectValue placeholder="Select tour" />
+              </SelectTrigger>
+              <SelectContent>
+                {tours.map((t) => (
+                  <SelectItem key={t.id} value={t.id} className="font-mono text-xs">
+                    {t.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {selectedTourId && (
+              <Button
+                size="sm"
+                variant="outline"
+                className="font-mono text-[10px] h-8 gap-1.5 tracking-wider"
+                onClick={() => navigate(`/bunk/chat?scope=tour`)}
+              >
+                <MessageSquare className="h-3 w-3" />
+                ASK TELA — {selectedTour?.name || "Tour"}
+              </Button>
+            )}
+          </div>
         )}
       </div>
 
