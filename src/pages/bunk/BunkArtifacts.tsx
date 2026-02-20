@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-import { Plus, Trash2, Edit2, Save, X, FileText, Loader2, StickyNote, CheckSquare } from "lucide-react";
+import { Plus, Trash2, Edit2, Save, X, FileText, Loader2, StickyNote, CheckSquare, Printer, Copy, Send } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -108,6 +108,28 @@ const BunkArtifacts = () => {
     setEditingId(a.id);
     setEditTitle(a.title);
     setEditContent(a.content || "");
+  };
+
+  const handlePrint = (a: Artifact) => {
+    const win = window.open("", "_blank");
+    if (!win) return;
+    win.document.write(`<html><head><title>${a.title}</title><style>body{font-family:monospace;padding:2rem;white-space:pre-wrap}h1{font-size:1.25rem;margin-bottom:1rem}</style></head><body><h1>${a.title}</h1>${a.content || ""}</body></html>`);
+    win.document.close();
+    win.print();
+  };
+
+  const handleCopy = async (a: Artifact) => {
+    const text = `${a.title}\n\n${a.content || ""}`;
+    try {
+      await navigator.clipboard.writeText(text);
+      toast.success("Copied to clipboard");
+    } catch { toast.error("Failed to copy"); }
+  };
+
+  const handleSend = (a: Artifact) => {
+    const body = encodeURIComponent(`${a.title}\n\n${a.content || ""}`);
+    const subject = encodeURIComponent(a.title);
+    window.open(`mailto:?subject=${subject}&body=${body}`, "_blank");
   };
 
   return (
@@ -226,10 +248,19 @@ const BunkArtifacts = () => {
                         </Badge>
                       </div>
                       <div className="flex items-center gap-1 shrink-0">
-                        <Button size="sm" variant="ghost" onClick={() => startEdit(a)}>
+                        <Button size="sm" variant="ghost" onClick={() => handleCopy(a)} title="Copy">
+                          <Copy className="h-4 w-4" />
+                        </Button>
+                        <Button size="sm" variant="ghost" onClick={() => handlePrint(a)} title="Print">
+                          <Printer className="h-4 w-4" />
+                        </Button>
+                        <Button size="sm" variant="ghost" onClick={() => handleSend(a)} title="Email">
+                          <Send className="h-4 w-4" />
+                        </Button>
+                        <Button size="sm" variant="ghost" onClick={() => startEdit(a)} title="Edit">
                           <Edit2 className="h-4 w-4" />
                         </Button>
-                        <Button size="sm" variant="ghost" onClick={() => handleDelete(a.id)}>
+                        <Button size="sm" variant="ghost" onClick={() => handleDelete(a.id)} title="Delete">
                           <Trash2 className="h-4 w-4 text-destructive" />
                         </Button>
                       </div>
