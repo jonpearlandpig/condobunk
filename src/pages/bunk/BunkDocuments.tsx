@@ -15,6 +15,7 @@ import {
   Eye,
 } from "lucide-react";
 import ExtractionReviewDialog from "@/components/bunk/ExtractionReviewDialog";
+import TechPackReviewDialog from "@/components/bunk/TechPackReviewDialog";
 import { Button } from "@/components/ui/button";
 import {
   Select,
@@ -62,6 +63,13 @@ const BunkDocuments = () => {
   const [expandedDoc, setExpandedDoc] = useState<string | null>(null);
   const [reviewDocId, setReviewDocId] = useState<string | null>(null);
   const [reviewSummary, setReviewSummary] = useState<any>(null);
+  const [techPackReview, setTechPackReview] = useState<{
+    docId: string;
+    techSpecId: string | null;
+    riskFlags: Array<{ category: string; severity: string; title: string; detail: string }>;
+    venueName: string;
+    contactCount: number;
+  } | null>(null);
 
   useEffect(() => {
     if (selectedTourId) loadDocuments();
@@ -138,12 +146,26 @@ const BunkDocuments = () => {
       );
       if (error) throw error;
 
-      toast({
-        title: "Extraction complete",
-        description: `Type: ${data.doc_type} — ${data.extracted_count} items. Review before approving.`,
-      });
-      setReviewSummary(data);
-      setReviewDocId(docId);
+      if (data.is_tech_pack) {
+        toast({
+          title: "Tech pack extracted",
+          description: `${data.venue_name} — ${data.summary?.risk_flags || 0} risks identified. Review before approving.`,
+        });
+        setTechPackReview({
+          docId,
+          techSpecId: data.tech_spec_id,
+          riskFlags: data.risk_flags || [],
+          venueName: data.venue_name || "Unknown Venue",
+          contactCount: data.summary?.contacts || 0,
+        });
+      } else {
+        toast({
+          title: "Extraction complete",
+          description: `Type: ${data.doc_type} — ${data.extracted_count} items. Review before approving.`,
+        });
+        setReviewSummary(data);
+        setReviewDocId(docId);
+      }
       loadDocuments();
     } catch (err: any) {
       toast({
@@ -362,6 +384,21 @@ const BunkDocuments = () => {
           documentId={reviewDocId}
           tourId={selectedTourId}
           extractionSummary={reviewSummary}
+          onApproved={loadDocuments}
+        />
+      )}
+      {techPackReview && (
+        <TechPackReviewDialog
+          open={!!techPackReview}
+          onOpenChange={(open) => {
+            if (!open) setTechPackReview(null);
+          }}
+          documentId={techPackReview.docId}
+          tourId={selectedTourId}
+          techSpecId={techPackReview.techSpecId}
+          riskFlags={techPackReview.riskFlags}
+          venueName={techPackReview.venueName}
+          contactCount={techPackReview.contactCount}
           onApproved={loadDocuments}
         />
       )}

@@ -14,7 +14,7 @@ const FILENAME_HINTS: Record<string, string[]> = {
   RUN_OF_SHOW: ["ros", "run of show", "runofshow", "runsheet", "cue"],
   FINANCE: ["budget", "settlement", "p&l", "pnl", "finance", "expenses"],
   TRAVEL: ["travel", "flights", "hotel", "transport", "logistics"],
-  TECH: ["rider", "stage plot", "tech", "production", "audio", "lighting"],
+  TECH: ["rider", "stage plot", "tech", "production", "audio", "lighting", "tech pack", "techpack", "tech spec"],
   HOSPITALITY: ["hospitality", "catering", "hotel", "accommodation"],
   CAST: ["cast", "artist", "talent", "performer"],
   VENUE: ["venue", "room", "hall", "arena", "theater"],
@@ -40,6 +40,12 @@ const KEYWORD_SETS: Record<string, string[]> = {
   TRAVEL: [
     "flight", "depart", "arrive", "hotel", "check-in",
     "checkout", "bus", "van", "driver", "pickup",
+  ],
+  TECH: [
+    "proscenium", "stage depth", "stage width", "grid height", "rigging",
+    "counterweight", "line sets", "arbor", "dock", "load-in", "forklift",
+    "company switch", "amps", "cam lock", "foh", "clearcom", "washer",
+    "dryer", "iatse", "union", "firewatch", "fly system",
   ],
 };
 
@@ -204,6 +210,181 @@ GENERAL:
 - If the document covers multiple categories (schedule + contacts + travel), extract ALL of them.
 - ZERO DATA LOSS. If you can read it in the document, it must appear in the output.`;
 
+// ─── Tech Pack Extraction Prompt ───
+
+const TECH_PACK_PROMPT = `You are a venue tech pack extraction engine for the live touring industry. Your job is to extract ALL operational specifications from a venue tech pack / tech rider document into a structured format. Missing even one specification is a failure.
+
+Return a JSON object with these fields:
+
+{
+  "venue_name": "Official Venue Name",
+  "normalized_venue_name": "lowercase-hyphenated-venue-name",
+
+  "venue_identity": {
+    "official_name": "Full official name",
+    "address": "Full street address",
+    "main_phone": "phone",
+    "production_contacts": [{"name": "Name", "title": "Title", "phone": "phone", "email": "email"}],
+    "union_house": true/false/null,
+    "union_local": "IATSE Local #" or null
+  },
+
+  "stage_specs": {
+    "proscenium_width": "measurement",
+    "proscenium_height": "measurement",
+    "stage_width_wall_to_wall": "measurement",
+    "stage_depth_pl_to_back": "measurement",
+    "grid_height": "measurement",
+    "wing_space_sr": "measurement",
+    "wing_space_sl": "measurement",
+    "crossover": true/false/null,
+    "apron_dimensions": "measurement",
+    "pit_type": "open/covered/lift/none",
+    "pit_dimensions": "measurement",
+    "stage_surface": "masonite/marley/wood/concrete/etc",
+    "notes": "any additional stage notes"
+  },
+
+  "rigging_system": {
+    "counterweight_type": "single purchase/double purchase/etc",
+    "total_line_sets": number or null,
+    "line_set_spacing": "measurement",
+    "pipe_length": "measurement",
+    "max_arbor_weight": "weight",
+    "total_counterweight_capacity": "weight",
+    "electric_line_sets": number or null,
+    "motorized_sets": number or null,
+    "acoustic_clouds": "description or null",
+    "immovable_battens": "description or null",
+    "foh_rigging_positions": "description",
+    "followspot_positions": "description",
+    "followspot_throw_distance": "measurement",
+    "notes": "any additional rigging notes"
+  },
+
+  "dock_load_in": {
+    "dock_door_width": "measurement",
+    "dock_door_height": "measurement",
+    "dock_height": "truck level/street load/measurement",
+    "truck_capacity": number or null,
+    "push_distance_ft": number or null,
+    "push_notes": "ramp/stairs/elevator details",
+    "forklift_available": true/false/null,
+    "stacking_motor_location": "description",
+    "security_stage_door_notes": "description",
+    "bus_parking": "description",
+    "bus_shore_power": true/false/null,
+    "bus_shore_power_rating": "rating",
+    "notes": "any additional dock notes"
+  },
+
+  "power": {
+    "company_switch_amps": "amps",
+    "company_switch_phase": "phase",
+    "company_switch_cam_type": "cam type",
+    "company_switch_location": "USR/DSL/dock/etc",
+    "isolated_audio_ground": true/false/null,
+    "foh_power": "description",
+    "bus_power_rating": "rating",
+    "notes": "any additional power notes"
+  },
+
+  "lighting_audio": {
+    "foh_positions": "bridge/catwalk/balcony rail/etc",
+    "house_spot_inventory": "description",
+    "clearcom_wired_count": number or null,
+    "clearcom_wireless_count": number or null,
+    "house_console_type": "console model",
+    "speaker_system": "system type/model",
+    "blackout_capability": true/false/null,
+    "notes": "any additional lighting/audio notes"
+  },
+
+  "wardrobe_laundry": {
+    "washer_count": number or null,
+    "dryer_count": number or null,
+    "wardrobe_room_location": "description",
+    "rolling_racks_count": number or null,
+    "quick_change_areas": "description",
+    "notes": "any additional wardrobe notes"
+  },
+
+  "labor_union": {
+    "iatse_local": "local number or null",
+    "minimum_calls": "description",
+    "required_heads": "description",
+    "coffee_break_rules": "description",
+    "meal_rules": "description",
+    "firewatch_required": true/false/null,
+    "notes": "any additional labor notes"
+  },
+
+  "permanent_installations": {
+    "orchestra_clouds_height": "measurement",
+    "border_lights_clearance": "measurement",
+    "fixed_electrics": "description",
+    "immovable_cyc_or_traveler": "description",
+    "notes": "any additional notes"
+  },
+
+  "production_compatibility": {
+    "truss_vs_pipe_length": "comparison notes",
+    "motor_quantity_vs_capacity": "comparison notes",
+    "led_wall_hang_positions": "description",
+    "co2_usage_allowed": true/false/null,
+    "low_fog_vs_hvac": "notes",
+    "foh_truss_sightlines": "notes",
+    "notes": "any additional compatibility notes"
+  },
+
+  "risk_flags": [
+    {
+      "category": "STAGE" | "RIGGING" | "DOCK" | "POWER" | "LIGHTING_AUDIO" | "WARDROBE" | "LABOR" | "PERMANENT_INSTALL" | "COMPATIBILITY",
+      "severity": "LOW" | "MEDIUM" | "HIGH" | "CRITICAL",
+      "title": "Short risk title (e.g. 'Short Stage')",
+      "detail": "Specific detail (e.g. 'Stage depth 26ft < 30ft minimum')"
+    }
+  ],
+
+  "contacts": [
+    {
+      "name": "Full Name",
+      "role": "ROLE TITLE",
+      "phone": "phone number",
+      "email": "email@domain.com"
+    }
+  ]
+}
+
+RISK FLAG DETECTION RULES — flag ALL that apply:
+- Stage depth < 30ft → HIGH "Short Stage"
+- Grid height < 40ft → HIGH "Low Grid"
+- Wing space < 8ft or no crossover → MEDIUM "Limited Backstage Flow"
+- Dock door < 10'×10' → MEDIUM "Tight Dock Door"
+- Push distance > 200ft → MEDIUM "Difficult Load-In/Out"
+- Street load or ramp → MEDIUM "Load-In Complexity"
+- No bus shore power → LOW "Bus Power Shortfall"
+- Insufficient amperage for touring rig → HIGH "Insufficient Power"
+- No isolated audio ground → MEDIUM "No Isolated Ground"
+- No full blackout capability → MEDIUM "No Full Blackout"
+- Limited comm positions → LOW "Limited Comms"
+- Fewer than 2 washers or dryers → MEDIUM "Laundry Capacity Risk"
+- Union-only restrictions → LOW "Union Restrictions"
+- Firewatch required → MEDIUM "Firewatch Required"
+- Restricted hours → MEDIUM "Restricted Hours"
+- No haze/CO₂/pyro allowed → HIGH "Effects Restricted"
+- Acoustic cloud interference → HIGH "Rigging Conflict — Acoustic Clouds"
+- Non-movable line sets blocking positions → HIGH "Rigging Conflict — Immovable Battens"
+- Weight conflicts on arbors → CRITICAL "Weight Limit Exceeded"
+
+CRITICAL RULES:
+- Extract EVERY measurement, number, and specification you can find.
+- If a value is not stated, set it to null. NEVER guess.
+- Normalize the venue name to lowercase-hyphenated (e.g. "Fox Theatre" → "fox-theatre").
+- For contacts, extract ALL venue staff mentioned (TD, Production Manager, Head Carpenter, etc.).
+- Return ONLY valid JSON, no markdown formatting, no code blocks.
+- ZERO DATA LOSS. If you can read it, it must appear in the output.`;
+
 interface AIExtractionResult {
   tour_name?: string | null;
   doc_type?: string;
@@ -259,8 +440,35 @@ interface AIExtractionResult {
   }>;
 }
 
+interface TechPackResult {
+  venue_name: string;
+  normalized_venue_name: string;
+  venue_identity: Record<string, unknown>;
+  stage_specs: Record<string, unknown>;
+  rigging_system: Record<string, unknown>;
+  dock_load_in: Record<string, unknown>;
+  power: Record<string, unknown>;
+  lighting_audio: Record<string, unknown>;
+  wardrobe_laundry: Record<string, unknown>;
+  labor_union: Record<string, unknown>;
+  permanent_installations: Record<string, unknown>;
+  production_compatibility: Record<string, unknown>;
+  risk_flags: Array<{
+    category: string;
+    severity: string;
+    title: string;
+    detail: string;
+  }>;
+  contacts?: Array<{
+    name: string;
+    role?: string;
+    phone?: string;
+    email?: string;
+  }>;
+}
+
 // Single AI call: extract structured data directly from PDF or text
-async function aiExtractFromPdf(base64: string, apiKey: string): Promise<AIExtractionResult | null> {
+async function aiExtractFromPdf(base64: string, apiKey: string, prompt: string): Promise<unknown | null> {
   try {
     console.log("[extract] Single-pass PDF structured extraction...");
     const resp = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
@@ -275,7 +483,7 @@ async function aiExtractFromPdf(base64: string, apiKey: string): Promise<AIExtra
           {
             role: "user",
             content: [
-              { type: "text", text: EXTRACTION_PROMPT },
+              { type: "text", text: prompt },
               {
                 type: "image_url",
                 image_url: { url: `data:application/pdf;base64,${base64}` },
@@ -303,7 +511,7 @@ async function aiExtractFromPdf(base64: string, apiKey: string): Promise<AIExtra
   }
 }
 
-async function aiExtractFromText(text: string, apiKey: string): Promise<AIExtractionResult | null> {
+async function aiExtractFromText(text: string, apiKey: string, prompt: string): Promise<unknown | null> {
   try {
     console.log("[extract] Text structured extraction...");
     const resp = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
@@ -315,7 +523,7 @@ async function aiExtractFromText(text: string, apiKey: string): Promise<AIExtrac
       body: JSON.stringify({
         model: "google/gemini-2.5-flash",
         messages: [
-          { role: "system", content: EXTRACTION_PROMPT },
+          { role: "system", content: prompt },
           { role: "user", content: text.substring(0, 60000) },
         ],
       }),
@@ -334,6 +542,28 @@ async function aiExtractFromText(text: string, apiKey: string): Promise<AIExtrac
     console.error("[extract] Text extraction failed:", err);
     return null;
   }
+}
+
+// Determine if a document is likely a tech pack based on filename + content hints
+function isTechPackDocument(filename: string, rawText: string): boolean {
+  const fn = filename.toLowerCase();
+  const techHints = ["tech pack", "techpack", "tech spec", "tech rider", "venue spec", "stage spec",
+    "tech info", "technical information", "venue information", "production information"];
+  for (const hint of techHints) {
+    if (fn.includes(hint)) return true;
+  }
+  // Check content for heavy tech pack signals
+  if (rawText) {
+    const lower = rawText.toLowerCase();
+    const techSignals = ["proscenium", "stage depth", "grid height", "counterweight",
+      "line sets", "dock door", "company switch", "rigging"];
+    let hits = 0;
+    for (const sig of techSignals) {
+      if (lower.includes(sig)) hits++;
+    }
+    if (hits >= 3) return true;
+  }
+  return false;
 }
 
 // ─── Main Handler ───
@@ -410,19 +640,17 @@ Deno.serve(async (req) => {
 
     let rawText = doc.raw_text || "";
     const filename = doc.filename || "";
-    let aiResult: AIExtractionResult | null = null;
+    let base64Data: string | null = null;
+    const isPdf = filename.toLowerCase().endsWith(".pdf");
 
-    // ── Single-pass extraction: PDF goes directly to structured extraction ──
-    if (!rawText && doc.file_path && apiKey) {
+    // ── Download binary if needed ──
+    if (!rawText && doc.file_path) {
       const { data: fileData, error: dlErr } = await adminClient.storage
         .from("document-files")
         .download(doc.file_path);
 
       if (!dlErr && fileData) {
-        const isPdf = filename.toLowerCase().endsWith(".pdf");
-
         if (isPdf) {
-          // Convert to base64 with chunked encoding
           const arrayBuf = await fileData.arrayBuffer();
           const bytes = new Uint8Array(arrayBuf);
           let binary = "";
@@ -430,27 +658,180 @@ Deno.serve(async (req) => {
           for (let i = 0; i < bytes.length; i += chunkSize) {
             binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize));
           }
-          const base64 = btoa(binary);
-          console.log("[extract] PDF size:", bytes.length, "bytes, base64 length:", base64.length);
-
-          // SINGLE AI call: send PDF directly for structured extraction
-          aiResult = await aiExtractFromPdf(base64, apiKey);
-
-          if (aiResult) {
-            console.log("[extract] Single-pass extraction keys:", Object.keys(aiResult));
-          }
+          base64Data = btoa(binary);
+          console.log("[extract] PDF size:", bytes.length, "bytes, base64 length:", base64Data.length);
         } else {
           rawText = await fileData.text();
         }
       }
     }
 
-    // For text files or if PDF single-pass failed, do text-based extraction
-    if (!aiResult && rawText && apiKey) {
-      aiResult = await aiExtractFromText(rawText, apiKey);
+    // ── Determine if this is a tech pack ──
+    const isTechPack = isTechPackDocument(filename, rawText || "");
+    console.log("[extract] isTechPack:", isTechPack, "filename:", filename);
+
+    if (isTechPack && apiKey) {
+      // ═══ TECH PACK EXTRACTION PATH ═══
+      let techResult: TechPackResult | null = null;
+
+      if (base64Data) {
+        techResult = await aiExtractFromPdf(base64Data, apiKey, TECH_PACK_PROMPT) as TechPackResult | null;
+      } else if (rawText) {
+        techResult = await aiExtractFromText(rawText, apiKey, TECH_PACK_PROMPT) as TechPackResult | null;
+      }
+
+      if (!techResult || !techResult.venue_name) {
+        // Fall through to general extraction if tech pack parse fails
+        console.log("[extract] Tech pack extraction failed, falling through to general");
+      } else {
+        console.log("[extract] Tech pack extracted for:", techResult.venue_name, "risks:", techResult.risk_flags?.length || 0);
+
+        // Save raw text if we got it
+        if (rawText && !doc.raw_text) {
+          await adminClient.from("documents").update({ raw_text: rawText }).eq("id", document_id);
+        }
+
+        // Update doc type to TECH
+        await adminClient.from("documents").update({ doc_type: "TECH" }).eq("id", document_id);
+
+        // Delete existing tech spec for same venue + tour (dedup)
+        const { data: existingSpecs } = await adminClient
+          .from("venue_tech_specs")
+          .select("id")
+          .eq("tour_id", doc.tour_id)
+          .eq("normalized_venue_name", techResult.normalized_venue_name);
+
+        if (existingSpecs && existingSpecs.length > 0) {
+          const oldIds = existingSpecs.map(s => s.id);
+          await adminClient.from("venue_risk_flags").delete().in("tech_spec_id", oldIds);
+          await adminClient.from("venue_tech_specs").delete().in("id", oldIds);
+          console.log("[extract] Deduped", oldIds.length, "old tech specs for", techResult.normalized_venue_name);
+        }
+
+        // Insert venue_tech_specs
+        const { data: specRow, error: specErr } = await adminClient
+          .from("venue_tech_specs")
+          .insert({
+            tour_id: doc.tour_id,
+            source_doc_id: document_id,
+            venue_name: techResult.venue_name,
+            normalized_venue_name: techResult.normalized_venue_name,
+            venue_identity: techResult.venue_identity || {},
+            stage_specs: techResult.stage_specs || {},
+            rigging_system: techResult.rigging_system || {},
+            dock_load_in: techResult.dock_load_in || {},
+            power: techResult.power || {},
+            lighting_audio: techResult.lighting_audio || {},
+            wardrobe_laundry: techResult.wardrobe_laundry || {},
+            labor_union: techResult.labor_union || {},
+            permanent_installations: techResult.permanent_installations || {},
+            production_compatibility: techResult.production_compatibility || {},
+          })
+          .select("id")
+          .single();
+
+        if (specErr) {
+          console.error("[extract] venue_tech_specs insert error:", specErr);
+        }
+
+        // Insert risk flags
+        const riskFlags = techResult.risk_flags || [];
+        let riskCount = 0;
+        if (specRow && riskFlags.length > 0) {
+          const flagRows = riskFlags.map(f => ({
+            tour_id: doc.tour_id,
+            tech_spec_id: specRow.id,
+            venue_name: techResult!.venue_name,
+            category: f.category || "UNKNOWN",
+            risk_title: f.title || "Unknown Risk",
+            risk_detail: f.detail || null,
+            severity: (f.severity || "MEDIUM") as "LOW" | "MEDIUM" | "HIGH" | "CRITICAL",
+          }));
+
+          const { error: flagErr } = await adminClient.from("venue_risk_flags").insert(flagRows);
+          if (flagErr) console.error("[extract] risk flags insert error:", flagErr);
+          else riskCount = riskFlags.length;
+        }
+
+        // Insert contacts from tech pack
+        const techContacts = techResult.contacts || [];
+        const identityContacts = (techResult.venue_identity as Record<string, unknown>)?.production_contacts as Array<Record<string, string>> || [];
+        const allContacts = [
+          ...techContacts.map(c => ({ name: c.name, role: c.role, phone: c.phone, email: c.email })),
+          ...identityContacts.map(c => ({ name: c.name, role: c.title, phone: c.phone, email: c.email })),
+        ];
+
+        let contactCount = 0;
+        if (allContacts.length > 0) {
+          // Dedup by name
+          const seen = new Set<string>();
+          const uniqueContacts = allContacts.filter(c => {
+            const key = c.name.toLowerCase();
+            if (seen.has(key)) return false;
+            seen.add(key);
+            return true;
+          });
+
+          const contactRows = uniqueContacts.map(c => ({
+            tour_id: doc.tour_id,
+            name: c.name,
+            phone: c.phone || null,
+            email: c.email || null,
+            role: c.role || null,
+            source_doc_id: document_id,
+            scope: "VENUE" as const,
+            venue: techResult!.venue_name,
+          }));
+
+          // Delete old contacts from same doc
+          await adminClient.from("contacts").delete().eq("source_doc_id", document_id);
+
+          const { error: cErr } = await adminClient.from("contacts").insert(contactRows);
+          if (cErr) console.error("[extract] tech pack contacts insert error:", cErr);
+          else contactCount = uniqueContacts.length;
+        }
+
+        const result = {
+          doc_type: "TECH",
+          is_tech_pack: true,
+          venue_name: techResult.venue_name,
+          extracted_count: 1 + riskCount + contactCount,
+          summary: {
+            events: 0,
+            contacts: contactCount,
+            travel: 0,
+            finance: 0,
+            protocols: 0,
+            venues: 1,
+            tech_specs: 1,
+            risk_flags: riskCount,
+          },
+          tech_spec_id: specRow?.id || null,
+          risk_flags: riskFlags,
+        };
+
+        console.log("[extract] Tech pack result:", JSON.stringify(result));
+
+        return new Response(JSON.stringify(result), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
     }
 
-    // If we got text but no AI key, at least save raw text
+    // ═══ GENERAL EXTRACTION PATH (existing logic) ═══
+    let aiResult: AIExtractionResult | null = null;
+
+    if (base64Data && apiKey) {
+      aiResult = await aiExtractFromPdf(base64Data, apiKey, EXTRACTION_PROMPT) as AIExtractionResult | null;
+      if (aiResult) {
+        console.log("[extract] Single-pass extraction keys:", Object.keys(aiResult));
+      }
+    }
+
+    if (!aiResult && rawText && apiKey) {
+      aiResult = await aiExtractFromText(rawText, apiKey, EXTRACTION_PROMPT) as AIExtractionResult | null;
+    }
+
     if (rawText && !doc.raw_text) {
       await adminClient
         .from("documents")
@@ -459,7 +840,6 @@ Deno.serve(async (req) => {
     }
 
     if (!aiResult) {
-      // Fallback: try deterministic domain detection on whatever text we have
       if (rawText) {
         const domain = detectDomain(filename, rawText);
         await adminClient
@@ -509,8 +889,7 @@ Deno.serve(async (req) => {
       }
     }
 
-    // ── Deduplicate: remove old extracted data for this doc type before inserting ──
-    // Delete schedule_events that share the same tour + overlapping dates from previous extractions
+    // ── Deduplicate ──
     if ((aiResult?.schedule_events || []).length > 0) {
       const extractedDates = (aiResult?.schedule_events || [])
         .map(e => e.event_date)
@@ -528,7 +907,6 @@ Deno.serve(async (req) => {
       }
     }
 
-    // Deduplicate contacts: remove old contacts from same tour before inserting new ones from this doc
     if ((aiResult?.contacts || []).length > 0) {
       const { error: dedupeContactErr } = await adminClient
         .from("contacts")
@@ -543,7 +921,6 @@ Deno.serve(async (req) => {
     // ── Persist extracted entities ──
     let totalExtracted = 0;
 
-    // Schedule events - batch insert
     const events = aiResult?.schedule_events || [];
     if (events.length > 0) {
       const toTimestamp = (date: string | undefined, time: string | undefined): string | null => {
@@ -570,7 +947,6 @@ Deno.serve(async (req) => {
       totalExtracted += events.length;
     }
 
-    // Contacts - batch insert with scope detection
     const contacts = aiResult?.contacts || [];
     const isVenueDoc = ["TECH", "VENUE"].includes(finalDocType);
     if (contacts.length > 0) {
@@ -591,7 +967,6 @@ Deno.serve(async (req) => {
       totalExtracted += contacts.length;
     }
 
-    // Venue contacts from venues array → insert as VENUE-scoped contacts
     const venues = aiResult?.venues || [];
     const venueContacts = venues
       .filter(v => v.contact_name)
@@ -612,7 +987,6 @@ Deno.serve(async (req) => {
       totalExtracted += venueContacts.length;
     }
 
-    // Finance - batch insert
     const finance = aiResult?.finance || [];
     if (finance.length > 0) {
       const rows = finance.map(fl => ({
@@ -626,7 +1000,6 @@ Deno.serve(async (req) => {
       totalExtracted += finance.length;
     }
 
-    // Travel — store as knowledge gaps
     const travel = aiResult?.travel || [];
     if (travel.length > 0) {
       const rows = travel.map(t => ({
@@ -647,7 +1020,6 @@ Deno.serve(async (req) => {
       totalExtracted += travel.length;
     }
 
-    // Protocols
     const protocols = aiResult?.protocols || [];
     if (protocols.length > 0) {
       const rows = protocols.map(p => ({
@@ -661,7 +1033,6 @@ Deno.serve(async (req) => {
       totalExtracted += protocols.length;
     }
 
-    // Venues — store as knowledge gaps with full details (reuses venues from above)
     if (venues.length > 0) {
       const rows = venues.map(v => ({
         tour_id: doc.tour_id,
@@ -680,8 +1051,6 @@ Deno.serve(async (req) => {
       await adminClient.from("knowledge_gaps").insert(rows);
       totalExtracted += venues.length;
     }
-    // Don't auto-activate — leave document pending for user review/approval
-    // The frontend will activate after the user reviews and approves the extraction
 
     const result = {
       doc_type: finalDocType,
