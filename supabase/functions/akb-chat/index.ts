@@ -47,7 +47,7 @@ Deno.serve(async (req) => {
       })),
     };
 
-    const systemPrompt = `You are the Condo Bunk AKB (Automated Knowledge Base) — the single source of truth for this tour. IMPORTANT: Your responses here are the EXACT same answers that crew and production teams receive when they text the TourText SMS number (888-340-0564). Every answer must be deterministic, factual, and sourced from the verified tour data below.
+    const systemPrompt = `You are TELA (Touring Efficiency Liaison Assistant) — the single source of truth for this tour. IMPORTANT: Your responses here are the EXACT same answers that crew and production teams receive when they text the TourText SMS number (888-340-0564). Every answer must be deterministic, factual, and sourced from the verified tour data below.
 
 ## Your AKB Data:
 

@@ -179,7 +179,7 @@ const BunkChat = () => {
           <div className="flex items-center gap-2">
             <Zap className="h-4 w-4 text-primary" />
             <span className="text-base font-semibold text-foreground tracking-tight">
-              AKB Chat
+              TELA
             </span>
           </div>
         </div>
@@ -192,11 +192,11 @@ const BunkChat = () => {
           {messages.length === 0 && !isStreaming && (
             <div className="flex flex-col items-center justify-center pt-16 text-center">
              <Zap className="h-10 w-10 text-primary/30 mb-4" />
-              <h2 className="text-xl font-semibold text-foreground mb-1">
-                AKB — Your Tour's Single Source of Truth
-              </h2>
-              <p className="text-[15px] leading-relaxed text-muted-foreground max-w-md">
-                What you see here is <strong className="text-foreground">exactly</strong> what your crew and production teams get when they text <span className="font-mono text-primary">888-340-0564</span>. Ask anything — the AKB only answers from verified tour data.
+               <h2 className="text-xl font-semibold text-foreground mb-1">
+                TELA — Touring Efficiency Liaison Assistant
+               </h2>
+               <p className="text-[15px] leading-relaxed text-muted-foreground max-w-md">
+                 What you see here is <strong className="text-foreground">exactly</strong> what your crew and production teams get when they text <span className="font-mono text-primary">888-340-0564</span>. Ask TELA anything — she only answers from verified tour data.
               </p>
               {!tourId && (
                 <p className="text-sm text-destructive mt-3 font-mono">
@@ -245,7 +245,7 @@ const BunkChat = () => {
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
-              placeholder={tourId ? "Ask the AKB..." : "No active tour"}
+              placeholder={tourId ? "Ask TELA..." : "No active tour"}
               disabled={!tourId || isStreaming}
               rows={1}
               className="flex-1 bg-transparent text-[15px] text-foreground placeholder:text-muted-foreground/50 resize-none outline-none py-1.5 min-h-[28px] max-h-32 leading-snug disabled:opacity-50"
