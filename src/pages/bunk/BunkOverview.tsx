@@ -253,7 +253,7 @@ const BunkOverview = () => {
     <div className="space-y-8 max-w-5xl">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Operations Overview</h1>
+          <h1 className="text-2xl font-bold tracking-tight">TELA TL;DR</h1>
           <p className="text-sm text-muted-foreground font-mono mt-1">
             Real-time tour intelligence
           </p>
