@@ -63,6 +63,15 @@ const TRAVEL_ICONS: Record<string, typeof Plane> = {
 
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
+/** Times are stored as UTC but represent local venue times. Read UTC values directly. */
+const formatStoredTime = (ts: string): string => {
+  const d = new Date(ts);
+  const h = d.getUTCHours();
+  const m = d.getUTCMinutes();
+  const ampm = h >= 12 ? "PM" : "AM";
+  return `${h % 12 || 12}:${m.toString().padStart(2, "0")} ${ampm}`;
+};
+
 const BunkCalendar = () => {
   const { selectedTourId } = useTour();
   const [entries, setEntries] = useState<CalendarEntry[]>([]);
@@ -114,13 +123,13 @@ const BunkCalendar = () => {
       for (const s of shows) {
         const details: string[] = [];
         if (s.load_in) {
-          try { details.push(`Load-in: ${format(new Date(s.load_in), "h:mm a")}`); } catch {}
+          try { details.push(`Load-in: ${formatStoredTime(s.load_in)}`); } catch {}
         }
         if (s.show_time) {
-          try { details.push(`Show: ${format(new Date(s.show_time), "h:mm a")}`); } catch {}
+          try { details.push(`Show: ${formatStoredTime(s.show_time)}`); } catch {}
         }
         if (s.end_time) {
-          try { details.push(`End: ${format(new Date(s.end_time), "h:mm a")}`); } catch {}
+          try { details.push(`End: ${formatStoredTime(s.end_time)}`); } catch {}
         }
         // Parse notes for address and other info
         const notes = (s as any).notes as string | null;
