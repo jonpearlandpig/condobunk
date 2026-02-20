@@ -159,7 +159,7 @@ const BunkCoverage = () => {
                           <button
                             onClick={() =>
                               navigate(
-                                `/bunk/chat?q=${encodeURIComponent(
+                                `/bunk/chat?scope=tour&q=${encodeURIComponent(
                                   domainQuestions[type] || `How do we cover ${type}?`
                                 )}`
                               )

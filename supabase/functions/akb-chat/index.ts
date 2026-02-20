@@ -22,50 +22,154 @@ Deno.serve(async (req) => {
       });
     }
 
-    const { messages, tour_id } = await req.json();
+    const { messages, tour_id, tour_ids } = await req.json();
 
-    // Gather AKB context from the database
     const admin = createClient(supabaseUrl, serviceKey);
 
-    const [eventsRes, contactsRes, gapsRes, conflictsRes, docsRes] = await Promise.all([
-      admin.from("schedule_events").select("id, event_date, venue, city, load_in, show_time, notes").eq("tour_id", tour_id).order("event_date").limit(50),
-      admin.from("contacts").select("id, name, role, email, phone, scope, venue").eq("tour_id", tour_id).limit(50),
-      admin.from("knowledge_gaps").select("id, question, domain, resolved").eq("tour_id", tour_id).limit(20),
-      admin.from("calendar_conflicts").select("id, conflict_type, severity, resolved, event_id").eq("tour_id", tour_id).limit(20),
-      admin.from("documents").select("id, filename, doc_type, raw_text, file_path").eq("tour_id", tour_id).eq("is_active", true).limit(10),
-    ]);
+    // Determine which tours to query
+    let targetTourIds: string[] = [];
+    let isGlobalMode = false;
 
-    // Generate signed URLs for documents that have files in storage
-    const docsWithUrls = await Promise.all(
-      (docsRes.data || []).map(async (d: any) => {
-        let fileUrl: string | null = null;
-        if (d.file_path) {
-          const { data: signedData } = await admin.storage
-            .from("document-files")
-            .createSignedUrl(d.file_path, 3600); // 1 hour expiry
-          if (signedData?.signedUrl) {
-            fileUrl = signedData.signedUrl;
-          }
-        }
+    if (tour_ids && Array.isArray(tour_ids) && tour_ids.length > 0) {
+      targetTourIds = tour_ids;
+      isGlobalMode = tour_ids.length > 1;
+    } else if (tour_id) {
+      targetTourIds = [tour_id];
+    } else {
+      return new Response(JSON.stringify({ error: "No tour_id or tour_ids provided" }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    // Fetch tour names for context
+    const { data: tourRows } = await admin
+      .from("tours")
+      .select("id, name")
+      .in("id", targetTourIds);
+
+    const tourNameMap: Record<string, string> = {};
+    (tourRows || []).forEach((t: any) => { tourNameMap[t.id] = t.name; });
+
+    // Query all tours in parallel
+    const allTourData = await Promise.all(
+      targetTourIds.map(async (tid) => {
+        const [eventsRes, contactsRes, gapsRes, conflictsRes, docsRes] = await Promise.all([
+          admin.from("schedule_events").select("id, event_date, venue, city, load_in, show_time, notes").eq("tour_id", tid).order("event_date").limit(50),
+          admin.from("contacts").select("id, name, role, email, phone, scope, venue").eq("tour_id", tid).limit(50),
+          admin.from("knowledge_gaps").select("id, question, domain, resolved").eq("tour_id", tid).limit(20),
+          admin.from("calendar_conflicts").select("id, conflict_type, severity, resolved, event_id").eq("tour_id", tid).limit(20),
+          admin.from("documents").select("id, filename, doc_type, raw_text, file_path").eq("tour_id", tid).eq("is_active", true).limit(10),
+        ]);
+
+        const docsWithUrls = await Promise.all(
+          (docsRes.data || []).map(async (d: any) => {
+            let fileUrl: string | null = null;
+            if (d.file_path) {
+              const { data: signedData } = await admin.storage
+                .from("document-files")
+                .createSignedUrl(d.file_path, 3600);
+              if (signedData?.signedUrl) {
+                fileUrl = signedData.signedUrl;
+              }
+            }
+            return {
+              id: d.id,
+              filename: d.filename,
+              doc_type: d.doc_type,
+              file_url: fileUrl,
+              excerpt: d.raw_text?.substring(0, 2000) || "(visual/binary document — no text extracted)",
+            };
+          })
+        );
+
         return {
-          id: d.id,
-          filename: d.filename,
-          doc_type: d.doc_type,
-          file_url: fileUrl,
-          excerpt: d.raw_text?.substring(0, 2000) || "(visual/binary document — no text extracted)",
+          tour_id: tid,
+          tour_name: tourNameMap[tid] || "Unknown Tour",
+          schedule: eventsRes.data || [],
+          contacts: contactsRes.data || [],
+          knowledge_gaps: gapsRes.data || [],
+          conflicts: conflictsRes.data || [],
+          documents: docsWithUrls,
         };
       })
     );
 
-    const akbContext = {
-      schedule: eventsRes.data || [],
-      contacts: contactsRes.data || [],
-      knowledge_gaps: gapsRes.data || [],
-      conflicts: conflictsRes.data || [],
-      documents: docsWithUrls,
-    };
+    // Build system prompt based on mode
+    let akbDataSection: string;
 
-    const systemPrompt = `You are TELA (Touring Efficiency Liaison Assistant) — the single source of truth for this tour. Your responses here are the EXACT same answers that crew and production teams receive when they text the TourText SMS number (888-340-0564). Every answer must be deterministic, factual, and sourced from the verified tour data below.
+    if (isGlobalMode) {
+      // Multi-tour: group data by tour name
+      akbDataSection = allTourData.map((td) => {
+        const tourContacts = td.contacts as any[];
+        return `
+## ═══ TOUR: ${td.tour_name} (ID: ${td.tour_id}) ═══
+
+### Schedule Events:
+${JSON.stringify(td.schedule, null, 1)}
+
+### Tour Team Contacts (scope=TOUR):
+${JSON.stringify(tourContacts.filter((c: any) => c.scope !== "VENUE"), null, 1)}
+
+### Venue Contacts (scope=VENUE):
+${JSON.stringify(tourContacts.filter((c: any) => c.scope === "VENUE"), null, 1)}
+
+### Knowledge Gaps:
+${JSON.stringify(td.knowledge_gaps, null, 1)}
+
+### Calendar Conflicts:
+${JSON.stringify(td.conflicts, null, 1)}
+
+### Active Documents:
+${td.documents.map(d => `[${d.doc_type}] ${d.filename} (id: ${d.id})${d.file_url ? `\nDownload: ${d.file_url}` : ""}:\n${d.excerpt}`).join("\n---\n")}
+`;
+      }).join("\n\n");
+    } else {
+      // Single-tour: same format as before
+      const td = allTourData[0];
+      const tourContacts = td.contacts as any[];
+      akbDataSection = `
+### Schedule Events (with IDs):
+${JSON.stringify(td.schedule, null, 1)}
+
+### Tour Team Contacts (scope=TOUR):
+${JSON.stringify(tourContacts.filter((c: any) => c.scope !== "VENUE"), null, 1)}
+
+### Venue Contacts (scope=VENUE — these are venue-specific staff, NOT your touring team):
+${JSON.stringify(tourContacts.filter((c: any) => c.scope === "VENUE"), null, 1)}
+
+### Knowledge Gaps (with IDs):
+${JSON.stringify(td.knowledge_gaps, null, 1)}
+
+### Calendar Conflicts (with IDs):
+${JSON.stringify(td.conflicts, null, 1)}
+
+### Active Documents (with download links):
+${td.documents.map(d => `[${d.doc_type}] ${d.filename} (id: ${d.id})${d.file_url ? `\nDownload: ${d.file_url}` : ""}:\n${d.excerpt}`).join("\n---\n")}
+`;
+    }
+
+    const modeInstructions = isGlobalMode
+      ? `## MODE: GLOBAL (Cross-Tour Search)
+
+You are searching across ${allTourData.length} active tours. The data below is grouped by tour name.
+
+CRITICAL BEHAVIOR FOR GLOBAL MODE:
+- When a query matches data from MULTIPLE tours (e.g., same date, same venue name), ALWAYS show ALL matching results grouped by tour name.
+- Prefix each answer section with the tour name in bold: **[Tour Name]**
+- If only ONE tour has a match, answer directly but still mention which tour the data comes from.
+- NEVER mix data from different tours without clearly labeling which tour each piece belongs to.
+- For action blocks, ALWAYS include the tour_id in the action so the correct tour is modified.
+- Source citations MUST include the tour name: [Source: Schedule — Tour Name — 2026-03-08]
+`
+      : `## MODE: SCOPED (Single Tour: ${allTourData[0]?.tour_name || "Unknown"})
+
+You are locked to a single tour. All data below belongs to "${allTourData[0]?.tour_name}". Do NOT reference any other tours.
+`;
+
+    const systemPrompt = `You are TELA (Touring Efficiency Liaison Assistant) — the single source of truth for tour data. Your responses here are the EXACT same answers that crew and production teams receive when they text the TourText SMS number (888-340-0564). Every answer must be deterministic, factual, and sourced from the verified tour data below.
+
+${modeInstructions}
 
 ## CRITICAL BEHAVIOR: SOLVE, DON'T JUST REPORT
 
@@ -81,11 +185,11 @@ NEVER leave the user wondering what to do. NEVER just state a problem without pr
 
 When you can fix something directly in the database, include an action block in your response. The format is:
 
-<<ACTION:{"type":"resolve_conflict","id":"<conflict_uuid>"}>>
-<<ACTION:{"type":"resolve_gap","id":"<gap_uuid>"}>>
-<<ACTION:{"type":"update_event","id":"<event_uuid>","fields":{"venue":"New Venue","city":"New City","notes":"Updated notes"}}>>
-<<ACTION:{"type":"update_contact","id":"<contact_uuid>","fields":{"phone":"555-1234","email":"new@email.com"}}>>
-<<ACTION:{"type":"create_contact","id":"new","fields":{"name":"Jane Doe","role":"Stage Manager","phone":"555-9999","email":"jane@tour.com","scope":"TOUR"}}>>
+<<ACTION:{"type":"resolve_conflict","id":"<conflict_uuid>","tour_id":"<tour_uuid>"}>>
+<<ACTION:{"type":"resolve_gap","id":"<gap_uuid>","tour_id":"<tour_uuid>"}>>
+<<ACTION:{"type":"update_event","id":"<event_uuid>","tour_id":"<tour_uuid>","fields":{"venue":"New Venue","city":"New City","notes":"Updated notes"}}>>
+<<ACTION:{"type":"update_contact","id":"<contact_uuid>","tour_id":"<tour_uuid>","fields":{"phone":"555-1234","email":"new@email.com"}}>>
+<<ACTION:{"type":"create_contact","id":"new","tour_id":"<tour_uuid>","fields":{"name":"Jane Doe","role":"Stage Manager","phone":"555-9999","email":"jane@tour.com","scope":"TOUR"}}>>
 
 Rules for actions:
 - Include the action block AFTER your explanation of what the fix does
@@ -95,26 +199,11 @@ Rules for actions:
 - Use real IDs from the data below — EXCEPT for create_contact where id must be "new"
 - For create_contact, you MUST include "name" and "scope" (TOUR or VENUE) in fields. Optionally include role, phone, email, venue.
 - NEVER use fake IDs like "new_contact_xyz" for update_contact — that action is for EXISTING contacts only. Use create_contact to add new people.
+- ALWAYS include "tour_id" in action blocks so the correct tour is modified.
 
 ## Your AKB Data:
 
-### Schedule Events (with IDs):
-${JSON.stringify(akbContext.schedule, null, 1)}
-
-### Tour Team Contacts (scope=TOUR):
-${JSON.stringify((akbContext.contacts as any[]).filter((c: any) => c.scope !== "VENUE"), null, 1)}
-
-### Venue Contacts (scope=VENUE — these are venue-specific staff, NOT your touring team):
-${JSON.stringify((akbContext.contacts as any[]).filter((c: any) => c.scope === "VENUE"), null, 1)}
-
-### Knowledge Gaps (with IDs):
-${JSON.stringify(akbContext.knowledge_gaps, null, 1)}
-
-### Calendar Conflicts (with IDs):
-${JSON.stringify(akbContext.conflicts, null, 1)}
-
-### Active Documents (with download links):
-${akbContext.documents.map(d => `[${d.doc_type}] ${d.filename} (id: ${d.id})${d.file_url ? `\nDownload: ${d.file_url}` : ""}:\n${d.excerpt}`).join("\n---\n")}
+${akbDataSection}
 
 ## SOURCE CITATIONS (MANDATORY)
 
@@ -135,6 +224,7 @@ Rules for citations:
 - If information comes from multiple sources, list them: [Source: Schedule — 3/8, Document — parking.pdf]
 - When data is MISSING, cite it as a Gap: [Source: Gap — field not in AKB]
 - Keep source tags concise — just enough to identify the record
+${isGlobalMode ? "- In global mode, ALWAYS include the tour name in citations: [Source: Schedule — Tour Name — 3/8]" : ""}
 
 ## Rules:
 - ONLY answer from the tour data above. NEVER fabricate, assume, or guess ANY information.

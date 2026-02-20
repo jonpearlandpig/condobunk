@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { ArrowLeft, Send, Loader2, Zap } from "lucide-react";
+import { ArrowLeft, Send, Loader2, Zap, Globe, Target } from "lucide-react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { SidebarTrigger } from "@/components/ui/sidebar";
 import { useTour } from "@/hooks/useTour";
@@ -16,7 +16,7 @@ const AKB_CHAT_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/akb-chat
 const BunkChat = () => {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
-  const { tours } = useTour();
+  const { tours, selectedTourId, selectedTour } = useTour();
   const [messages, setMessages] = useState<Msg[]>([]);
   const [input, setInput] = useState("");
   const [isStreaming, setIsStreaming] = useState(false);
@@ -24,25 +24,45 @@ const BunkChat = () => {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const hasAutoSent = useRef(false);
 
-  const tourId = tours[0]?.id;
+  // Determine scope: ?scope=tour locks to selectedTourId, otherwise global
+  const scopeParam = searchParams.get("scope");
+  const isScoped = scopeParam === "tour" && !!selectedTourId;
+  const scopedTourName = isScoped ? selectedTour?.name : null;
+
+  // Get the tour IDs to send to the edge function
+  const getPayloadTourIds = useCallback(() => {
+    if (isScoped && selectedTourId) {
+      return { tour_id: selectedTourId };
+    }
+    // Global mode: send all active tour IDs
+    const allIds = tours.map((t) => t.id);
+    if (allIds.length === 1) {
+      return { tour_id: allIds[0] };
+    }
+    return { tour_ids: allIds };
+  }, [isScoped, selectedTourId, tours]);
+
+  const hasTours = tours.length > 0;
 
   // Auto-send if launched with ?q= query from TLDR
   useEffect(() => {
     const q = searchParams.get("q");
-    if (q && tourId && !hasAutoSent.current && messages.length === 0) {
+    if (q && hasTours && !hasAutoSent.current && messages.length === 0) {
       hasAutoSent.current = true;
-      // Clear the query param
-      setSearchParams({}, { replace: true });
+      // Clear the q param but keep scope
+      const newParams: Record<string, string> = {};
+      if (scopeParam) newParams.scope = scopeParam;
+      setSearchParams(newParams, { replace: true });
       sendMessage(`I need help with this issue from my daily briefing: "${q}". What does the tour data show, and what should I do?`);
     }
-  }, [searchParams, tourId]);
+  }, [searchParams, hasTours]);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
   }, [messages]);
 
   const sendMessage = useCallback(async (text: string) => {
-    if (!text.trim() || !tourId || isStreaming) return;
+    if (!text.trim() || !hasTours || isStreaming) return;
 
     const userMsg: Msg = { role: "user", content: text.trim() };
     setMessages(prev => [...prev, userMsg]);
@@ -61,7 +81,7 @@ const BunkChat = () => {
         },
         body: JSON.stringify({
           messages: allMessages.map(m => ({ role: m.role, content: m.content })),
-          tour_id: tourId,
+          ...getPayloadTourIds(),
         }),
       });
 
@@ -148,7 +168,7 @@ const BunkChat = () => {
     }
 
     setIsStreaming(false);
-  }, [messages, tourId, isStreaming]);
+  }, [messages, hasTours, isStreaming, getPayloadTourIds]);
 
   const handleSubmit = () => {
     sendMessage(input);
@@ -186,6 +206,26 @@ const BunkChat = () => {
               TELA
             </span>
           </div>
+          {/* Scope badge */}
+          {hasTours && (
+            <div className={`flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-mono tracking-wider uppercase ${
+              isScoped
+                ? "bg-primary/10 text-primary border border-primary/20"
+                : "bg-muted text-muted-foreground border border-border"
+            }`}>
+              {isScoped ? (
+                <>
+                  <Target className="h-3 w-3" />
+                  {scopedTourName || "Tour"}
+                </>
+              ) : (
+                <>
+                  <Globe className="h-3 w-3" />
+                  All Tours
+                </>
+              )}
+            </div>
+          )}
         </div>
         <SidebarTrigger className="text-muted-foreground" />
       </div>
@@ -202,7 +242,12 @@ const BunkChat = () => {
                <p className="text-[15px] leading-relaxed text-muted-foreground max-w-md">
                  Tour Efficiency Liaison Assistant
               </p>
-              {!tourId && (
+              <p className="text-xs text-muted-foreground/60 mt-2 font-mono">
+                {isScoped
+                  ? `Locked to: ${scopedTourName || "selected tour"}`
+                  : `Searching across ${tours.length} active tour${tours.length !== 1 ? "s" : ""}`}
+              </p>
+              {!hasTours && (
                 <p className="text-sm text-destructive mt-3 font-mono">
                   No active tour found. Create one first.
                 </p>
@@ -274,17 +319,17 @@ const BunkChat = () => {
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
-              placeholder={tourId ? "Ask TELA..." : "No active tour"}
-              disabled={!tourId || isStreaming}
+              placeholder={hasTours ? "Ask TELA..." : "No active tour"}
+              disabled={!hasTours || isStreaming}
               rows={1}
               className="flex-1 bg-transparent text-[15px] md:text-base text-foreground placeholder:text-muted-foreground/50 resize-none outline-none py-1.5 min-h-[28px] max-h-32 leading-snug disabled:opacity-50"
               style={{ fontFamily: "var(--font-display)" }}
             />
             <button
               onClick={handleSubmit}
-              disabled={!input.trim() || !tourId || isStreaming}
+              disabled={!input.trim() || !hasTours || isStreaming}
               className={`shrink-0 h-8 w-8 flex items-center justify-center rounded-full transition-colors ${
-                input.trim() && tourId && !isStreaming
+                input.trim() && hasTours && !isStreaming
                   ? "bg-foreground text-background hover:bg-foreground/90"
                   : "bg-muted text-muted-foreground"
               }`}
