@@ -43,7 +43,7 @@ const navItems = [
 const BunkSidebar = () => {
   const { setOpenMobile, setOpen } = useSidebar();
   const isMobile = useIsMobile();
-  const { tourContacts, venueContacts, venueLabel, loading, updateContact } = useSidebarContacts();
+  const { tourContacts, venueContacts, venueLabel, loading, updateContact, deleteContact } = useSidebarContacts();
 
   // Listen for hover-open event from layout edge zone
   useEffect(() => {
@@ -108,7 +108,7 @@ const BunkSidebar = () => {
                 <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground/40" />
               </div>
             ) : (
-              <SidebarContactList contacts={tourContacts} onNavigate={handleNavClick} onUpdate={updateContact} />
+              <SidebarContactList contacts={tourContacts} onNavigate={handleNavClick} onUpdate={updateContact} onDelete={deleteContact} />
             )}
           </SidebarGroupContent>
         </SidebarGroup>
@@ -125,7 +125,7 @@ const BunkSidebar = () => {
                 <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground/40" />
               </div>
             ) : (
-              <SidebarContactList contacts={venueContacts} onNavigate={handleNavClick} onUpdate={updateContact} />
+              <SidebarContactList contacts={venueContacts} onNavigate={handleNavClick} onUpdate={updateContact} onDelete={deleteContact} />
             )}
           </SidebarGroupContent>
         </SidebarGroup>

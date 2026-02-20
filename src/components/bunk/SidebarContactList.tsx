@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Phone, Mail, MessageSquare, Pencil, Check, X } from "lucide-react";
+import { Phone, Mail, MessageSquare, Pencil, Check, X, Trash2 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import type { SidebarContact } from "@/hooks/useSidebarContacts";
 import {
@@ -14,9 +14,10 @@ interface SidebarContactListProps {
   contacts: SidebarContact[];
   onNavigate?: () => void;
   onUpdate?: (id: string, updates: Partial<Pick<SidebarContact, "name" | "role" | "phone" | "email">>) => Promise<void>;
+  onDelete?: (id: string) => Promise<void>;
 }
 
-const SidebarContactList = ({ contacts, onNavigate, onUpdate }: SidebarContactListProps) => {
+const SidebarContactList = ({ contacts, onNavigate, onUpdate, onDelete }: SidebarContactListProps) => {
   const navigate = useNavigate();
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState({ name: "", role: "", phone: "", email: "" });
@@ -96,22 +97,39 @@ const SidebarContactList = ({ contacts, onNavigate, onUpdate }: SidebarContactLi
                 placeholder="Email"
                 className="w-full bg-background/80 border border-border rounded px-2 py-1 text-xs text-foreground outline-none focus:border-primary font-mono"
               />
-              <div className="flex items-center justify-end gap-1 pt-0.5">
-                <button
-                  onClick={cancelEdit}
-                  className="p-1 rounded text-muted-foreground hover:text-destructive transition-colors"
-                  aria-label="Cancel"
-                >
-                  <X className="h-3.5 w-3.5" />
-                </button>
-                <button
-                  onClick={saveEdit}
-                  disabled={!editForm.name.trim()}
-                  className="p-1 rounded text-muted-foreground hover:text-primary transition-colors disabled:opacity-30"
-                  aria-label="Save"
-                >
-                  <Check className="h-3.5 w-3.5" />
-                </button>
+              <div className="flex items-center justify-between pt-0.5">
+                {onDelete && (
+                  <button
+                    onClick={async () => {
+                      try {
+                        await onDelete(c.id);
+                        toast.success("Contact deleted");
+                        setEditingId(null);
+                      } catch { toast.error("Failed to delete"); }
+                    }}
+                    className="p-1 rounded text-muted-foreground hover:text-destructive transition-colors"
+                    aria-label="Delete"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </button>
+                )}
+                <div className="flex items-center gap-1">
+                  <button
+                    onClick={cancelEdit}
+                    className="p-1 rounded text-muted-foreground hover:text-destructive transition-colors"
+                    aria-label="Cancel"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                  <button
+                    onClick={saveEdit}
+                    disabled={!editForm.name.trim()}
+                    className="p-1 rounded text-muted-foreground hover:text-primary transition-colors disabled:opacity-30"
+                    aria-label="Save"
+                  >
+                    <Check className="h-3.5 w-3.5" />
+                  </button>
+                </div>
               </div>
             </div>
           ) : (
