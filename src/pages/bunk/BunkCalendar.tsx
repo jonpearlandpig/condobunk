@@ -47,6 +47,8 @@ interface CalendarEntry {
   category: EventCategory;
   title: string;
   subtitle?: string;
+  address?: string;
+  notes?: string;
   details: string[];
   confidence?: number;
   travelType?: string;
@@ -120,13 +122,18 @@ const BunkCalendar = () => {
         if (s.end_time) {
           try { details.push(`End: ${format(new Date(s.end_time), "h:mm a")}`); } catch {}
         }
-        // Parse notes into detail lines
+        // Parse notes for address and other info
         const notes = (s as any).notes as string | null;
+        let address: string | undefined;
+        const noteLines: string[] = [];
         if (notes) {
-          const noteLines = notes.split("\n").filter(Boolean);
-          // First line is the day title, rest are schedule items
-          for (const line of noteLines.slice(1)) {
-            details.push(line.trim());
+          for (const line of notes.split("\n").filter(Boolean)) {
+            const trimmed = line.trim();
+            if (trimmed.toLowerCase().startsWith("address:")) {
+              address = trimmed.replace(/^address:\s*/i, "");
+            } else {
+              noteLines.push(trimmed);
+            }
           }
         }
         merged.push({
@@ -135,6 +142,8 @@ const BunkCalendar = () => {
           category: "SHOW",
           title: s.venue || "TBD Venue",
           subtitle: s.city || undefined,
+          address,
+          notes: noteLines.length > 0 ? noteLines.join("\n") : undefined,
           details,
           confidence: s.confidence_score ?? undefined,
         });
@@ -417,6 +426,20 @@ const BunkCalendar = () => {
                   <div className="flex items-center gap-2 text-sm text-muted-foreground">
                     <MapPin className="h-3.5 w-3.5 shrink-0" />
                     <span>{selectedEntry.subtitle}</span>
+                  </div>
+                )}
+
+                {selectedEntry.address && (
+                  <div className="flex items-start gap-2 text-sm text-muted-foreground">
+                    <MapPin className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+                    <span>{selectedEntry.address}</span>
+                  </div>
+                )}
+
+                {selectedEntry.notes && (
+                  <div className="rounded-md bg-muted/50 p-3">
+                    <p className="text-[11px] font-mono tracking-wider text-muted-foreground uppercase mb-1.5">Notes</p>
+                    <p className="text-sm text-foreground whitespace-pre-line">{selectedEntry.notes}</p>
                   </div>
                 )}
 
