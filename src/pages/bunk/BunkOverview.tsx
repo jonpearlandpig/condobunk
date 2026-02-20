@@ -225,10 +225,10 @@ const BunkOverview = () => {
   };
 
   const cards = [
-    { label: "ACTIVE TOURS", value: tours.length, icon: Radio, color: "text-primary" },
-    { label: "SCHEDULE EVENTS", value: eventCount, icon: BarChart3, color: "text-info" },
-    { label: "OPEN GAPS", value: gapCount, icon: HelpCircle, color: "text-warning" },
-    { label: "CONFLICTS", value: conflictCount, icon: AlertTriangle, color: "text-destructive" },
+    { label: "ACTIVE TOURS", value: tours.length, icon: Radio, color: "text-primary", link: null },
+    { label: "SCHEDULE EVENTS", value: eventCount, icon: BarChart3, color: "text-info", link: "/bunk/calendar" },
+    { label: "OPEN GAPS", value: gapCount, icon: HelpCircle, color: "text-warning", link: "/bunk/gaps" },
+    { label: "CONFLICTS", value: conflictCount, icon: AlertTriangle, color: "text-destructive", link: "/bunk/conflicts" },
   ];
 
   return (
@@ -297,7 +297,8 @@ const BunkOverview = () => {
             initial={{ opacity: 0, y: 12 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: i * 0.08 }}
-            className="rounded-lg border border-border bg-card p-5"
+            onClick={() => card.link && navigate(card.link)}
+            className={`rounded-lg border border-border bg-card p-5 ${card.link ? "cursor-pointer hover:border-primary/50 transition-colors" : ""}`}
             style={{ boxShadow: "var(--shadow-card)" }}
           >
             <div className="flex items-center justify-between mb-3">
