@@ -6,7 +6,8 @@ export type TelaActionType =
   | "resolve_conflict"
   | "resolve_gap"
   | "update_event"
-  | "update_contact";
+  | "update_contact"
+  | "create_contact";
 
 export interface TelaAction {
   type: TelaActionType;
@@ -51,6 +52,8 @@ export function getActionLabel(action: TelaAction): string {
       return "Update Event";
     case "update_contact":
       return "Update Contact";
+    case "create_contact":
+      return "Add Contact";
     default:
       return "Apply Fix";
   }
@@ -105,6 +108,28 @@ export function useTelaActions() {
             .eq("id", action.id);
           if (error) throw error;
           toast({ title: "Contact updated", description: "TELA updated the contact info." });
+          return true;
+        }
+        case "create_contact": {
+          if (!action.fields || !action.fields.name) throw new Error("Contact name is required");
+          // Get current user's tour_id
+          const { data: membership } = await supabase
+            .from("tour_members")
+            .select("tour_id")
+            .limit(1)
+            .single();
+          if (!membership) throw new Error("No active tour found");
+          const validFields = ["name", "role", "phone", "email", "scope", "venue"];
+          const insert: Record<string, unknown> = { tour_id: membership.tour_id };
+          for (const [k, v] of Object.entries(action.fields)) {
+            if (validFields.includes(k)) insert[k] = v;
+          }
+          if (!insert.scope) insert.scope = "TOUR";
+          const { error } = await supabase
+            .from("contacts")
+            .insert(insert as any);
+          if (error) throw error;
+          toast({ title: "Contact added", description: `TELA added ${action.fields.name} to the AKB.` });
           return true;
         }
         default:
