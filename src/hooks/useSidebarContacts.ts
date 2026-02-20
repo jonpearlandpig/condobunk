@@ -10,6 +10,8 @@ export interface SidebarContact {
   email: string | null;
   scope: "TOUR" | "VENUE";
   venue: string | null;
+  /** If this contact matches an app user, their user ID */
+  appUserId?: string;
 }
 
 export const useSidebarContacts = () => {
@@ -24,15 +26,42 @@ export const useSidebarContacts = () => {
     if (!tourId) return;
     setLoading(true);
 
-    const { data: tourData } = await supabase
-      .from("contacts")
-      .select("id, name, role, phone, email, scope, venue")
-      .eq("tour_id", tourId)
-      .eq("scope", "TOUR")
-      .order("name");
+    // Fetch contacts, tour members, and profiles in parallel
+    const [tourDataRes, membersRes] = await Promise.all([
+      supabase
+        .from("contacts")
+        .select("id, name, role, phone, email, scope, venue")
+        .eq("tour_id", tourId)
+        .eq("scope", "TOUR")
+        .order("name"),
+      supabase
+        .from("tour_members")
+        .select("user_id")
+        .eq("tour_id", tourId),
+    ]);
 
-    setTourContacts((tourData as SidebarContact[]) || []);
+    const memberIds = (membersRes.data || []).map(m => m.user_id);
+    let profileMap: Record<string, string> = {}; // email -> user_id
 
+    if (memberIds.length > 0) {
+      const { data: profiles } = await supabase
+        .from("profiles")
+        .select("id, email")
+        .in("id", memberIds);
+      (profiles || []).forEach(p => {
+        if (p.email) profileMap[p.email.toLowerCase()] = p.id;
+      });
+    }
+
+    // Map contacts to app user IDs by matching email
+    const enriched: SidebarContact[] = ((tourDataRes.data || []) as SidebarContact[]).map(c => ({
+      ...c,
+      appUserId: c.email ? profileMap[c.email.toLowerCase()] : undefined,
+    }));
+
+    setTourContacts(enriched);
+
+    // Venue contacts (rolling weekly)
     const today = new Date();
     const weekAhead = new Date();
     weekAhead.setDate(today.getDate() + 7);
@@ -75,7 +104,6 @@ export const useSidebarContacts = () => {
     }
     fetchContacts();
 
-    // Auto-refresh when TELA or other actions change contacts
     const handler = () => fetchContacts();
     window.addEventListener("contacts-changed", handler);
     return () => window.removeEventListener("contacts-changed", handler);
@@ -87,7 +115,6 @@ export const useSidebarContacts = () => {
       .update(updates)
       .eq("id", id);
     if (error) throw error;
-    // Optimistically update local state
     const updater = (prev: SidebarContact[]) =>
       prev.map(c => c.id === id ? { ...c, ...updates } : c);
     setTourContacts(updater);
