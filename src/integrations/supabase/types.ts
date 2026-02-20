@@ -260,6 +260,7 @@ export type Database = {
           event_date: string | null
           id: string
           load_in: string | null
+          notes: string | null
           show_time: string | null
           source_doc_id: string | null
           tour_id: string
@@ -273,6 +274,7 @@ export type Database = {
           event_date?: string | null
           id?: string
           load_in?: string | null
+          notes?: string | null
           show_time?: string | null
           source_doc_id?: string | null
           tour_id: string
@@ -286,6 +288,7 @@ export type Database = {
           event_date?: string | null
           id?: string
           load_in?: string | null
+          notes?: string | null
           show_time?: string | null
           source_doc_id?: string | null
           tour_id?: string
