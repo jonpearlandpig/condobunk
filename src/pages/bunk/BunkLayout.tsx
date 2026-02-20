@@ -10,9 +10,17 @@ const BunkLayout = () => {
 
   return (
     <TourProvider>
-      <SidebarProvider>
+      <SidebarProvider defaultOpen={false}>
         <div className="h-dvh flex w-full overflow-hidden">
           <BunkSidebar />
+          {/* Invisible hover zone to open sidebar on desktop */}
+          <div
+            className="hidden md:block fixed left-0 top-0 h-full w-3 z-40"
+            onMouseEnter={() => {
+              const event = new CustomEvent("sidebar-hover-open");
+              window.dispatchEvent(event);
+            }}
+          />
           <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
             <header className="h-12 flex items-center justify-between border-b border-border px-4 bg-card/50">
               <div className="flex items-center gap-3">

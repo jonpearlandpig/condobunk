@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import {
   LayoutDashboard,
   CalendarDays,
@@ -37,6 +38,14 @@ const BunkSidebar = () => {
   const { setOpenMobile, setOpen } = useSidebar();
   const isMobile = useIsMobile();
 
+  // Listen for hover-open event from layout edge zone
+  useEffect(() => {
+    if (isMobile) return;
+    const handler = () => setOpen(true);
+    window.addEventListener("sidebar-hover-open", handler);
+    return () => window.removeEventListener("sidebar-hover-open", handler);
+  }, [isMobile, setOpen]);
+
   const handleNavClick = () => {
     if (isMobile) {
       setOpenMobile(false);
@@ -46,7 +55,10 @@ const BunkSidebar = () => {
   };
 
   return (
-    <Sidebar className="border-r border-border">
+    <Sidebar
+      className="border-r border-border"
+      onMouseLeave={() => { if (!isMobile) setOpen(false); }}
+    >
       <SidebarContent className="pt-4">
         <SidebarGroup>
           <SidebarGroupLabel className="font-mono text-[10px] tracking-[0.2em] text-muted-foreground/60 uppercase px-4">
