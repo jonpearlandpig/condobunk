@@ -936,12 +936,38 @@ Deno.serve(async (req) => {
           else riskCount = riskFlags.length;
         }
 
-        // Insert contacts from tech pack
+        // Insert contacts from tech pack — pull from ALL sources
         const techContacts = techResult.contacts || [];
         const identityContacts = (techResult.venue_identity as Record<string, unknown>)?.production_contacts as Array<Record<string, string>> || [];
+        
+        // Extract contacts from contact_chain_of_command (production_manager, technical_director, etc.)
+        const chainOfCommand = (techResult.contact_chain_of_command || {}) as Record<string, unknown>;
+        const chainContacts: Array<Record<string, string>> = [];
+        const roleMap: Record<string, string> = {
+          production_manager: "Production Manager",
+          technical_director: "Technical Director",
+          head_rigger: "Head Rigger",
+          foh_engineer: "FOH Engineer",
+          security_lead: "Security Lead",
+          promoter_rep: "Promoter Rep",
+        };
+        for (const [key, val] of Object.entries(chainOfCommand)) {
+          if (key === "after_hours_emergency" && Array.isArray(val)) {
+            for (const e of val) {
+              if (e && typeof e === "object" && (e as Record<string, string>).name) {
+                chainContacts.push({ name: (e as Record<string, string>).name, role: (e as Record<string, string>).role || "Emergency Contact", phone: (e as Record<string, string>).phone || "", email: "" });
+              }
+            }
+          } else if (val && typeof val === "object" && !Array.isArray(val) && (val as Record<string, string>).name) {
+            const v = val as Record<string, string>;
+            chainContacts.push({ name: v.name, role: roleMap[key] || key, phone: v.phone || "", email: v.email || "" });
+          }
+        }
+
         const allContacts = [
           ...techContacts.map(c => ({ name: c.name, role: c.role, phone: c.phone, email: c.email })),
           ...identityContacts.map(c => ({ name: c.name, role: c.title, phone: c.phone, email: c.email })),
+          ...chainContacts,
         ];
 
         let contactCount = 0;
