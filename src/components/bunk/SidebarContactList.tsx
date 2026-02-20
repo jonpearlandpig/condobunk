@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from "react";
-import { Phone, Mail, MessageSquare, Pencil, Check, X, Trash2, MessageCircle, Send } from "lucide-react";
+import { Phone, Mail, MessageSquare, Pencil, Check, X, Trash2, MessageCircle, Send, ChevronRight } from "lucide-react";
 import { useNavigate } from "react-router-dom";
-import type { SidebarContact } from "@/hooks/useSidebarContacts";
+import type { SidebarContact, VenueGroup } from "@/hooks/useSidebarContacts";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { useAuth } from "@/hooks/useAuth";
 import { useTour } from "@/hooks/useTour";
@@ -22,9 +22,11 @@ interface SidebarContactListProps {
   onlineUserIds?: Set<string>;
   /** When true, contacts are grouped by venue name with quick-access actions always visible */
   grouped?: boolean;
+  /** Pre-built venue groups with calendar ordering + city info */
+  venueGroups?: VenueGroup[];
 }
 
-const SidebarContactList = ({ contacts, onNavigate, onUpdate, onDelete, onlineUserIds, grouped }: SidebarContactListProps) => {
+const SidebarContactList = ({ contacts, onNavigate, onUpdate, onDelete, onlineUserIds, grouped, venueGroups }: SidebarContactListProps) => {
   const navigate = useNavigate();
   const isMobile = useIsMobile();
   const { user } = useAuth();
@@ -32,6 +34,7 @@ const SidebarContactList = ({ contacts, onNavigate, onUpdate, onDelete, onlineUs
   const tourId = tours[0]?.id;
   const [editingId, setEditingId] = useState<string | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [expandedVenues, setExpandedVenues] = useState<Set<string>>(new Set());
   const [editForm, setEditForm] = useState({ name: "", role: "", phone: "", email: "" });
   const [chattingWith, setChattingWith] = useState<string | null>(null); // contact id
   const [chatMessages, setChatMessages] = useState<Array<{ id: string; sender_id: string; message_text: string; created_at: string }>>([]);
@@ -412,29 +415,81 @@ const SidebarContactList = ({ contacts, onNavigate, onUpdate, onDelete, onlineUs
     );
   };
 
-  // Group contacts by venue if grouped mode
-  if (grouped) {
-    const groups: Record<string, SidebarContact[]> = {};
-    for (const c of sorted) {
-      const key = c.venue || "Other";
-      if (!groups[key]) groups[key] = [];
-      groups[key].push(c);
-    }
-    const groupEntries = Object.entries(groups);
+  // Expandable venue groups mode (calendar-ordered)
+  if (grouped && venueGroups) {
+    const toggleVenue = (venue: string) => {
+      setExpandedVenues(prev => {
+        const next = new Set(prev);
+        if (next.has(venue)) next.delete(venue);
+        else next.add(venue);
+        return next;
+      });
+    };
+
+    const formatDate = (d: string) => {
+      const date = new Date(d + "T00:00:00");
+      return date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+    };
 
     return (
       <TooltipProvider delayDuration={300}>
-        <div className="space-y-2">
-          {groupEntries.map(([venue, members]) => (
-            <div key={venue}>
-              <p className="px-4 py-1 text-[10px] font-mono tracking-wider text-muted-foreground/70 uppercase truncate">
-                {venue}
-              </p>
-              <div className="space-y-0.5">
-                {members.map((c) => renderContact(c, true))}
+        <div className="space-y-0.5">
+          {venueGroups.map((group) => {
+            const isExpanded = expandedVenues.has(group.venue);
+            const hasContacts = group.contacts.length > 0;
+
+            return (
+              <div key={group.venue}>
+                <button
+                  onClick={() => toggleVenue(group.venue)}
+                  className="w-full flex items-center gap-2 px-4 py-2 hover:bg-sidebar-accent/50 rounded-md transition-colors text-left group"
+                >
+                  <ChevronRight className={`h-3 w-3 text-muted-foreground/50 shrink-0 transition-transform ${isExpanded ? "rotate-90" : ""}`} />
+                  <div className="min-w-0 flex-1">
+                    <p className="text-xs font-medium text-sidebar-foreground truncate leading-tight">
+                      {group.venue}
+                    </p>
+                    <p className="text-[10px] font-mono text-muted-foreground/50 truncate leading-tight">
+                      {group.city || "Location TBD"} · {formatDate(group.earliestDate)}
+                    </p>
+                  </div>
+                  {!hasContacts && (
+                    <span className="text-[9px] font-mono tracking-wider text-warning/70 shrink-0">NO CONTACTS</span>
+                  )}
+                  {hasContacts && (
+                    <span className="text-[10px] font-mono text-muted-foreground/40 shrink-0">{group.contacts.length}</span>
+                  )}
+                </button>
+
+                {isExpanded && (
+                  <div className="ml-2 border-l border-border/30 pl-1">
+                    {hasContacts ? (
+                      <div className="space-y-0.5">
+                        {group.contacts.map((c) => renderContact(c, true))}
+                      </div>
+                    ) : (
+                      <div className="px-4 py-2.5 space-y-1.5">
+                        <p className="text-[10px] text-muted-foreground/50 italic">
+                          No venue contacts in AKB for {group.venue}
+                        </p>
+                        <button
+                          onClick={() => {
+                            const q = `We need venue contacts for ${group.venue}${group.city ? ` in ${group.city}` : ""}. What do we need to cover?`;
+                            navigate(`/bunk/chat?q=${encodeURIComponent(q)}`);
+                            onNavigate?.();
+                          }}
+                          className="inline-flex items-center gap-1.5 text-[10px] font-mono tracking-wider text-primary hover:text-primary/80 transition-colors"
+                        >
+                          <MessageSquare className="h-3 w-3" />
+                          ASK TELA
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </TooltipProvider>
     );

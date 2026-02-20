@@ -40,7 +40,7 @@ const navItems = [
 const BunkSidebar = () => {
   const { setOpenMobile, setOpen } = useSidebar();
   const isMobile = useIsMobile();
-  const { tourContacts, venueContacts, venueLabel, loading, updateContact, deleteContact } = useSidebarContacts();
+  const { tourContacts, venueContacts, venueGroups, venueLabel, loading, updateContact, deleteContact } = useSidebarContacts();
   const { onlineUsers } = usePresence();
 
   useEffect(() => {
@@ -119,7 +119,7 @@ const BunkSidebar = () => {
                 <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground/40" />
               </div>
             ) : (
-              <SidebarContactList contacts={venueContacts} onNavigate={handleNavClick} onUpdate={updateContact} onDelete={deleteContact} onlineUserIds={onlineUsers} grouped />
+              <SidebarContactList contacts={venueContacts} onNavigate={handleNavClick} onUpdate={updateContact} onDelete={deleteContact} onlineUserIds={onlineUsers} grouped venueGroups={venueGroups} />
             )}
           </SidebarGroupContent>
         </SidebarGroup>

@@ -14,10 +14,18 @@ export interface SidebarContact {
   appUserId?: string;
 }
 
+export interface VenueGroup {
+  venue: string;
+  city: string | null;
+  earliestDate: string; // YYYY-MM-DD for sorting
+  contacts: SidebarContact[];
+}
+
 export const useSidebarContacts = () => {
   const { tours } = useTour();
   const tourId = tours[0]?.id;
   const [tourContacts, setTourContacts] = useState<SidebarContact[]>([]);
+  const [venueGroups, setVenueGroups] = useState<VenueGroup[]>([]);
   const [venueContacts, setVenueContacts] = useState<SidebarContact[]>([]);
   const [venueLabel, setVenueLabel] = useState<string>("");
   const [loading, setLoading] = useState(true);
@@ -61,7 +69,7 @@ export const useSidebarContacts = () => {
 
     setTourContacts(enriched);
 
-    // Venue contacts (rolling weekly)
+    // Venue contacts (rolling 3 weeks)
     const today = new Date();
     const threeWeeks = new Date();
     threeWeeks.setDate(today.getDate() + 21);
@@ -70,14 +78,26 @@ export const useSidebarContacts = () => {
 
     const { data: events } = await supabase
       .from("schedule_events")
-      .select("venue, event_date")
+      .select("venue, city, event_date")
       .eq("tour_id", tourId)
       .gte("event_date", todayStr)
       .lte("event_date", threeWeeksStr)
       .order("event_date");
 
-    const venueNames = [...new Set((events || []).map(e => e.venue).filter(Boolean))] as string[];
+    // Build unique venues in calendar order with city info
+    const venueMap = new Map<string, { city: string | null; earliestDate: string }>();
+    for (const e of (events || [])) {
+      if (!e.venue) continue;
+      if (!venueMap.has(e.venue)) {
+        venueMap.set(e.venue, { city: e.city, earliestDate: e.event_date || todayStr });
+      }
+    }
 
+    // Also include venues from events without contacts (city-only from schedule)
+    // and venues that have no venue contacts yet
+    const venueNames = [...venueMap.keys()];
+
+    let venueContactsData: SidebarContact[] = [];
     if (venueNames.length > 0) {
       setVenueLabel(venueNames.length === 1 ? venueNames[0] : `${venueNames.length} Venues`);
       const { data: venueData } = await supabase
@@ -88,11 +108,25 @@ export const useSidebarContacts = () => {
         .in("venue", venueNames)
         .order("venue")
         .order("name");
-      setVenueContacts((venueData as SidebarContact[]) || []);
+      venueContactsData = (venueData as SidebarContact[]) || [];
     } else {
       setVenueLabel("");
-      setVenueContacts([]);
     }
+
+    setVenueContacts(venueContactsData);
+
+    // Build grouped structure ordered by calendar
+    const groups: VenueGroup[] = [];
+    for (const [venue, meta] of venueMap) {
+      groups.push({
+        venue,
+        city: meta.city,
+        earliestDate: meta.earliestDate,
+        contacts: venueContactsData.filter(c => c.venue === venue),
+      });
+    }
+    // Already in calendar order from the Map insertion order (events were ordered by date)
+    setVenueGroups(groups);
 
     setLoading(false);
   }, [tourId]);
@@ -132,5 +166,5 @@ export const useSidebarContacts = () => {
     setVenueContacts(remover);
   }, []);
 
-  return { tourContacts, venueContacts, venueLabel, loading, updateContact, deleteContact, refetch: fetchContacts };
+  return { tourContacts, venueContacts, venueGroups, venueLabel, loading, updateContact, deleteContact, refetch: fetchContacts };
 };
