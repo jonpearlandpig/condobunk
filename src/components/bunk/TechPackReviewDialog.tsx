@@ -255,7 +255,7 @@ const TechPackReviewDialog = ({
   const [techSpec, setTechSpec] = useState<TechSpec | null>(null);
   const [loading, setLoading] = useState(true);
   const [approving, setApproving] = useState(false);
-  const [expandedDomains, setExpandedDomains] = useState<Set<string>>(new Set());
+  const [expandedDomains, setExpandedDomains] = useState<Set<string>>(new Set(["structural"]));
   const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set());
 
   useEffect(() => {
@@ -331,7 +331,7 @@ const TechPackReviewDialog = ({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-3xl max-h-[90vh] flex flex-col">
+      <DialogContent className="max-w-3xl h-[95dvh] sm:max-h-[90vh] sm:h-auto flex flex-col p-4 sm:p-6">
         <DialogHeader>
           <DialogTitle className="font-mono tracking-tight flex items-center gap-2">
             <Building2 className="h-5 w-5 text-primary" />
@@ -374,7 +374,7 @@ const TechPackReviewDialog = ({
             <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
           </div>
         ) : (
-          <ScrollArea className="flex-1" style={{ maxHeight: "60vh" }}>
+          <ScrollArea className="flex-1 min-h-0">
             <div className="space-y-3 pr-4">
               {/* Domain Status Bar Overview */}
               {techSpec && (
@@ -575,18 +575,18 @@ const TechPackReviewDialog = ({
           </ScrollArea>
         )}
 
-        <DialogFooter className="pt-4 border-t border-border">
+        <DialogFooter className="pt-3 border-t border-border flex-col sm:flex-row gap-2">
           <Button
             variant="outline"
             onClick={() => onOpenChange(false)}
-            className="font-mono text-xs"
+            className="font-mono text-xs w-full sm:w-auto"
           >
             Cancel
           </Button>
           <Button
             onClick={handleApprove}
             disabled={approving || loading}
-            className="font-mono text-xs gap-1.5"
+            className="font-mono text-xs gap-1.5 w-full sm:w-auto"
           >
             {approving ? (
               <Loader2 className="h-3 w-3 animate-spin" />
