@@ -661,8 +661,7 @@ Deno.serve(async (req) => {
       totalExtracted += protocols.length;
     }
 
-    // Venues — store as knowledge gaps with full details
-    const venues = aiResult?.venues || [];
+    // Venues — store as knowledge gaps with full details (reuses venues from above)
     if (venues.length > 0) {
       const rows = venues.map(v => ({
         tour_id: doc.tour_id,
