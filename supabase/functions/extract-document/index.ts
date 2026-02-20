@@ -109,7 +109,7 @@ function detectDomain(filename: string, text: string): DomainResult {
 
 // ─── AI-Powered Structured Extraction ───
 
-const EXTRACTION_PROMPT = `You are a tour document extraction engine. Analyze the following tour document and extract ALL structured data you can find.
+const EXTRACTION_PROMPT = `You are a tour document extraction engine for the live music industry. Your job is to extract EVERY piece of structured data from tour documents with zero data loss. Missing even one detail (a call time, a travel day, a crew name) is a critical failure.
 
 Return a JSON object with these fields (include only what you find, omit empty arrays):
 
@@ -119,14 +119,14 @@ Return a JSON object with these fields (include only what you find, omit empty a
   "schedule_events": [
     {
       "event_date": "YYYY-MM-DD",
-      "city": "City Name",
+      "city": "City, ST" (always include state/province abbreviation),
       "venue": "Venue Name",
-      "load_in": "HH:MM" (24h),
-      "show_time": "HH:MM" (24h),
-      "end_time": "HH:MM" (24h),
+      "load_in": "HH:MM" (24h) — this is the EARLIEST call time or first activity of the day,
+      "show_time": "HH:MM" (24h) — the actual performance/show start time, not rehearsal,
+      "end_time": "HH:MM" (24h) — the last scheduled activity end time for that day,
       "doors": "HH:MM" (24h),
       "soundcheck": "HH:MM" (24h),
-      "notes": "CRITICAL: This must contain the FULL detailed daily schedule. Format as: First line = day title/description (e.g. 'Band Only Rehearsal'). Following lines = every scheduled activity with times, one per line (e.g. 'Production Crew Call Time: 9:00 AM', 'LUNCH: 1:00 PM - 1:30 PM', 'Rehearsals: 1:30 PM - 6:30 PM'). Include ALL call times, load-ins, soundchecks, rehearsals, meals, breaks, tech checks, cue-to-cues, load outs — every single time block from the document for that day."
+      "notes": "FULL daily schedule. Line 1 = day title (e.g. 'Band Only Rehearsal' or 'Travel Day' or 'Day Off'). Lines 2+ = every activity with times, one per line. Include ALL: crew calls, rigging, load-ins, soundchecks, rehearsals, tech checks, cue-to-cues, meals (LUNCH, DINNER), breaks, production handovers, lighting sessions, load outs. NEVER skip an activity."
     }
   ],
   "contacts": [
@@ -180,18 +180,29 @@ Return a JSON object with these fields (include only what you find, omit empty a
   ]
 }
 
-IMPORTANT RULES:
-- Extract EVERYTHING you can find, even partial data
-- For dates, always use YYYY-MM-DD format. If only month/day given, assume the most likely year
-- For times, use 24-hour HH:MM format
-- CRITICAL: If a time (load_in, show_time, end_time, doors, soundcheck) is NOT explicitly stated in the document, set it to null. NEVER guess or infer times. Only include times that are literally written in the source text.
-- CRITICAL: The "notes" field for each schedule_events entry MUST contain the COMPLETE detailed daily production schedule. Each day in a production document typically has a full breakdown of activities (crew calls, load-ins, soundchecks, rehearsals, meals, tech checks, cue-to-cues, load outs). Capture ALL of these as newline-separated entries with their times. This is the most important field for production schedules.
-- If a document has one page per day with a detailed schedule table, create one schedule_event per day with ALL the schedule items in the notes field.
-- For contacts, capture ALL people mentioned with any identifying info
-- For travel, capture flights, buses, hotels, ground transport — anything
-- For protocols, capture rider requirements, security protocols, hospitality needs, dressing room requirements, catering specs
-- Return ONLY valid JSON, no markdown formatting, no code blocks
-- If the document covers multiple categories (schedule + contacts + travel), extract ALL of them`;
+MISSION-CRITICAL RULES:
+
+SCHEDULE EXTRACTION:
+- Extract EVERY day mentioned in the document — including Travel Days, Day Offs, Prep Days, Load In Days, Rehearsal Days. These are NOT optional. If a weekly overview strip shows "Sun: Travel Day, Mon: Travel Day, Tue: Backline Prep" — those MUST each become a schedule_event.
+- "load_in" = the EARLIEST call time or first activity of the day (e.g., if Rigging Mark Up is at 08:00 and Load In is at 09:00, load_in = "08:00").
+- "end_time" = the LAST activity's end time for that day.
+- The "notes" field is the MOST IMPORTANT field. It must contain the COMPLETE daily production schedule with EVERY time block. Format: first line = day description, subsequent lines = "Activity Name: Time" or "Activity Name: Start Time - End Time". Never omit meals, breaks, or any scheduled block.
+- If a document has one page per day, create one schedule_event per day.
+- If a document has a weekly overview strip/table at the bottom of pages, extract ALL days from it — including days without their own dedicated page. These often show Travel Days, Off Days, and Prep Days that have no other page.
+- For cities, ALWAYS include the state abbreviation (e.g., "Nashville, TN" not just "Nashville").
+
+GENERAL:
+- Extract EVERYTHING you can find, even partial data.
+- For dates, always use YYYY-MM-DD format. If only month/day given, assume the most likely year.
+- For times, use 24-hour HH:MM format.
+- CRITICAL: If a time (show_time, doors, soundcheck) is NOT explicitly stated, set it to null. NEVER guess. Only include times literally written in the source.
+- For contacts, capture ALL people mentioned with any identifying info.
+- For travel, capture flights, buses, hotels, ground transport — anything.
+- For protocols, capture rider requirements, security protocols, hospitality needs, dressing room requirements, catering specs.
+- For venues, capture the full address, capacity, and any venue contacts mentioned.
+- Return ONLY valid JSON, no markdown formatting, no code blocks.
+- If the document covers multiple categories (schedule + contacts + travel), extract ALL of them.
+- ZERO DATA LOSS. If you can read it in the document, it must appear in the output.`;
 
 interface AIExtractionResult {
   tour_name?: string | null;
@@ -498,6 +509,37 @@ Deno.serve(async (req) => {
       }
     }
 
+    // ── Deduplicate: remove old extracted data for this doc type before inserting ──
+    // Delete schedule_events that share the same tour + overlapping dates from previous extractions
+    if ((aiResult?.schedule_events || []).length > 0) {
+      const extractedDates = (aiResult?.schedule_events || [])
+        .map(e => e.event_date)
+        .filter(Boolean) as string[];
+      
+      if (extractedDates.length > 0) {
+        const { error: dedupeErr } = await adminClient
+          .from("schedule_events")
+          .delete()
+          .eq("tour_id", doc.tour_id)
+          .in("event_date", extractedDates);
+        
+        if (dedupeErr) console.error("[extract] dedup schedule_events error:", dedupeErr);
+        else console.log("[extract] Deduped schedule_events for dates:", extractedDates.join(", "));
+      }
+    }
+
+    // Deduplicate contacts: remove old contacts from same tour before inserting new ones from this doc
+    if ((aiResult?.contacts || []).length > 0) {
+      const { error: dedupeContactErr } = await adminClient
+        .from("contacts")
+        .delete()
+        .eq("tour_id", doc.tour_id)
+        .not("source_doc_id", "is", null);
+      
+      if (dedupeContactErr) console.error("[extract] dedup contacts error:", dedupeContactErr);
+      else console.log("[extract] Deduped old extracted contacts");
+    }
+
     // ── Persist extracted entities ──
     let totalExtracted = 0;
 
@@ -595,7 +637,26 @@ Deno.serve(async (req) => {
       totalExtracted += protocols.length;
     }
 
-    // ── Activate document ──
+    // Venues — store as knowledge gaps with full details
+    const venues = aiResult?.venues || [];
+    if (venues.length > 0) {
+      const rows = venues.map(v => ({
+        tour_id: doc.tour_id,
+        question: `[VENUE] ${v.name || "Unknown Venue"}${v.city ? `, ${v.city}` : ""}${v.state ? `, ${v.state}` : ""} | ${[
+          v.address ? `Address: ${v.address}` : "",
+          v.capacity ? `Capacity: ${v.capacity}` : "",
+          v.contact_name ? `Contact: ${v.contact_name}` : "",
+          v.contact_phone ? `Phone: ${v.contact_phone}` : "",
+          v.contact_email ? `Email: ${v.contact_email}` : "",
+          v.notes || "",
+        ].filter(Boolean).join(" | ")}`,
+        domain: "VENUE",
+        resolved: true,
+        user_id: user.id,
+      }));
+      await adminClient.from("knowledge_gaps").insert(rows);
+      totalExtracted += venues.length;
+    }
     if (totalExtracted > 0) {
       await adminClient
         .from("documents")
