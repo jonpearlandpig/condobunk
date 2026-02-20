@@ -111,7 +111,7 @@ const BunkSidebar = () => {
         <SidebarGroup>
           <SidebarGroupLabel className="font-mono text-[10px] tracking-[0.2em] text-muted-foreground/60 uppercase px-4 flex items-center gap-2">
             <Building2 className="h-3 w-3" />
-            {venueLabel || "This Week's Venues"}
+            Venue Partners
           </SidebarGroupLabel>
           <SidebarGroupContent>
             {loading ? (

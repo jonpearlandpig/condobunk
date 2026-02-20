@@ -63,17 +63,17 @@ export const useSidebarContacts = () => {
 
     // Venue contacts (rolling weekly)
     const today = new Date();
-    const weekAhead = new Date();
-    weekAhead.setDate(today.getDate() + 7);
+    const threeWeeks = new Date();
+    threeWeeks.setDate(today.getDate() + 21);
     const todayStr = today.toISOString().split("T")[0];
-    const weekAheadStr = weekAhead.toISOString().split("T")[0];
+    const threeWeeksStr = threeWeeks.toISOString().split("T")[0];
 
     const { data: events } = await supabase
       .from("schedule_events")
       .select("venue, event_date")
       .eq("tour_id", tourId)
       .gte("event_date", todayStr)
-      .lte("event_date", weekAheadStr)
+      .lte("event_date", threeWeeksStr)
       .order("event_date");
 
     const venueNames = [...new Set((events || []).map(e => e.venue).filter(Boolean))] as string[];
