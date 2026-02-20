@@ -25,7 +25,7 @@ import { useIsMobile } from "@/hooks/use-mobile";
 const navItems = [
   { title: "Overview", url: "/bunk", icon: LayoutDashboard },
   { title: "Calendar", url: "/bunk/calendar", icon: CalendarDays },
-  { title: "Chat", url: "/bunk/chat", icon: MessageSquare },
+  { title: "TELA", url: "/bunk/chat", icon: MessageSquare },
   { title: "Documents", url: "/bunk/documents", icon: FileText },
   { title: "Gaps", url: "/bunk/gaps", icon: HelpCircle },
   { title: "Conflicts", url: "/bunk/conflicts", icon: AlertTriangle },
