@@ -92,9 +92,16 @@ export function useTelaActions() {
         }
         case "update_contact": {
           if (!action.fields) throw new Error("No fields to update");
+          // Only allow valid contact columns
+          const validContactFields = ["name", "role", "phone", "email", "scope", "venue"];
+          const sanitized: Record<string, unknown> = {};
+          for (const [k, v] of Object.entries(action.fields)) {
+            if (validContactFields.includes(k)) sanitized[k] = v;
+          }
+          if (Object.keys(sanitized).length === 0) throw new Error("No valid fields to update");
           const { error } = await supabase
             .from("contacts")
-            .update(action.fields)
+            .update(sanitized)
             .eq("id", action.id);
           if (error) throw error;
           toast({ title: "Contact updated", description: "TELA updated the contact info." });
