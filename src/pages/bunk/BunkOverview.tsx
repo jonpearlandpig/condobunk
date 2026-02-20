@@ -97,6 +97,8 @@ const BunkOverview = () => {
           .select("event_date, venue, city, notes")
           .in("tour_id", tourIds)
           .gte("event_date", today)
+          .not("venue", "ilike", "%ARCHIVED%")
+          .not("notes", "ilike", "%ARCHIVED%")
           .order("event_date", { ascending: true })
           .limit(15),
         supabase
