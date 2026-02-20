@@ -115,6 +115,7 @@ export type Database = {
       }
       documents: {
         Row: {
+          archived_at: string | null
           created_at: string
           doc_type: Database["public"]["Enums"]["doc_type"]
           file_path: string | null
@@ -126,6 +127,7 @@ export type Database = {
           version: number
         }
         Insert: {
+          archived_at?: string | null
           created_at?: string
           doc_type?: Database["public"]["Enums"]["doc_type"]
           file_path?: string | null
@@ -137,6 +139,7 @@ export type Database = {
           version?: number
         }
         Update: {
+          archived_at?: string | null
           created_at?: string
           doc_type?: Database["public"]["Enums"]["doc_type"]
           file_path?: string | null
