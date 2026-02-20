@@ -548,7 +548,8 @@ async function aiExtractFromText(text: string, apiKey: string, prompt: string): 
 function isTechPackDocument(filename: string, rawText: string): boolean {
   const fn = filename.toLowerCase();
   const techHints = ["tech pack", "techpack", "tech spec", "tech rider", "venue spec", "stage spec",
-    "tech info", "technical information", "venue information", "production information"];
+    "tech info", "technical information", "venue information", "production information",
+    "techdeck", "tech deck", "tech_deck", "tech-deck"];
   for (const hint of techHints) {
     if (fn.includes(hint)) return true;
   }
