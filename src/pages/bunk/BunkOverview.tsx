@@ -277,7 +277,7 @@ const BunkOverview = () => {
                       className="mt-1 inline-flex items-center gap-1.5 text-[11px] font-mono tracking-wider text-primary hover:text-primary/80 transition-colors"
                     >
                       <ChevronRight className="h-3 w-3" />
-                      EXPLORE SOLUTION
+                      ASK TELA
                     </button>
                   )}
                 </div>
