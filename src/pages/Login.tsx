@@ -69,8 +69,8 @@ const Login = () => {
               CONDO BUNK
             </h1>
           </div>
-          <p className="text-sm font-mono text-muted-foreground tracking-wider uppercase">
-            Tour Operations Command Center
+          <p className="text-sm text-muted-foreground tracking-wide">
+            Hide out. Get schtuff done!
           </p>
         </div>
 
