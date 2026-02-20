@@ -396,7 +396,7 @@ const BunkDocuments = () => {
       {/* Document List */}
       <div>
         <h2 className="text-sm font-mono text-muted-foreground tracking-wider mb-4">
-          UPLOADED DOCUMENTS ({activeDocuments.length})
+          AKB ARTIFACTS ({activeDocuments.length})
         </h2>
         {activeDocuments.length === 0 ? (
           <div className="rounded-lg border border-border border-dashed bg-card/50 p-8 text-center">
