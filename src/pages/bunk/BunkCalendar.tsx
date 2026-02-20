@@ -63,6 +63,7 @@ interface CalendarEntry {
   loadIn?: string;
   showTime?: string;
   endTime?: string;
+  capacity?: string;
   details: string[];
   confidence?: number;
   travelType?: string;
@@ -99,6 +100,7 @@ const buildShareText = (entry: CalendarEntry): string => {
   lines.push(`📍 ${entry.title}${entry.subtitle ? `, ${entry.subtitle}` : ""}`);
   try { lines.push(`📅 ${format(parseISO(entry.date), "EEEE, MMM d, yyyy")}`); } catch {}
   if (entry.address) lines.push(`🗺 ${entry.address}`);
+  if (entry.capacity) lines.push(`🏟 Cap: ${entry.capacity}`);
   if (entry.loadIn) lines.push(`🚪 Load-in: ${entry.loadIn}`);
   if (entry.showTime) lines.push(`🎤 Show: ${entry.showTime}`);
   if (entry.endTime) lines.push(`🏁 End: ${entry.endTime}`);
@@ -150,11 +152,22 @@ const BunkCalendar = () => {
     const tourNameMap: Record<string, string> = {};
     tours.forEach(t => { tourNameMap[t.id] = t.name; });
 
-    const { data: shows } = await supabase
-      .from("schedule_events")
-      .select("*")
-      .in("tour_id", tourIds)
-      .order("event_date", { ascending: true });
+    // Fetch schedule events + venue tech specs in parallel
+    const [{ data: shows }, { data: techSpecs }] = await Promise.all([
+      supabase.from("schedule_events").select("*").in("tour_id", tourIds).order("event_date", { ascending: true }),
+      supabase.from("venue_tech_specs").select("normalized_venue_name, venue_name, venue_identity, dock_load_in, stage_specs, hospitality_catering, transportation_logistics, tour_id").in("tour_id", tourIds),
+    ]);
+
+    // Build a lookup: normalized venue name → tech spec data
+    const specMap: Record<string, Record<string, unknown>> = {};
+    if (techSpecs) {
+      for (const spec of techSpecs) {
+        const key = (spec.normalized_venue_name || spec.venue_name || "").toLowerCase().trim();
+        if (key) specMap[key] = spec as Record<string, unknown>;
+      }
+    }
+
+    const normalize = (s: string | null | undefined) => (s || "").toLowerCase().trim().replace(/[^a-z0-9]/g, "");
 
     if (shows) {
       for (const s of shows) {
@@ -167,6 +180,7 @@ const BunkCalendar = () => {
         if (s.show_time) { try { showTime = formatStoredTime(s.show_time); details.push(`Show: ${showTime}`); } catch {} }
         if (s.end_time) { try { endTime = formatStoredTime(s.end_time); details.push(`End: ${endTime}`); } catch {} }
 
+        // Parse address from schedule notes
         const notes = (s as any).notes as string | null;
         let address: string | undefined;
         const noteLines: string[] = [];
@@ -181,6 +195,51 @@ const BunkCalendar = () => {
           }
         }
 
+        // Enrich from venue tech spec if available
+        const venueKey = normalize(s.venue);
+        const spec = venueKey ? Object.entries(specMap).find(([k]) => normalize(k) === venueKey || k.includes(venueKey) || venueKey.includes(k))?.[1] : undefined;
+
+        if (spec) {
+          const identity = spec.venue_identity as Record<string, unknown> | null;
+          const dockLoadIn = spec.dock_load_in as Record<string, unknown> | null;
+          const hospitality = spec.hospitality_catering as Record<string, unknown> | null;
+          const transport = spec.transportation_logistics as Record<string, unknown> | null;
+
+          // Address from venue_identity
+          if (!address && identity) {
+            const addr = identity.address || identity.full_address || identity.street_address;
+            if (addr) address = String(addr);
+          }
+
+          // Capacity
+          if (identity?.capacity) details.push(`Capacity: ${identity.capacity}`);
+
+          // Dock / load-in notes from tech spec
+          if (dockLoadIn?.notes || dockLoadIn?.access) {
+            const dockNote = dockLoadIn.notes || dockLoadIn.access;
+            if (dockNote) noteLines.push(`🚛 ${dockNote}`);
+          }
+
+          // Parking / transport note
+          if (transport?.parking || transport?.notes) {
+            const tNote = transport.parking || transport.notes;
+            if (tNote) noteLines.push(`🅿️ ${tNote}`);
+          }
+
+          // Hospitality note
+          if (hospitality?.catering || hospitality?.notes) {
+            const hNote = hospitality.catering || hospitality.notes;
+            if (hNote) noteLines.push(`🍽 ${hNote}`);
+          }
+        }
+
+        // Extract capacity for the entry
+        let capacity: string | undefined;
+        if (spec) {
+          const identity = spec.venue_identity as Record<string, unknown> | null;
+          if (identity?.capacity) capacity = String(identity.capacity);
+        }
+
         merged.push({
           id: s.id,
           date: s.event_date || "9999-12-31",
@@ -192,6 +251,7 @@ const BunkCalendar = () => {
           loadIn,
           showTime,
           endTime,
+          capacity,
           details,
           confidence: s.confidence_score ?? undefined,
           tourId: s.tour_id,
@@ -457,7 +517,7 @@ const BunkCalendar = () => {
                   </div>
 
                   {/* Key info card */}
-                  {(selectedEntry.address || selectedEntry.loadIn || selectedEntry.showTime || selectedEntry.endTime) && (
+                  {(selectedEntry.address || selectedEntry.loadIn || selectedEntry.showTime || selectedEntry.endTime || selectedEntry.capacity) && (
                     <div className="rounded-lg border border-border bg-muted/30 divide-y divide-border">
                       {selectedEntry.address && (
                         <div className="flex items-start gap-2.5 px-3 py-2.5">
@@ -465,6 +525,15 @@ const BunkCalendar = () => {
                           <div>
                             <p className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider mb-0.5">Address</p>
                             <p className="text-sm text-foreground">{selectedEntry.address}</p>
+                          </div>
+                        </div>
+                      )}
+                      {selectedEntry.capacity && (
+                        <div className="flex items-center gap-2.5 px-3 py-2.5">
+                          <Globe className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                          <div>
+                            <p className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider mb-0.5">Capacity</p>
+                            <p className="text-sm font-mono text-foreground">{selectedEntry.capacity}</p>
                           </div>
                         </div>
                       )}
@@ -506,7 +575,7 @@ const BunkCalendar = () => {
                     </div>
                   )}
 
-                  {!selectedEntry.address && !selectedEntry.loadIn && !selectedEntry.showTime && !selectedEntry.notes && !selectedEntry.subtitle && (
+                  {!selectedEntry.address && !selectedEntry.capacity && !selectedEntry.loadIn && !selectedEntry.showTime && !selectedEntry.notes && !selectedEntry.subtitle && (
                     <p className="text-sm text-muted-foreground font-mono italic">No additional details in AKB.</p>
                   )}
 
