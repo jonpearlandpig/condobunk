@@ -15,51 +15,50 @@
     --popover: 222 40% 9%;
     --popover-foreground: 210 20% 90%;
 
-    --primary: 38 92% 55%;
-    --primary-foreground: 222 47% 6%;
+    --primary: 16 85% 52%;
+    --primary-foreground: 20 10% 98%;
 
     --secondary: 220 30% 14%;
-    --secondary-foreground: 210 20% 80%;
+    --secondary-foreground: 20 15% 80%;
 
     --muted: 220 25% 12%;
     --muted-foreground: 215 15% 50%;
 
     --accent: 220 30% 16%;
-    --accent-foreground: 210 20% 85%;
+    --accent-foreground: 20 15% 85%;
 
     --destructive: 0 72% 51%;
     --destructive-foreground: 210 40% 98%;
 
     --border: 220 20% 16%;
     --input: 220 20% 16%;
-    --ring: 38 92% 55%;
-
+    --ring: 16 85% 52%;
     --radius: 0.5rem;
 
     --sidebar-background: 222 45% 7%;
     --sidebar-foreground: 210 15% 65%;
-    --sidebar-primary: 38 92% 55%;
-    --sidebar-primary-foreground: 222 47% 6%;
+    --sidebar-primary: 16 85% 52%;
+    --sidebar-primary-foreground: 20 10% 98%;
     --sidebar-accent: 220 30% 12%;
-    --sidebar-accent-foreground: 210 20% 85%;
+    --sidebar-accent-foreground: 20 15% 85%;
     --sidebar-border: 220 20% 14%;
-    --sidebar-ring: 38 92% 55%;
+    --sidebar-ring: 16 85% 52%;
 
     /* Custom tokens */
     --success: 142 71% 45%;
     --success-foreground: 142 71% 95%;
-    --warning: 38 92% 55%;
-    --warning-foreground: 38 92% 10%;
+    --warning: 24 90% 50%;
+    --warning-foreground: 24 90% 10%;
     --info: 210 80% 55%;
     --info-foreground: 210 80% 95%;
 
     --surface-elevated: 222 35% 11%;
     --surface-overlay: 222 35% 8%;
 
-    --gradient-amber: linear-gradient(135deg, hsl(38, 92%, 55%), hsl(28, 95%, 48%));
+    --gradient-amber: linear-gradient(135deg, hsl(16, 85%, 52%), hsl(8, 80%, 42%));
     --gradient-surface: linear-gradient(180deg, hsl(222, 40%, 10%), hsl(222, 47%, 6%));
 
-    --shadow-glow: 0 0 20px hsl(38 92% 55% / 0.15);
+    --shadow-glow: 0 0 20px hsl(16 85% 52% / 0.15);
     --shadow-card: 0 4px 24px hsl(222 47% 3% / 0.5);
 
     --font-display: 'Space Grotesk', system-ui, sans-serif;
