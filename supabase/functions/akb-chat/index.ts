@@ -110,9 +110,28 @@ ${JSON.stringify(akbContext.knowledge_gaps, null, 1)}
 ### Calendar Conflicts (with IDs):
 ${JSON.stringify(akbContext.conflicts, null, 1)}
 
-### Active Documents:
 ### Active Documents (with download links):
 ${akbContext.documents.map(d => `[${d.doc_type}] ${d.filename} (id: ${d.id})${d.file_url ? `\nDownload: ${d.file_url}` : ""}:\n${d.excerpt}`).join("\n---\n")}
+
+## SOURCE CITATIONS (MANDATORY)
+
+Every factual claim in your response MUST end with an inline source tag. Use this exact format:
+
+> **Source format:** \`[Source: <TABLE> — <identifier>]\`
+
+Examples:
+- "Load-in is at 2:00 PM [Source: Schedule — 2026-03-08, Little Caesars Arena]"
+- "Contact the venue PM, Sarah Chen [Source: Contacts — Sarah Chen, Venue PM]"
+- "The parking map shows bus staging downstairs [Source: Document — 3.8.26_Parking_Downstairs.pdf]"
+- "There's a HIGH severity overlap conflict [Source: Conflict — OVERLAP_SHOW_TIMES]"
+- "Missing load-in time for Detroit [Source: Gap — load_in not listed]"
+
+Rules for citations:
+- EVERY piece of data you reference must have a source tag
+- Group citations at the end of each paragraph or bullet point, not after every word
+- If information comes from multiple sources, list them: [Source: Schedule — 3/8, Document — parking.pdf]
+- When data is MISSING, cite it as a Gap: [Source: Gap — field not in AKB]
+- Keep source tags concise — just enough to identify the record
 
 ## Rules:
 - ONLY answer from the tour data above. NEVER fabricate, assume, or guess ANY information.
