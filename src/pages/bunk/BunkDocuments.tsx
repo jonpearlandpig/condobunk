@@ -236,30 +236,28 @@ const BunkDocuments = () => {
   };
 
   return (
-    <div className="space-y-6 max-w-4xl">
-      <div className="flex items-center justify-between">
+    <div className="space-y-4 max-w-4xl">
+      <div className="space-y-3">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Documents</h1>
           <p className="text-sm text-muted-foreground font-mono mt-1">
             Upload, extract, version, and activate tour documents
           </p>
         </div>
-        <div className="flex items-center gap-3">
-          {tours.length > 0 && (
-            <Select value={selectedTourId} onValueChange={setSelectedTourId}>
-              <SelectTrigger className="w-48 font-mono text-xs bg-muted">
-                <SelectValue placeholder="Select tour" />
-              </SelectTrigger>
-              <SelectContent>
-                {tours.map((t) => (
-                  <SelectItem key={t.id} value={t.id} className="font-mono text-xs">
-                    {t.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          )}
-        </div>
+        {tours.length > 0 && (
+          <Select value={selectedTourId} onValueChange={setSelectedTourId}>
+            <SelectTrigger className="w-full sm:w-48 font-mono text-xs bg-muted">
+              <SelectValue placeholder="Select tour" />
+            </SelectTrigger>
+            <SelectContent>
+              {tours.map((t) => (
+                <SelectItem key={t.id} value={t.id} className="font-mono text-xs">
+                  {t.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
       </div>
 
       {/* Upload Zone */}
@@ -318,20 +316,37 @@ const BunkDocuments = () => {
                     }
                   >
                     <div className="rounded-lg border border-border bg-card">
-                      <div className="flex items-center justify-between px-5 py-4">
-                        <div className="flex items-center gap-3 min-w-0">
-                          <FileText className="h-4 w-4 text-muted-foreground shrink-0" />
-                          <div className="min-w-0">
-                            <p className="font-medium text-sm truncate">
-                              {doc.filename || "Untitled"}
-                            </p>
-                            <p className="text-xs font-mono text-muted-foreground mt-0.5">
-                              v{doc.version} ·{" "}
-                              {new Date(doc.created_at).toLocaleDateString()}
-                            </p>
+                      <div className="px-4 py-3 space-y-2">
+                        {/* Top row: icon + filename + chevron */}
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <FileText className="h-4 w-4 text-muted-foreground shrink-0" />
+                            <div className="min-w-0">
+                              <p className="font-medium text-sm truncate">
+                                {doc.filename || "Untitled"}
+                              </p>
+                              <p className="text-xs font-mono text-muted-foreground mt-0.5">
+                                v{doc.version} ·{" "}
+                                {new Date(doc.created_at).toLocaleDateString()}
+                              </p>
+                            </div>
                           </div>
+                          <CollapsibleTrigger asChild>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="h-7 w-7 p-0 shrink-0"
+                            >
+                              <ChevronDown
+                                className={`h-3 w-3 transition-transform ${
+                                  expandedDoc === doc.id ? "rotate-180" : ""
+                                }`}
+                              />
+                            </Button>
+                          </CollapsibleTrigger>
                         </div>
-                        <div className="flex items-center gap-2 shrink-0">
+                        {/* Bottom row: badge + actions, wraps on mobile */}
+                        <div className="flex items-center gap-2 flex-wrap">
                           <Badge
                             variant="outline"
                             className={`font-mono text-[10px] tracking-wider ${
@@ -368,7 +383,6 @@ const BunkDocuments = () => {
                               REVIEW
                             </Button>
                           )}
-
                           <button
                             onClick={() => toggleActive(doc)}
                             className={`flex items-center gap-1.5 font-mono text-[10px] tracking-wider px-2.5 py-1 rounded-full border transition-colors ${
@@ -380,20 +394,6 @@ const BunkDocuments = () => {
                             <span className={`h-1.5 w-1.5 rounded-full ${doc.is_active ? "bg-success" : "bg-muted-foreground/40"}`} />
                             {doc.is_active ? "IN AKB" : "NOT IN AKB"}
                           </button>
-
-                          <CollapsibleTrigger asChild>
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              className="h-7 w-7 p-0"
-                            >
-                              <ChevronDown
-                                className={`h-3 w-3 transition-transform ${
-                                  expandedDoc === doc.id ? "rotate-180" : ""
-                                }`}
-                              />
-                            </Button>
-                          </CollapsibleTrigger>
                         </div>
                       </div>
                       <CollapsibleContent>
