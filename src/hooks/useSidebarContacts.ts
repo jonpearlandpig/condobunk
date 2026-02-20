@@ -74,6 +74,11 @@ export const useSidebarContacts = () => {
       return;
     }
     fetchContacts();
+
+    // Auto-refresh when TELA or other actions change contacts
+    const handler = () => fetchContacts();
+    window.addEventListener("contacts-changed", handler);
+    return () => window.removeEventListener("contacts-changed", handler);
   }, [tourId, fetchContacts]);
 
   const updateContact = useCallback(async (id: string, updates: Partial<Pick<SidebarContact, "name" | "role" | "phone" | "email">>) => {
