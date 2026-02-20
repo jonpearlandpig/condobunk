@@ -70,6 +70,42 @@ const BunkDocuments = () => {
     venueName: string;
     contactCount: number;
   } | null>(null);
+  const [reviewLoading, setReviewLoading] = useState(false);
+
+  const openTechReview = async (docId: string) => {
+    setReviewLoading(true);
+    try {
+      const { data: specs } = await supabase
+        .from("venue_tech_specs")
+        .select("id, venue_name")
+        .eq("source_doc_id", docId)
+        .limit(1);
+      const spec = specs?.[0];
+      if (!spec) {
+        toast({ title: "No tech spec found for this document", variant: "destructive" });
+        return;
+      }
+      const { data: flags } = await supabase
+        .from("venue_risk_flags")
+        .select("category, severity, risk_title, risk_detail")
+        .eq("tech_spec_id", spec.id);
+      const { count } = await supabase
+        .from("contacts")
+        .select("*", { count: "exact", head: true })
+        .eq("source_doc_id", docId);
+      setTechPackReview({
+        docId,
+        techSpecId: spec.id,
+        riskFlags: (flags || []).map(f => ({ category: f.category, severity: f.severity, title: f.risk_title, detail: f.risk_detail || "" })),
+        venueName: spec.venue_name,
+        contactCount: count || 0,
+      });
+    } catch (err: any) {
+      toast({ title: "Failed to load review", description: err.message, variant: "destructive" });
+    } finally {
+      setReviewLoading(false);
+    }
+  };
 
   useEffect(() => {
     if (selectedTourId) loadDocuments();
@@ -318,6 +354,17 @@ const BunkDocuments = () => {
                                 <Zap className="h-3 w-3" />
                               )}
                               EXTRACT
+                            </Button>
+                          )}
+                          {doc.doc_type === "TECH" && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="font-mono text-[10px] h-7 gap-1"
+                              onClick={() => openTechReview(doc.id)}
+                            >
+                              <Eye className="h-3 w-3" />
+                              REVIEW
                             </Button>
                           )}
 
