@@ -31,7 +31,7 @@ Deno.serve(async (req) => {
         messages: [
           {
             role: "system",
-            content: `You are a tour operations briefing assistant. Given tour data, produce exactly 4-5 short bullet points (one sentence each) that give a tour manager a quick snapshot of what they're dealing with right now.
+            content: `You are a tour operations briefing assistant. Given tour data, produce exactly 4-5 items that give a tour manager a quick snapshot of what they're dealing with right now.
 
 Focus on:
 1. What's coming up next (nearest event, when, where)
@@ -41,12 +41,14 @@ Focus on:
 5. General status/momentum of the tour
 
 Rules:
-- Be concise and direct — each line should be one clear sentence
+- Be concise and direct — each item should be one clear sentence
 - Use specific dates and venue names from the data
 - If there are conflicts, lead with those
 - Don't be generic — reference actual data points
-- Return ONLY a JSON array of strings, no markdown, no explanation
-- Example: ["Next show is Mar 5 at Allen County War Memorial in Fort Wayne — 3 days out.", "2 schedule conflicts still unresolved, including an overlapping show time.", ...]`,
+- Return ONLY a JSON array of objects with "text" (string) and "actionable" (boolean)
+- Set "actionable" to true for items that describe a problem, conflict, missing data, or issue that needs resolution
+- Set "actionable" to false for informational/status items
+- Example: [{"text":"2 duplicate entries for Mar 5-6 with conflicting venue info — needs review.","actionable":true},{"text":"Next show is Mar 5 at Allen County War Memorial in Fort Wayne.","actionable":false}]`,
           },
           {
             role: "user",
@@ -67,37 +69,50 @@ Rules:
 
     const data = await resp.json();
     let content = data.choices?.[0]?.message?.content || "[]";
-    // Strip markdown fences
     content = content.replace(/^```(?:json)?\s*\n?/i, "").replace(/\n?```\s*$/i, "").trim();
 
-    let lines: string[];
+    let items: Array<{ text: string; actionable: boolean }>;
     try {
-      // Try to find a JSON array in the response
       const arrayMatch = content.match(/\[[\s\S]*\]/);
       if (arrayMatch) {
-        lines = JSON.parse(arrayMatch[0]);
+        const parsed = JSON.parse(arrayMatch[0]);
+        // Handle both old format (string[]) and new format ({text, actionable}[])
+        if (typeof parsed[0] === "string") {
+          items = parsed.map((s: string) => ({
+            text: s,
+            actionable: /conflict|duplicate|missing|unresolved|issue|problem|error|gap|block/i.test(s),
+          }));
+        } else {
+          items = parsed;
+        }
       } else {
-        // Fallback: split by newlines and treat each as a bullet
-        lines = content
+        items = content
           .split("\n")
           .map((l: string) => l.replace(/^[-•*\d.)\s]+/, "").trim())
           .filter((l: string) => l.length > 10)
-          .slice(0, 5);
+          .slice(0, 5)
+          .map((s: string) => ({
+            text: s,
+            actionable: /conflict|duplicate|missing|unresolved|issue|problem|error|gap|block/i.test(s),
+          }));
       }
     } catch (_parseErr) {
-      // Final fallback: split by newlines
-      lines = content
+      items = content
         .split("\n")
         .map((l: string) => l.replace(/^[-•*\d.)\s]+/, "").trim())
         .filter((l: string) => l.length > 10)
-        .slice(0, 5);
+        .slice(0, 5)
+        .map((s: string) => ({
+          text: s,
+          actionable: /conflict|duplicate|missing|unresolved|issue|problem|error|gap|block/i.test(s),
+        }));
     }
 
-    if (!lines.length) {
-      lines = ["Tour briefing is being prepared — check back shortly."];
+    if (!items.length) {
+      items = [{ text: "Tour briefing is being prepared — check back shortly.", actionable: false }];
     }
 
-    return new Response(JSON.stringify({ lines }), {
+    return new Response(JSON.stringify({ lines: items }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (err) {
