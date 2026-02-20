@@ -191,12 +191,12 @@ const BunkChat = () => {
         <div className="max-w-2xl mx-auto space-y-6">
           {messages.length === 0 && !isStreaming && (
             <div className="flex flex-col items-center justify-center pt-16 text-center">
-              <MessageSquare className="h-10 w-10 text-muted-foreground/20 mb-4" />
+             <Zap className="h-10 w-10 text-primary/30 mb-4" />
               <h2 className="text-xl font-semibold text-foreground mb-1">
-                Tour Knowledge Base
+                AKB — Your Tour's Single Source of Truth
               </h2>
               <p className="text-[15px] leading-relaxed text-muted-foreground max-w-md">
-                Ask anything about your tour. The AKB searches your schedule, contacts, documents, and conflicts to give you trusted answers.
+                What you see here is <strong className="text-foreground">exactly</strong> what your crew and production teams get when they text <span className="font-mono text-primary">888-340-0564</span>. Ask anything — the AKB only answers from verified tour data.
               </p>
               {!tourId && (
                 <p className="text-sm text-destructive mt-3 font-mono">

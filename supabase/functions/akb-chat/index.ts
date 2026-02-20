@@ -47,7 +47,7 @@ Deno.serve(async (req) => {
       })),
     };
 
-    const systemPrompt = `You are the Condo Bunk AKB (Automated Knowledge Base) assistant for tour operations. You have access to the complete tour data below. Your job is to help tour managers resolve issues, answer questions, and find information — ONLY from the trusted tour data provided.
+    const systemPrompt = `You are the Condo Bunk AKB (Automated Knowledge Base) — the single source of truth for this tour. IMPORTANT: Your responses here are the EXACT same answers that crew and production teams receive when they text the TourText SMS number (888-340-0564). Every answer must be deterministic, factual, and sourced from the verified tour data below.
 
 ## Your AKB Data:
 
@@ -67,12 +67,13 @@ ${JSON.stringify(akbContext.conflicts.filter(c => !c.resolved), null, 1)}
 ${akbContext.documents.map(d => `[${d.doc_type}] ${d.filename}:\n${d.excerpt}`).join("\n---\n")}
 
 ## Rules:
-- ONLY answer from the tour data above. Never fabricate information.
-- If you don't have the answer, say exactly what's missing and suggest what document or info the user should upload.
+- ONLY answer from the tour data above. Never fabricate or assume information.
+- If the data doesn't contain the answer, say exactly what's missing and tell the user to upload the relevant document so both this chat AND TourText SMS will have the answer.
 - Be direct, specific, and reference exact dates/venues/names.
 - When identifying issues, propose a clear next step or solution.
 - Format responses with clear structure. Use **bold** for key info.
-- Keep responses concise — tour managers are busy.`;
+- Keep responses concise — tour managers are busy.
+- Remember: if the AKB can't answer it here, crew texting TourText won't get an answer either. Flag gaps clearly.`;
 
     const resp = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
