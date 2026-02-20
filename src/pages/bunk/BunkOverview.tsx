@@ -8,8 +8,6 @@ import { useSearchParams } from "react-router-dom";
 import { motion } from "framer-motion";
 import {
   Activity,
-  AlertTriangle,
-  HelpCircle,
   BarChart3,
   Radio,
   Plus,
@@ -45,9 +43,7 @@ const BunkOverview = () => {
   const { tours, setSelectedTourId, reload } = useTour();
   const navigate = useNavigate();
   const { toast } = useToast();
-  const [gapCount, setGapCount] = useState(0);
-  const [conflictCount, setConflictCount] = useState(0);
-  const [eventCount, setEventCount] = useState(0);
+  const [tourEventCounts, setTourEventCounts] = useState<Record<string, number>>({});
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState("");
   const [deletingTour, setDeletingTour] = useState<{ id: string; name: string } | null>(null);
@@ -63,37 +59,29 @@ const BunkOverview = () => {
     if (tours.length > 0) {
       generateTldr();
     }
-  }, [tours, eventCount]);
+  }, [tours, tourEventCounts]);
 
   const loadCounts = async () => {
     const tourIds = tours.map(t => t.id);
     if (tourIds.length === 0) {
-      setGapCount(0);
-      setConflictCount(0);
-      setEventCount(0);
+      setTourEventCounts({});
       return;
     }
 
-    const [gapsRes, conflictsRes, eventsRes] = await Promise.all([
-      supabase
-        .from("knowledge_gaps")
-        .select("*", { count: "exact", head: true })
-        .in("tour_id", tourIds)
-        .eq("resolved", false),
-      supabase
-        .from("calendar_conflicts")
-        .select("*", { count: "exact", head: true })
-        .in("tour_id", tourIds)
-        .eq("resolved", false),
-      supabase
-        .from("schedule_events")
-        .select("*", { count: "exact", head: true })
-        .in("tour_id", tourIds),
-    ]);
+    const results = await Promise.all(
+      tourIds.map(tid =>
+        supabase
+          .from("schedule_events")
+          .select("*", { count: "exact", head: true })
+          .eq("tour_id", tid)
+      )
+    );
 
-    setGapCount(gapsRes.count ?? 0);
-    setConflictCount(conflictsRes.count ?? 0);
-    setEventCount(eventsRes.count ?? 0);
+    const counts: Record<string, number> = {};
+    tourIds.forEach((tid, i) => {
+      counts[tid] = results[i].count ?? 0;
+    });
+    setTourEventCounts(counts);
   };
 
   const generateTldr = async () => {
@@ -251,11 +239,14 @@ const BunkOverview = () => {
     setDeletingTour(null);
   };
 
+  const totalEvents = Object.values(tourEventCounts).reduce((s, n) => s + n, 0);
+
+  // Assign each tour a distinct accent color
+  const tourColors = ["hsl(var(--primary))", "hsl(var(--info))", "hsl(var(--warning))", "hsl(var(--success))", "hsl(var(--destructive))"];
+
   const cards = [
     { label: "ACTIVE TOURS", value: tours.length, icon: Radio, color: "text-primary", link: null },
-    { label: "SCHEDULE EVENTS", value: eventCount, icon: BarChart3, color: "text-info", link: "/bunk/calendar" },
-    { label: "OPEN GAPS", value: gapCount, icon: HelpCircle, color: "text-warning", link: "/bunk/gaps" },
-    { label: "CONFLICTS", value: conflictCount, icon: AlertTriangle, color: "text-destructive", link: "/bunk/conflicts" },
+    { label: "SCHEDULE EVENTS", value: totalEvents, icon: BarChart3, color: "text-info", link: "/bunk/calendar" },
   ];
 
   return (
@@ -317,7 +308,7 @@ const BunkOverview = () => {
       </motion.div>
 
       {/* Stat Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         {cards.map((card, i) => (
           <motion.div
             key={card.label}
@@ -335,6 +326,23 @@ const BunkOverview = () => {
               <card.icon className={`h-4 w-4 ${card.color}`} />
             </div>
             <p className="text-3xl font-bold font-mono">{card.value}</p>
+            {card.label === "SCHEDULE EVENTS" && tours.length > 1 && (
+              <div className="flex flex-wrap gap-2 mt-3">
+                {tours.map((tour, ti) => (
+                  <span
+                    key={tour.id}
+                    className="inline-flex items-center gap-1.5 text-[10px] font-mono"
+                  >
+                    <span
+                      className="h-2 w-2 rounded-full shrink-0"
+                      style={{ backgroundColor: tourColors[ti % tourColors.length] }}
+                    />
+                    <span className="text-muted-foreground truncate max-w-[100px]">{tour.name}</span>
+                    <span className="font-semibold text-foreground">{tourEventCounts[tour.id] ?? 0}</span>
+                  </span>
+                ))}
+              </div>
+            )}
           </motion.div>
         ))}
       </div>
