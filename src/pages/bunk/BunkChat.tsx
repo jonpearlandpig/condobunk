@@ -1,15 +1,173 @@
-import { useState } from "react";
-import { MessageSquare, ArrowLeft, Plus, Mic, Send } from "lucide-react";
-import { useNavigate } from "react-router-dom";
+import { useState, useEffect, useRef, useCallback } from "react";
+import { MessageSquare, ArrowLeft, Send, Loader2, Zap } from "lucide-react";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { SidebarTrigger } from "@/components/ui/sidebar";
+import { useTour } from "@/hooks/useTour";
+import ReactMarkdown from "react-markdown";
+
+type Msg = { role: "user" | "assistant"; content: string };
+
+const AKB_CHAT_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/akb-chat`;
 
 const BunkChat = () => {
   const navigate = useNavigate();
-  const [message, setMessage] = useState("");
+  const [searchParams, setSearchParams] = useSearchParams();
+  const { tours } = useTour();
+  const [messages, setMessages] = useState<Msg[]>([]);
+  const [input, setInput] = useState("");
+  const [isStreaming, setIsStreaming] = useState(false);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const hasAutoSent = useRef(false);
+
+  const tourId = tours[0]?.id;
+
+  // Auto-send if launched with ?q= query from TLDR
+  useEffect(() => {
+    const q = searchParams.get("q");
+    if (q && tourId && !hasAutoSent.current && messages.length === 0) {
+      hasAutoSent.current = true;
+      // Clear the query param
+      setSearchParams({}, { replace: true });
+      sendMessage(`I need help with this issue from my daily briefing: "${q}". What does the tour data show, and what should I do?`);
+    }
+  }, [searchParams, tourId]);
+
+  useEffect(() => {
+    scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
+  }, [messages]);
+
+  const sendMessage = useCallback(async (text: string) => {
+    if (!text.trim() || !tourId || isStreaming) return;
+
+    const userMsg: Msg = { role: "user", content: text.trim() };
+    setMessages(prev => [...prev, userMsg]);
+    setInput("");
+    setIsStreaming(true);
+
+    let assistantSoFar = "";
+    const allMessages = [...messages, userMsg];
+
+    try {
+      const resp = await fetch(AKB_CHAT_URL, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
+        },
+        body: JSON.stringify({
+          messages: allMessages.map(m => ({ role: m.role, content: m.content })),
+          tour_id: tourId,
+        }),
+      });
+
+      if (!resp.ok || !resp.body) {
+        const errData = await resp.json().catch(() => ({ error: "Unknown error" }));
+        setMessages(prev => [...prev, { role: "assistant", content: `⚠ ${errData.error || "Failed to connect to AKB."}` }]);
+        setIsStreaming(false);
+        return;
+      }
+
+      const reader = resp.body.getReader();
+      const decoder = new TextDecoder();
+      let textBuffer = "";
+      let streamDone = false;
+
+      while (!streamDone) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        textBuffer += decoder.decode(value, { stream: true });
+
+        let newlineIndex: number;
+        while ((newlineIndex = textBuffer.indexOf("\n")) !== -1) {
+          let line = textBuffer.slice(0, newlineIndex);
+          textBuffer = textBuffer.slice(newlineIndex + 1);
+
+          if (line.endsWith("\r")) line = line.slice(0, -1);
+          if (line.startsWith(":") || line.trim() === "") continue;
+          if (!line.startsWith("data: ")) continue;
+
+          const jsonStr = line.slice(6).trim();
+          if (jsonStr === "[DONE]") {
+            streamDone = true;
+            break;
+          }
+
+          try {
+            const parsed = JSON.parse(jsonStr);
+            const content = parsed.choices?.[0]?.delta?.content as string | undefined;
+            if (content) {
+              assistantSoFar += content;
+              setMessages(prev => {
+                const last = prev[prev.length - 1];
+                if (last?.role === "assistant") {
+                  return prev.map((m, i) => (i === prev.length - 1 ? { ...m, content: assistantSoFar } : m));
+                }
+                return [...prev, { role: "assistant", content: assistantSoFar }];
+              });
+            }
+          } catch {
+            textBuffer = line + "\n" + textBuffer;
+            break;
+          }
+        }
+      }
+
+      // Final flush
+      if (textBuffer.trim()) {
+        for (let raw of textBuffer.split("\n")) {
+          if (!raw) continue;
+          if (raw.endsWith("\r")) raw = raw.slice(0, -1);
+          if (raw.startsWith(":") || raw.trim() === "") continue;
+          if (!raw.startsWith("data: ")) continue;
+          const jsonStr = raw.slice(6).trim();
+          if (jsonStr === "[DONE]") continue;
+          try {
+            const parsed = JSON.parse(jsonStr);
+            const content = parsed.choices?.[0]?.delta?.content as string | undefined;
+            if (content) {
+              assistantSoFar += content;
+              setMessages(prev => {
+                const last = prev[prev.length - 1];
+                if (last?.role === "assistant") {
+                  return prev.map((m, i) => (i === prev.length - 1 ? { ...m, content: assistantSoFar } : m));
+                }
+                return [...prev, { role: "assistant", content: assistantSoFar }];
+              });
+            }
+          } catch { /* ignore */ }
+        }
+      }
+    } catch (err) {
+      console.error("[chat] stream error:", err);
+      setMessages(prev => [...prev, { role: "assistant", content: "⚠ Connection error. Please try again." }]);
+    }
+
+    setIsStreaming(false);
+  }, [messages, tourId, isStreaming]);
+
+  const handleSubmit = () => {
+    sendMessage(input);
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      handleSubmit();
+    }
+  };
+
+  // Auto-resize textarea
+  useEffect(() => {
+    if (textareaRef.current) {
+      textareaRef.current.style.height = "auto";
+      textareaRef.current.style.height = Math.min(textareaRef.current.scrollHeight, 128) + "px";
+    }
+  }, [input]);
 
   return (
     <div className="flex flex-col h-[calc(100vh-3rem)] -m-6">
-      {/* ChatGPT-style top bar */}
+      {/* Top bar */}
       <div className="flex items-center justify-between px-4 h-11 border-b border-border bg-background/80 backdrop-blur-sm shrink-0">
         <div className="flex items-center gap-3">
           <button
@@ -18,54 +176,87 @@ const BunkChat = () => {
           >
             <ArrowLeft className="h-5 w-5" />
           </button>
-          <span className="text-base font-semibold text-foreground tracking-tight">
-            Condo Bunk Chat
-          </span>
+          <div className="flex items-center gap-2">
+            <Zap className="h-4 w-4 text-primary" />
+            <span className="text-base font-semibold text-foreground tracking-tight">
+              AKB Chat
+            </span>
+          </div>
         </div>
         <SidebarTrigger className="text-muted-foreground" />
       </div>
 
-      {/* Message area */}
-      <div className="flex-1 overflow-auto px-4 py-6">
+      {/* Messages */}
+      <div ref={scrollRef} className="flex-1 overflow-auto px-4 py-6">
         <div className="max-w-2xl mx-auto space-y-6">
-          {/* Empty state */}
-          <div className="flex flex-col items-center justify-center pt-20 text-center">
-            <MessageSquare className="h-10 w-10 text-muted-foreground/30 mb-4" />
-            <h2 className="text-xl font-semibold text-foreground mb-1">
-              Internal Chat
-            </h2>
-            <p className="text-[15px] leading-relaxed text-muted-foreground max-w-md">
-              Management-only communications. Messages here are visible to all tour managers and admins.
-            </p>
-            <p className="text-sm text-muted-foreground/60 mt-4 font-mono">
-              Coming in Phase 2
-            </p>
-          </div>
+          {messages.length === 0 && !isStreaming && (
+            <div className="flex flex-col items-center justify-center pt-16 text-center">
+              <MessageSquare className="h-10 w-10 text-muted-foreground/20 mb-4" />
+              <h2 className="text-xl font-semibold text-foreground mb-1">
+                Tour Knowledge Base
+              </h2>
+              <p className="text-[15px] leading-relaxed text-muted-foreground max-w-md">
+                Ask anything about your tour. The AKB searches your schedule, contacts, documents, and conflicts to give you trusted answers.
+              </p>
+              {!tourId && (
+                <p className="text-sm text-destructive mt-3 font-mono">
+                  No active tour found. Create one first.
+                </p>
+              )}
+            </div>
+          )}
+
+          {messages.map((msg, i) => (
+            <div key={i} className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
+              <div
+                className={`max-w-[85%] rounded-2xl px-4 py-3 ${
+                  msg.role === "user"
+                    ? "bg-primary text-primary-foreground rounded-br-md"
+                    : "bg-card border border-border rounded-bl-md"
+                }`}
+              >
+                {msg.role === "assistant" ? (
+                  <div className="prose prose-sm prose-invert max-w-none text-[14px] leading-relaxed [&_p]:mb-2 [&_li]:mb-1 [&_strong]:text-foreground">
+                    <ReactMarkdown>{msg.content}</ReactMarkdown>
+                  </div>
+                ) : (
+                  <p className="text-[14px] leading-relaxed">{msg.content}</p>
+                )}
+              </div>
+            </div>
+          ))}
+
+          {isStreaming && messages[messages.length - 1]?.role !== "assistant" && (
+            <div className="flex justify-start">
+              <div className="bg-card border border-border rounded-2xl rounded-bl-md px-4 py-3">
+                <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
-      {/* ChatGPT-style input bar */}
+      {/* Input bar */}
       <div className="shrink-0 border-t border-border bg-background px-4 py-3">
         <div className="max-w-2xl mx-auto">
           <div className="flex items-end gap-2 bg-card rounded-2xl border border-border px-3 py-2">
-            <button className="shrink-0 h-8 w-8 flex items-center justify-center rounded-full bg-muted text-muted-foreground hover:text-foreground transition-colors">
-              <Plus className="h-4 w-4" />
-            </button>
             <textarea
-              value={message}
-              onChange={(e) => setMessage(e.target.value)}
-              placeholder="Message Condo Bunk"
+              ref={textareaRef}
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={handleKeyDown}
+              placeholder={tourId ? "Ask the AKB..." : "No active tour"}
+              disabled={!tourId || isStreaming}
               rows={1}
-              className="flex-1 bg-transparent text-[15px] text-foreground placeholder:text-muted-foreground/50 resize-none outline-none py-1.5 min-h-[28px] max-h-32 leading-snug"
+              className="flex-1 bg-transparent text-[15px] text-foreground placeholder:text-muted-foreground/50 resize-none outline-none py-1.5 min-h-[28px] max-h-32 leading-snug disabled:opacity-50"
               style={{ fontFamily: "var(--font-display)" }}
             />
-            <button className="shrink-0 h-8 w-8 flex items-center justify-center rounded-full text-muted-foreground hover:text-foreground transition-colors">
-              <Mic className="h-4 w-4" />
-            </button>
             <button
+              onClick={handleSubmit}
+              disabled={!input.trim() || !tourId || isStreaming}
               className={`shrink-0 h-8 w-8 flex items-center justify-center rounded-full transition-colors ${
-                message.trim()
-                  ? "bg-foreground text-background"
+                input.trim() && tourId && !isStreaming
+                  ? "bg-foreground text-background hover:bg-foreground/90"
                   : "bg-muted text-muted-foreground"
               }`}
             >

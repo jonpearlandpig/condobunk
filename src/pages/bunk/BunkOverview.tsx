@@ -4,6 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { useTour } from "@/hooks/useTour";
 import { useToast } from "@/hooks/use-toast";
+import { useSearchParams } from "react-router-dom";
 import { motion } from "framer-motion";
 import {
   Activity,
@@ -50,7 +51,7 @@ const BunkOverview = () => {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState("");
   const [deletingTour, setDeletingTour] = useState<{ id: string; name: string } | null>(null);
-  const [tldr, setTldr] = useState<string[]>([]);
+  const [tldr, setTldr] = useState<Array<{ text: string; actionable: boolean }>>([]);
   const [tldrLoading, setTldrLoading] = useState(false);
 
   useEffect(() => {
@@ -117,7 +118,7 @@ const BunkOverview = () => {
       const openConflicts = conflictsRes.data || [];
 
       if (upcomingEvents.length === 0 && openGaps.length === 0 && openConflicts.length === 0) {
-        setTldr(["No upcoming events or open items. Upload documents to populate your tour data."]);
+        setTldr([{ text: "No upcoming events or open items. Upload documents to populate your tour data.", actionable: false }]);
         setTldrLoading(false);
         return;
       }
@@ -140,29 +141,38 @@ const BunkOverview = () => {
       });
 
       if (resp.data?.lines) {
-        setTldr(resp.data.lines);
+        // Handle both formats: structured {text, actionable} or plain strings
+        const items = resp.data.lines.map((item: any) => {
+          if (typeof item === "string") {
+            return {
+              text: item,
+              actionable: /conflict|duplicate|missing|unresolved|issue|problem|error|gap|block/i.test(item),
+            };
+          }
+          return item;
+        });
+        setTldr(items);
       } else {
-        // Fallback: generate a simple client-side summary
-        const lines: string[] = [];
+        const lines: Array<{ text: string; actionable: boolean }> = [];
         if (upcomingEvents.length > 0) {
           const next = upcomingEvents[0];
-          lines.push(`Next up: ${next.notes?.split("\n")[0] || next.venue || "Event"} on ${next.event_date}${next.city ? ` in ${next.city}` : ""}.`);
+          lines.push({ text: `Next up: ${next.notes?.split("\n")[0] || next.venue || "Event"} on ${next.event_date}${next.city ? ` in ${next.city}` : ""}.`, actionable: false });
         }
         if (openConflicts.length > 0) {
-          lines.push(`⚠ ${openConflicts.length} unresolved conflict${openConflicts.length > 1 ? "s" : ""} need attention.`);
+          lines.push({ text: `⚠ ${openConflicts.length} unresolved conflict${openConflicts.length > 1 ? "s" : ""} need attention.`, actionable: true });
         }
         if (openGaps.length > 0) {
-          lines.push(`${openGaps.length} open knowledge gap${openGaps.length > 1 ? "s" : ""} — missing info that could block advance.`);
+          lines.push({ text: `${openGaps.length} open knowledge gap${openGaps.length > 1 ? "s" : ""} — missing info that could block advance.`, actionable: true });
         }
         if (upcomingEvents.length > 1) {
-          lines.push(`${upcomingEvents.length} events on the horizon across ${tours.length} tour${tours.length > 1 ? "s" : ""}.`);
+          lines.push({ text: `${upcomingEvents.length} events on the horizon across ${tours.length} tour${tours.length > 1 ? "s" : ""}.`, actionable: false });
         }
-        if (lines.length === 0) lines.push("All clear — no urgent items right now.");
+        if (lines.length === 0) lines.push({ text: "All clear — no urgent items right now.", actionable: false });
         setTldr(lines);
       }
     } catch (err) {
       console.error("TLDR generation failed:", err);
-      setTldr(["Unable to generate briefing. Check back shortly."]);
+      setTldr([{ text: "Unable to generate briefing. Check back shortly.", actionable: false }]);
     }
     setTldrLoading(false);
   };
@@ -253,12 +263,25 @@ const BunkOverview = () => {
             <span className="text-xs text-muted-foreground font-mono">Generating briefing...</span>
           </div>
         ) : (
-          <div className="space-y-1.5">
-            {tldr.map((line, i) => (
-              <p key={i} className="text-sm text-foreground/90 leading-relaxed font-mono">
-                <span className="text-primary/60 mr-2">▸</span>
-                {line}
-              </p>
+          <div className="space-y-2.5">
+            {tldr.map((item, i) => (
+              <div key={i} className="flex items-start gap-2 group">
+                <span className="text-primary/60 mt-0.5 shrink-0">▸</span>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm text-foreground/90 leading-relaxed font-mono">
+                    {item.text}
+                  </p>
+                  {item.actionable && (
+                    <button
+                      onClick={() => navigate(`/bunk/chat?q=${encodeURIComponent(item.text)}`)}
+                      className="mt-1 inline-flex items-center gap-1.5 text-[11px] font-mono tracking-wider text-primary hover:text-primary/80 transition-colors"
+                    >
+                      <ChevronRight className="h-3 w-3" />
+                      EXPLORE SOLUTION
+                    </button>
+                  )}
+                </div>
+              </div>
             ))}
           </div>
         )}
