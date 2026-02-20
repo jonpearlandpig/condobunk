@@ -13,6 +13,9 @@ import {
   ChevronDown,
   Zap,
   Eye,
+  Trash2,
+  Pencil,
+  MoreVertical,
 } from "lucide-react";
 import ExtractionReviewDialog from "@/components/bunk/ExtractionReviewDialog";
 import TechPackReviewDialog from "@/components/bunk/TechPackReviewDialog";
@@ -31,6 +34,23 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { Input } from "@/components/ui/input";
 
 interface DocRow {
   id: string;
@@ -72,6 +92,9 @@ const BunkDocuments = () => {
     contactCount: number;
   } | null>(null);
   const [reviewLoading, setReviewLoading] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<DocRow | null>(null);
+  const [renameTarget, setRenameTarget] = useState<DocRow | null>(null);
+  const [renameValue, setRenameValue] = useState("");
 
   const openTechReview = async (docId: string) => {
     setReviewLoading(true);
@@ -215,6 +238,35 @@ const BunkDocuments = () => {
     }
   };
 
+  const handleDelete = async (doc: DocRow) => {
+    try {
+      if (doc.file_path) {
+        await supabase.storage.from("document-files").remove([doc.file_path]);
+      }
+      await supabase.from("documents").delete().eq("id", doc.id);
+      toast({ title: "Document deleted" });
+      loadDocuments();
+    } catch (err: any) {
+      toast({ title: "Delete failed", description: err.message, variant: "destructive" });
+    } finally {
+      setDeleteTarget(null);
+    }
+  };
+
+  const handleRename = async () => {
+    if (!renameTarget || !renameValue.trim()) return;
+    try {
+      await supabase.from("documents").update({ filename: renameValue.trim() }).eq("id", renameTarget.id);
+      toast({ title: "Document renamed" });
+      loadDocuments();
+    } catch (err: any) {
+      toast({ title: "Rename failed", description: err.message, variant: "destructive" });
+    } finally {
+      setRenameTarget(null);
+      setRenameValue("");
+    }
+  };
+
   const toggleActive = async (doc: DocRow) => {
     try {
       await supabase
@@ -331,19 +383,28 @@ const BunkDocuments = () => {
                               </p>
                             </div>
                           </div>
-                          <CollapsibleTrigger asChild>
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              className="h-7 w-7 p-0 shrink-0"
-                            >
-                              <ChevronDown
-                                className={`h-3 w-3 transition-transform ${
-                                  expandedDoc === doc.id ? "rotate-180" : ""
-                                }`}
-                              />
-                            </Button>
-                          </CollapsibleTrigger>
+                          <div className="flex items-center gap-1 shrink-0">
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button size="sm" variant="ghost" className="h-7 w-7 p-0">
+                                  <MoreVertical className="h-3 w-3" />
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end">
+                                <DropdownMenuItem onClick={() => { setRenameTarget(doc); setRenameValue(doc.filename || ""); }}>
+                                  <Pencil className="h-3 w-3 mr-2" /> Rename
+                                </DropdownMenuItem>
+                                <DropdownMenuItem className="text-destructive" onClick={() => setDeleteTarget(doc)}>
+                                  <Trash2 className="h-3 w-3 mr-2" /> Delete
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                            <CollapsibleTrigger asChild>
+                              <Button size="sm" variant="ghost" className="h-7 w-7 p-0">
+                                <ChevronDown className={`h-3 w-3 transition-transform ${expandedDoc === doc.id ? "rotate-180" : ""}`} />
+                              </Button>
+                            </CollapsibleTrigger>
+                          </div>
                         </div>
                         {/* Bottom row: badge + actions, wraps on mobile */}
                         <div className="flex items-center gap-2 flex-wrap">
@@ -456,6 +517,38 @@ const BunkDocuments = () => {
           onApproved={loadDocuments}
         />
       )}
+
+      {/* Delete Confirmation */}
+      <AlertDialog open={!!deleteTarget} onOpenChange={(open) => { if (!open) setDeleteTarget(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete document?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently delete "{deleteTarget?.filename}" and its stored file. This cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={() => deleteTarget && handleDelete(deleteTarget)} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Rename Dialog */}
+      <AlertDialog open={!!renameTarget} onOpenChange={(open) => { if (!open) { setRenameTarget(null); setRenameValue(""); } }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Rename document</AlertDialogTitle>
+          </AlertDialogHeader>
+          <Input value={renameValue} onChange={(e) => setRenameValue(e.target.value)} placeholder="Document name" className="font-mono text-sm" onKeyDown={(e) => { if (e.key === "Enter") handleRename(); }} />
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleRename} disabled={!renameValue.trim()}>Save</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 };
