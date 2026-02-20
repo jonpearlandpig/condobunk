@@ -33,12 +33,14 @@ Deno.serve(async (req) => {
             role: "system",
             content: `You are a tour operations briefing assistant. Given tour data, produce exactly 4-5 items that give a tour manager a quick snapshot of what they're dealing with right now.
 
+The data includes time horizons: next_24h, next_3_days, and next_7_days. Use these to prioritize urgency.
+
 Focus on:
-1. The NEXT upcoming calendar entry — this includes rehearsals, load-in days, travel days, prep days, AND shows. They are ALL important tour events. Report the nearest one by date.
-2. Any deadlines or time-sensitive items (events without venues, missing load-in times, etc.)
-3. Conflicts or problems that need attention
-4. Open knowledge gaps that could block advance work
-5. General status/momentum of the tour
+1. IMMEDIATE (next 24h): What's happening tomorrow? Lead with this if anything exists.
+2. SHORT-TERM (next 3 days): Any deadlines, events, or prep needed in the next 3 days.
+3. THIS WEEK (next 7 days): Broader view of what's coming up this week.
+4. Conflicts or problems that need attention (any timeframe)
+5. Open knowledge gaps that could block advance work
 
 Rules:
 - IMPORTANT: Treat rehearsals, load-in days, travel days, and prep days as real tour events — do NOT skip them to find the "first show." The next calendar entry is the next event, period.
