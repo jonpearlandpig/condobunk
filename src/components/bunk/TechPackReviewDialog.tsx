@@ -34,6 +34,20 @@ import {
   Wrench,
   Users,
   ShieldAlert,
+  Shield,
+  Lock,
+  UserCheck,
+  Coffee,
+  Radio,
+  Wifi,
+  Thermometer,
+  Gavel,
+  DollarSign,
+  History,
+  MapPin,
+  Accessibility,
+  Camera,
+  LogOut,
 } from "lucide-react";
 
 interface TechPackReviewDialogProps {
@@ -66,6 +80,21 @@ interface TechSpec {
   labor_union: Record<string, unknown>;
   permanent_installations: Record<string, unknown>;
   production_compatibility: Record<string, unknown>;
+  contact_chain_of_command: Record<string, unknown>;
+  insurance_liability: Record<string, unknown>;
+  safety_compliance: Record<string, unknown>;
+  security_crowd_control: Record<string, unknown>;
+  hospitality_catering: Record<string, unknown>;
+  comms_infrastructure: Record<string, unknown>;
+  it_network: Record<string, unknown>;
+  environmental_conditions: Record<string, unknown>;
+  local_ordinances: Record<string, unknown>;
+  financial_settlement: Record<string, unknown>;
+  venue_history: Record<string, unknown>;
+  transportation_logistics: Record<string, unknown>;
+  ada_accessibility: Record<string, unknown>;
+  content_media_policy: Record<string, unknown>;
+  load_out_constraints: Record<string, unknown>;
 }
 
 const SEVERITY_COLORS: Record<string, string> = {
@@ -82,21 +111,61 @@ const SEVERITY_ICON_COLORS: Record<string, string> = {
   LOW: "text-muted-foreground",
 };
 
-const SECTION_META: Array<{
-  key: string;
+// Grouped domain structure
+const DOMAIN_GROUPS: Array<{
+  domain: string;
   label: string;
-  icon: typeof Building2;
+  sections: Array<{ key: string; label: string; icon: typeof Building2 }>;
 }> = [
-  { key: "venue_identity", label: "Venue Identity", icon: Building2 },
-  { key: "stage_specs", label: "Stage Specs", icon: Ruler },
-  { key: "rigging_system", label: "Rigging System", icon: Anchor },
-  { key: "dock_load_in", label: "Dock & Load-In", icon: Truck },
-  { key: "power", label: "Power", icon: Zap },
-  { key: "lighting_audio", label: "Lighting / Audio", icon: Lightbulb },
-  { key: "wardrobe_laundry", label: "Wardrobe / Laundry", icon: Shirt },
-  { key: "labor_union", label: "Labor / Union", icon: HardHat },
-  { key: "permanent_installations", label: "Permanent Installations", icon: Columns3 },
-  { key: "production_compatibility", label: "Production Compatibility", icon: Wrench },
+  {
+    domain: "structural",
+    label: "Structural & Production",
+    sections: [
+      { key: "venue_identity", label: "Venue Identity", icon: Building2 },
+      { key: "stage_specs", label: "Stage Specs", icon: Ruler },
+      { key: "rigging_system", label: "Rigging System", icon: Anchor },
+      { key: "dock_load_in", label: "Dock & Load-In", icon: Truck },
+      { key: "power", label: "Power", icon: Zap },
+      { key: "lighting_audio", label: "Lighting / Audio", icon: Lightbulb },
+      { key: "wardrobe_laundry", label: "Wardrobe / Laundry", icon: Shirt },
+      { key: "labor_union", label: "Labor / Union", icon: HardHat },
+      { key: "permanent_installations", label: "Permanent Installations", icon: Columns3 },
+      { key: "production_compatibility", label: "Production Compatibility", icon: Wrench },
+    ],
+  },
+  {
+    domain: "operations",
+    label: "Operations & Safety",
+    sections: [
+      { key: "contact_chain_of_command", label: "Chain of Command", icon: UserCheck },
+      { key: "safety_compliance", label: "Safety & Compliance", icon: Shield },
+      { key: "security_crowd_control", label: "Security & Crowd", icon: Lock },
+      { key: "hospitality_catering", label: "Hospitality & Catering", icon: Coffee },
+      { key: "load_out_constraints", label: "Load-Out Constraints", icon: LogOut },
+    ],
+  },
+  {
+    domain: "risk_financial",
+    label: "Risk & Financial",
+    sections: [
+      { key: "insurance_liability", label: "Insurance & Liability", icon: ShieldAlert },
+      { key: "local_ordinances", label: "Local Ordinances", icon: Gavel },
+      { key: "financial_settlement", label: "Financial & Settlement", icon: DollarSign },
+      { key: "venue_history", label: "Venue History", icon: History },
+    ],
+  },
+  {
+    domain: "infrastructure",
+    label: "Infrastructure & Logistics",
+    sections: [
+      { key: "comms_infrastructure", label: "Communications", icon: Radio },
+      { key: "it_network", label: "IT / Network", icon: Wifi },
+      { key: "environmental_conditions", label: "Environmental", icon: Thermometer },
+      { key: "transportation_logistics", label: "Transportation", icon: MapPin },
+      { key: "ada_accessibility", label: "ADA & Accessibility", icon: Accessibility },
+      { key: "content_media_policy", label: "Content & Media", icon: Camera },
+    ],
+  },
 ];
 
 function renderSpecValue(value: unknown): string {
@@ -136,7 +205,39 @@ function formatLabel(key: string): string {
     .replace(/Iatse/g, "IATSE")
     .replace(/Co2/g, "CO₂")
     .replace(/Hvac/g, "HVAC")
-    .replace(/Led/g, "LED");
+    .replace(/Led/g, "LED")
+    .replace(/Asl/g, "ASL")
+    .replace(/Ada/g, "ADA")
+    .replace(/Osha/g, "OSHA")
+    .replace(/Ppe/g, "PPE")
+    .replace(/Coi/g, "COI")
+    .replace(/Rf/g, "RF")
+    .replace(/Das/g, "DAS")
+    .replace(/Vlan/g, "VLAN")
+    .replace(/Ip\b/g, "IP");
+}
+
+function getSectionFieldCount(data: Record<string, unknown>): number {
+  return Object.values(data).filter(
+    (v) => v !== null && v !== undefined && v !== "" && v !== "{}" && JSON.stringify(v) !== "{}"
+  ).length;
+}
+
+function getDomainFillPercent(
+  techSpec: TechSpec,
+  sections: Array<{ key: string }>
+): number {
+  let totalFields = 0;
+  let filledFields = 0;
+  for (const { key } of sections) {
+    const data = (techSpec as unknown as Record<string, Record<string, unknown>>)[key] || {};
+    const entries = Object.entries(data).filter(([k]) => k !== "notes" && k !== "production_contacts");
+    totalFields += Math.max(entries.length, 1);
+    filledFields += entries.filter(
+      ([, v]) => v !== null && v !== undefined && v !== "" && JSON.stringify(v) !== "{}"
+    ).length;
+  }
+  return totalFields > 0 ? Math.round((filledFields / totalFields) * 100) : 0;
 }
 
 const TechPackReviewDialog = ({
@@ -154,6 +255,7 @@ const TechPackReviewDialog = ({
   const [techSpec, setTechSpec] = useState<TechSpec | null>(null);
   const [loading, setLoading] = useState(true);
   const [approving, setApproving] = useState(false);
+  const [expandedDomains, setExpandedDomains] = useState<Set<string>>(new Set());
   const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set());
 
   useEffect(() => {
@@ -171,6 +273,14 @@ const TechPackReviewDialog = ({
     setLoading(false);
   };
 
+  const toggleDomain = (domain: string) => {
+    setExpandedDomains((prev) => {
+      const next = new Set(prev);
+      next.has(domain) ? next.delete(domain) : next.add(domain);
+      return next;
+    });
+  };
+
   const toggleSection = (key: string) => {
     setExpandedSections((prev) => {
       const next = new Set(prev);
@@ -182,7 +292,6 @@ const TechPackReviewDialog = ({
   const handleApprove = async () => {
     setApproving(true);
     try {
-      // Activate the document
       await supabase
         .from("documents")
         .update({ is_active: true })
@@ -213,11 +322,11 @@ const TechPackReviewDialog = ({
     return (techSpec as unknown as Record<string, Record<string, unknown>>)[key] || {};
   };
 
-  const getSectionFieldCount = (key: string): number => {
-    const data = getSectionData(key);
-    return Object.values(data).filter(
-      (v) => v !== null && v !== undefined && v !== "" && v !== "{}"
-    ).length;
+  const getFillColor = (pct: number): string => {
+    if (pct >= 70) return "bg-success";
+    if (pct >= 40) return "bg-warning";
+    if (pct > 0) return "bg-destructive/60";
+    return "bg-muted-foreground/20";
   };
 
   return (
@@ -229,8 +338,8 @@ const TechPackReviewDialog = ({
             Tech Pack Review — {venueName}
           </DialogTitle>
           <DialogDescription className="font-mono text-xs">
-            Review extracted venue specifications and operational risk flags before
-            approving into the AKB.
+            Review extracted venue specifications across 25 categories and operational
+            risk flags before approving into the AKB.
           </DialogDescription>
           <div className="flex gap-2 flex-wrap pt-2">
             <Badge variant="outline" className="font-mono text-[10px]">
@@ -267,6 +376,38 @@ const TechPackReviewDialog = ({
         ) : (
           <ScrollArea className="flex-1" style={{ maxHeight: "60vh" }}>
             <div className="space-y-3 pr-4">
+              {/* Domain Status Bar Overview */}
+              {techSpec && (
+                <div className="rounded-lg border border-border bg-card p-4 space-y-3">
+                  <span className="font-mono text-[10px] tracking-wider text-muted-foreground">
+                    EXTRACTION COVERAGE
+                  </span>
+                  <div className="grid grid-cols-2 gap-2">
+                    {DOMAIN_GROUPS.map((group) => {
+                      const pct = getDomainFillPercent(techSpec, group.sections);
+                      return (
+                        <div key={group.domain} className="space-y-1">
+                          <div className="flex items-center justify-between">
+                            <span className="text-[10px] font-mono font-medium truncate">
+                              {group.label}
+                            </span>
+                            <span className="text-[10px] font-mono text-muted-foreground">
+                              {pct}%
+                            </span>
+                          </div>
+                          <div className="h-1.5 w-full bg-muted rounded-full overflow-hidden">
+                            <div
+                              className={`h-full rounded-full transition-all ${getFillColor(pct)}`}
+                              style={{ width: `${Math.max(pct, 2)}%` }}
+                            />
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
               {/* Risk Flags Section */}
               {riskFlags.length > 0 && (
                 <div className="rounded-lg border border-destructive/20 bg-destructive/5 p-4">
@@ -320,68 +461,110 @@ const TechPackReviewDialog = ({
                 </div>
               )}
 
-              {/* Spec Sections */}
-              {SECTION_META.map(({ key, label, icon: Icon }) => {
-                const data = getSectionData(key);
-                const fieldCount = getSectionFieldCount(key);
-                const isOpen = expandedSections.has(key);
-                const entries = Object.entries(data).filter(
-                  ([k, v]) =>
-                    v !== null &&
-                    v !== undefined &&
-                    v !== "" &&
-                    k !== "notes" &&
-                    k !== "production_contacts"
+              {/* Domain Groups */}
+              {DOMAIN_GROUPS.map((group) => {
+                const domainOpen = expandedDomains.has(group.domain);
+                const nonEmptySections = group.sections.filter(
+                  (s) => getSectionFieldCount(getSectionData(s.key)) > 0
                 );
-                const notes = data.notes as string | undefined;
+                if (nonEmptySections.length === 0) return null;
 
-                if (fieldCount === 0) return null;
+                const pct = techSpec
+                  ? getDomainFillPercent(techSpec, group.sections)
+                  : 0;
 
                 return (
                   <Collapsible
-                    key={key}
-                    open={isOpen}
-                    onOpenChange={() => toggleSection(key)}
+                    key={group.domain}
+                    open={domainOpen}
+                    onOpenChange={() => toggleDomain(group.domain)}
                   >
                     <div className="rounded-lg border border-border bg-card">
                       <CollapsibleTrigger asChild>
                         <button className="flex items-center justify-between w-full px-4 py-3 hover:bg-muted/30 transition-colors text-left">
                           <div className="flex items-center gap-2.5">
-                            <Icon className="h-4 w-4 text-primary" />
-                            <span className="text-sm font-medium">{label}</span>
-                            <Badge
-                              variant="outline"
-                              className="font-mono text-[9px]"
-                            >
-                              {fieldCount} specs
+                            <span className="text-sm font-semibold">{group.label}</span>
+                            <Badge variant="outline" className="font-mono text-[9px]">
+                              {nonEmptySections.length}/{group.sections.length}
                             </Badge>
+                            <span className="text-[10px] font-mono text-muted-foreground">
+                              {pct}%
+                            </span>
                           </div>
                           <ChevronDown
                             className={`h-3.5 w-3.5 text-muted-foreground transition-transform ${
-                              isOpen ? "rotate-180" : ""
+                              domainOpen ? "rotate-180" : ""
                             }`}
                           />
                         </button>
                       </CollapsibleTrigger>
                       <CollapsibleContent>
-                        <div className="border-t border-border px-4 py-3">
-                          <div className="grid grid-cols-2 gap-x-4 gap-y-1.5">
-                            {entries.map(([k, v]) => (
-                              <div key={k} className="flex justify-between gap-2">
-                                <span className="text-[11px] font-mono text-muted-foreground truncate">
-                                  {formatLabel(k)}
-                                </span>
-                                <span className="text-[11px] font-mono font-medium text-right shrink-0 max-w-[60%] truncate">
-                                  {renderSpecValue(v)}
-                                </span>
-                              </div>
-                            ))}
-                          </div>
-                          {notes && (
-                            <p className="text-[10px] font-mono text-muted-foreground mt-2 bg-muted/50 rounded p-2">
-                              {notes}
-                            </p>
-                          )}
+                        <div className="border-t border-border px-2 py-2 space-y-1">
+                          {nonEmptySections.map(({ key, label, icon: Icon }) => {
+                            const data = getSectionData(key);
+                            const fieldCount = getSectionFieldCount(data);
+                            const isOpen = expandedSections.has(key);
+                            const entries = Object.entries(data).filter(
+                              ([k, v]) =>
+                                v !== null &&
+                                v !== undefined &&
+                                v !== "" &&
+                                k !== "notes" &&
+                                k !== "production_contacts"
+                            );
+                            const notes = data.notes as string | undefined;
+
+                            return (
+                              <Collapsible
+                                key={key}
+                                open={isOpen}
+                                onOpenChange={() => toggleSection(key)}
+                              >
+                                <div className="rounded-md border border-border/50 bg-background">
+                                  <CollapsibleTrigger asChild>
+                                    <button className="flex items-center justify-between w-full px-3 py-2 hover:bg-muted/20 transition-colors text-left">
+                                      <div className="flex items-center gap-2">
+                                        <Icon className="h-3.5 w-3.5 text-primary" />
+                                        <span className="text-xs font-medium">{label}</span>
+                                        <Badge
+                                          variant="outline"
+                                          className="font-mono text-[9px]"
+                                        >
+                                          {fieldCount}
+                                        </Badge>
+                                      </div>
+                                      <ChevronDown
+                                        className={`h-3 w-3 text-muted-foreground transition-transform ${
+                                          isOpen ? "rotate-180" : ""
+                                        }`}
+                                      />
+                                    </button>
+                                  </CollapsibleTrigger>
+                                  <CollapsibleContent>
+                                    <div className="border-t border-border/50 px-3 py-2">
+                                      <div className="grid grid-cols-2 gap-x-4 gap-y-1.5">
+                                        {entries.map(([k, v]) => (
+                                          <div key={k} className="flex justify-between gap-2">
+                                            <span className="text-[11px] font-mono text-muted-foreground truncate">
+                                              {formatLabel(k)}
+                                            </span>
+                                            <span className="text-[11px] font-mono font-medium text-right shrink-0 max-w-[60%] truncate">
+                                              {renderSpecValue(v)}
+                                            </span>
+                                          </div>
+                                        ))}
+                                      </div>
+                                      {notes && (
+                                        <p className="text-[10px] font-mono text-muted-foreground mt-2 bg-muted/50 rounded p-2">
+                                          {notes}
+                                        </p>
+                                      )}
+                                    </div>
+                                  </CollapsibleContent>
+                                </div>
+                              </Collapsible>
+                            );
+                          })}
                         </div>
                       </CollapsibleContent>
                     </div>

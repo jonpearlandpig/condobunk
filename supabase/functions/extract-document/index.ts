@@ -337,9 +337,161 @@ Return a JSON object with these fields:
     "notes": "any additional compatibility notes"
   },
 
+  "contact_chain_of_command": {
+    "production_manager": {"name": "", "phone": "", "email": ""},
+    "technical_director": {"name": "", "phone": "", "email": ""},
+    "head_rigger": {"name": "", "phone": "", "email": ""},
+    "foh_engineer": {"name": "", "phone": "", "email": ""},
+    "security_lead": {"name": "", "phone": "", "email": ""},
+    "promoter_rep": {"name": "", "phone": "", "email": ""},
+    "after_hours_emergency": [{"name": "", "phone": "", "role": ""}],
+    "escalation_hierarchy": "description of escalation chain",
+    "notes": "any additional notes"
+  },
+
+  "insurance_liability": {
+    "coi_required": true/false/null,
+    "additional_insured_language": "description",
+    "coverage_minimums": "dollar amounts or description",
+    "fire_marshal_rules": "description",
+    "pyro_restrictions": "description",
+    "haze_restrictions": "description",
+    "indemnification_clauses": "description",
+    "notes": "any additional notes"
+  },
+
+  "safety_compliance": {
+    "osha_requirements": "description",
+    "fall_protection_rules": "description",
+    "ppe_requirements": "description",
+    "fire_lanes": "description",
+    "emergency_exits": "description or count",
+    "evacuation_protocols": "description",
+    "local_curfew_enforcement": "description",
+    "notes": "any additional notes"
+  },
+
+  "security_crowd_control": {
+    "barricade_type": "type description",
+    "crowd_capacity_by_section": "description or object",
+    "security_staffing_ratios": "description",
+    "bag_policy": "description",
+    "artist_escort_paths": "description",
+    "credential_zones": "description",
+    "notes": "any additional notes"
+  },
+
+  "hospitality_catering": {
+    "green_room_size": "measurement or description",
+    "catering_kitchen_capabilities": "description",
+    "dietary_limitations": "description",
+    "local_vendor_restrictions": "description",
+    "runner_policy": "description",
+    "meal_break_rules": "description",
+    "notes": "any additional notes"
+  },
+
+  "comms_infrastructure": {
+    "in_house_radio_system": "description",
+    "rf_coordination_policies": "description",
+    "comms_frequency_conflicts": "description",
+    "wifi_bandwidth": "description",
+    "hardline_phone_drops": "description or count",
+    "das_cellular_performance": "description",
+    "notes": "any additional notes"
+  },
+
+  "it_network": {
+    "network_access_policies": "description",
+    "vlan_availability": "description",
+    "static_ip_capability": true/false/null,
+    "firewall_constraints": "description",
+    "media_ingest_speeds": "description",
+    "cloud_streaming_support": "description",
+    "notes": "any additional notes"
+  },
+
+  "environmental_conditions": {
+    "hvac_capacity": "description",
+    "temperature_limits": "description",
+    "load_dock_weather_exposure": "description",
+    "humidity_control": "description",
+    "noise_bleed": "description",
+    "acoustic_profile_notes": "description",
+    "notes": "any additional notes"
+  },
+
+  "local_ordinances": {
+    "sound_curfew_time": "time or description",
+    "overtime_penalties": "description",
+    "pyro_permits": "description",
+    "union_jurisdiction_disputes": "description",
+    "labor_meal_penalties": "description",
+    "truck_idling_restrictions": "description",
+    "notes": "any additional notes"
+  },
+
+  "financial_settlement": {
+    "ticket_tax_rate": "percentage or description",
+    "facility_fees": "description",
+    "merchandise_percentage": "percentage or description",
+    "credit_card_fees": "description",
+    "box_office_reporting_standards": "description",
+    "union_overtime_triggers": "description",
+    "house_nut_structure": "description",
+    "notes": "any additional notes"
+  },
+
+  "venue_history": {
+    "prior_incidents": "description",
+    "known_bottlenecks": "description",
+    "past_tour_notes": "description",
+    "past_settlement_variances": "description",
+    "rigging_red_flags": "description",
+    "load_in_delays_historically": "description",
+    "notes": "any additional notes"
+  },
+
+  "transportation_logistics": {
+    "bus_truck_parking": "description",
+    "shore_power_availability": "description",
+    "truck_staging_limits": "description",
+    "police_escort_requirements": "description",
+    "airport_proximity": "description",
+    "city_traffic_constraints": "description",
+    "notes": "any additional notes"
+  },
+
+  "ada_accessibility": {
+    "wheelchair_seating_layout": "description",
+    "accessible_dressing_rooms": "description",
+    "lift_availability": "description",
+    "asl_placement_policies": "description",
+    "accessible_merch_path": "description",
+    "notes": "any additional notes"
+  },
+
+  "content_media_policy": {
+    "in_house_video_rights": "description",
+    "recording_restrictions": "description",
+    "drone_policy": "description",
+    "press_access_rules": "description",
+    "backstage_media_zones": "description",
+    "notes": "any additional notes"
+  },
+
+  "load_out_constraints": {
+    "hard_curfew_on_load_out": "time or description",
+    "overnight_parking_policy": "description",
+    "dock_availability_window": "description",
+    "noise_restrictions_after_show": "description",
+    "elevator_downtime": "description",
+    "notes": "any additional notes"
+  },
+
   "risk_flags": [
     {
-      "category": "STAGE" | "RIGGING" | "DOCK" | "POWER" | "LIGHTING_AUDIO" | "WARDROBE" | "LABOR" | "PERMANENT_INSTALL" | "COMPATIBILITY",
+      "category": "STAGE" | "RIGGING" | "DOCK" | "POWER" | "LIGHTING_AUDIO" | "WARDROBE" | "LABOR" | "PERMANENT_INSTALL" | "COMPATIBILITY" | "INSURANCE" | "SAFETY" | "SECURITY" | "FINANCIAL" | "LOCAL_ORDINANCE" | "LOGISTICS" | "ENVIRONMENTAL",
       "severity": "LOW" | "MEDIUM" | "HIGH" | "CRITICAL",
       "title": "Short risk title (e.g. 'Short Stage')",
       "detail": "Specific detail (e.g. 'Stage depth 26ft < 30ft minimum')"
@@ -453,6 +605,21 @@ interface TechPackResult {
   labor_union: Record<string, unknown>;
   permanent_installations: Record<string, unknown>;
   production_compatibility: Record<string, unknown>;
+  contact_chain_of_command: Record<string, unknown>;
+  insurance_liability: Record<string, unknown>;
+  safety_compliance: Record<string, unknown>;
+  security_crowd_control: Record<string, unknown>;
+  hospitality_catering: Record<string, unknown>;
+  comms_infrastructure: Record<string, unknown>;
+  it_network: Record<string, unknown>;
+  environmental_conditions: Record<string, unknown>;
+  local_ordinances: Record<string, unknown>;
+  financial_settlement: Record<string, unknown>;
+  venue_history: Record<string, unknown>;
+  transportation_logistics: Record<string, unknown>;
+  ada_accessibility: Record<string, unknown>;
+  content_media_policy: Record<string, unknown>;
+  load_out_constraints: Record<string, unknown>;
   risk_flags: Array<{
     category: string;
     severity: string;
@@ -727,6 +894,21 @@ Deno.serve(async (req) => {
             labor_union: techResult.labor_union || {},
             permanent_installations: techResult.permanent_installations || {},
             production_compatibility: techResult.production_compatibility || {},
+            contact_chain_of_command: techResult.contact_chain_of_command || {},
+            insurance_liability: techResult.insurance_liability || {},
+            safety_compliance: techResult.safety_compliance || {},
+            security_crowd_control: techResult.security_crowd_control || {},
+            hospitality_catering: techResult.hospitality_catering || {},
+            comms_infrastructure: techResult.comms_infrastructure || {},
+            it_network: techResult.it_network || {},
+            environmental_conditions: techResult.environmental_conditions || {},
+            local_ordinances: techResult.local_ordinances || {},
+            financial_settlement: techResult.financial_settlement || {},
+            venue_history: techResult.venue_history || {},
+            transportation_logistics: techResult.transportation_logistics || {},
+            ada_accessibility: techResult.ada_accessibility || {},
+            content_media_policy: techResult.content_media_policy || {},
+            load_out_constraints: techResult.load_out_constraints || {},
           })
           .select("id")
           .single();

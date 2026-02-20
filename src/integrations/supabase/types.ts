@@ -654,60 +654,171 @@ export type Database = {
           },
         ]
       }
+      venue_scores: {
+        Row: {
+          compatibility_factors: Json | null
+          compatibility_score: number | null
+          created_at: string
+          crew_stress_factors: Json | null
+          crew_stress_score: number | null
+          financial_factors: Json | null
+          financial_sensitivity_score: number | null
+          id: string
+          risk_factors: Json | null
+          risk_score: number | null
+          tech_spec_id: string
+          tour_id: string
+          updated_at: string
+          venue_name: string
+        }
+        Insert: {
+          compatibility_factors?: Json | null
+          compatibility_score?: number | null
+          created_at?: string
+          crew_stress_factors?: Json | null
+          crew_stress_score?: number | null
+          financial_factors?: Json | null
+          financial_sensitivity_score?: number | null
+          id?: string
+          risk_factors?: Json | null
+          risk_score?: number | null
+          tech_spec_id: string
+          tour_id: string
+          updated_at?: string
+          venue_name: string
+        }
+        Update: {
+          compatibility_factors?: Json | null
+          compatibility_score?: number | null
+          created_at?: string
+          crew_stress_factors?: Json | null
+          crew_stress_score?: number | null
+          financial_factors?: Json | null
+          financial_sensitivity_score?: number | null
+          id?: string
+          risk_factors?: Json | null
+          risk_score?: number | null
+          tech_spec_id?: string
+          tour_id?: string
+          updated_at?: string
+          venue_name?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "venue_scores_tech_spec_id_fkey"
+            columns: ["tech_spec_id"]
+            isOneToOne: true
+            referencedRelation: "venue_tech_specs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "venue_scores_tour_id_fkey"
+            columns: ["tour_id"]
+            isOneToOne: false
+            referencedRelation: "tours"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       venue_tech_specs: {
         Row: {
+          ada_accessibility: Json | null
+          comms_infrastructure: Json | null
+          contact_chain_of_command: Json | null
+          content_media_policy: Json | null
           created_at: string
           dock_load_in: Json | null
+          environmental_conditions: Json | null
+          financial_settlement: Json | null
+          hospitality_catering: Json | null
           id: string
+          insurance_liability: Json | null
+          it_network: Json | null
           labor_union: Json | null
           lighting_audio: Json | null
+          load_out_constraints: Json | null
+          local_ordinances: Json | null
           normalized_venue_name: string
           permanent_installations: Json | null
           power: Json | null
           production_compatibility: Json | null
           rigging_system: Json | null
+          safety_compliance: Json | null
+          security_crowd_control: Json | null
           source_doc_id: string | null
           stage_specs: Json | null
           tour_id: string
+          transportation_logistics: Json | null
           updated_at: string
+          venue_history: Json | null
           venue_identity: Json | null
           venue_name: string
           wardrobe_laundry: Json | null
         }
         Insert: {
+          ada_accessibility?: Json | null
+          comms_infrastructure?: Json | null
+          contact_chain_of_command?: Json | null
+          content_media_policy?: Json | null
           created_at?: string
           dock_load_in?: Json | null
+          environmental_conditions?: Json | null
+          financial_settlement?: Json | null
+          hospitality_catering?: Json | null
           id?: string
+          insurance_liability?: Json | null
+          it_network?: Json | null
           labor_union?: Json | null
           lighting_audio?: Json | null
+          load_out_constraints?: Json | null
+          local_ordinances?: Json | null
           normalized_venue_name: string
           permanent_installations?: Json | null
           power?: Json | null
           production_compatibility?: Json | null
           rigging_system?: Json | null
+          safety_compliance?: Json | null
+          security_crowd_control?: Json | null
           source_doc_id?: string | null
           stage_specs?: Json | null
           tour_id: string
+          transportation_logistics?: Json | null
           updated_at?: string
+          venue_history?: Json | null
           venue_identity?: Json | null
           venue_name: string
           wardrobe_laundry?: Json | null
         }
         Update: {
+          ada_accessibility?: Json | null
+          comms_infrastructure?: Json | null
+          contact_chain_of_command?: Json | null
+          content_media_policy?: Json | null
           created_at?: string
           dock_load_in?: Json | null
+          environmental_conditions?: Json | null
+          financial_settlement?: Json | null
+          hospitality_catering?: Json | null
           id?: string
+          insurance_liability?: Json | null
+          it_network?: Json | null
           labor_union?: Json | null
           lighting_audio?: Json | null
+          load_out_constraints?: Json | null
+          local_ordinances?: Json | null
           normalized_venue_name?: string
           permanent_installations?: Json | null
           power?: Json | null
           production_compatibility?: Json | null
           rigging_system?: Json | null
+          safety_compliance?: Json | null
+          security_crowd_control?: Json | null
           source_doc_id?: string | null
           stage_specs?: Json | null
           tour_id?: string
+          transportation_logistics?: Json | null
           updated_at?: string
+          venue_history?: Json | null
           venue_identity?: Json | null
           venue_name?: string
           wardrobe_laundry?: Json | null
