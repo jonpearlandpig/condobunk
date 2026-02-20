@@ -346,9 +346,9 @@ const BunkDocuments = () => {
     <div className="space-y-4 max-w-4xl w-full overflow-hidden">
       <div className="space-y-3">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Documents</h1>
+          <h1 className="text-2xl font-bold tracking-tight">AKB Builder</h1>
           <p className="text-sm text-muted-foreground font-mono mt-1">
-            Upload, extract, version, and activate tour documents
+            Upload documents — TELA extracts and authors sovereign artifacts for your AKB
           </p>
         </div>
         {tours.length > 0 && (
@@ -389,7 +389,7 @@ const BunkDocuments = () => {
             : "Drop a file or click to upload (.txt, .csv, .md)"}
         </p>
         <p className="text-xs text-muted-foreground/60 font-mono mt-1">
-          Text-based files are extracted deterministically — no AI needed
+          TELA will extract and author artifacts from your uploads
         </p>
       </div>
 
@@ -402,7 +402,7 @@ const BunkDocuments = () => {
           <div className="rounded-lg border border-border border-dashed bg-card/50 p-8 text-center">
             <FileText className="h-8 w-8 text-muted-foreground/40 mx-auto mb-3" />
             <p className="text-sm text-muted-foreground font-mono">
-              No documents yet. Upload one to begin building the AKB.
+              No artifacts yet. Upload a document to begin building the AKB.
             </p>
           </div>
         ) : (
