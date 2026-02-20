@@ -196,7 +196,7 @@ const BunkChat = () => {
                 TELA
                </h2>
                <p className="text-[15px] leading-relaxed text-muted-foreground max-w-md">
-                 What you see here is <strong className="text-foreground">exactly</strong> what your crew and production teams get when they text <span className="font-mono text-primary">888-340-0564</span>. Ask TELA anything — she only answers from verified tour data.
+                 What you see here is <strong className="text-foreground">exactly</strong> what your crew and production teams get when they text <span className="font-mono text-primary">888-340-0564</span>.
               </p>
               {!tourId && (
                 <p className="text-sm text-destructive mt-3 font-mono">
