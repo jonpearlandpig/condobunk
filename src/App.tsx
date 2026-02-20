@@ -6,6 +6,7 @@ import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider } from "@/hooks/useAuth";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import Login from "./pages/Login";
+import InviteAccept from "./pages/InviteAccept";
 import BunkLayout from "./pages/bunk/BunkLayout";
 import BunkOverview from "./pages/bunk/BunkOverview";
 import BunkCalendar from "./pages/bunk/BunkCalendar";
@@ -16,6 +17,7 @@ import BunkConflicts from "./pages/bunk/BunkConflicts";
 import BunkCoverage from "./pages/bunk/BunkCoverage";
 import BunkAdmin from "./pages/bunk/BunkAdmin";
 import BunkSetup from "./pages/bunk/BunkSetup";
+import BunkArtifacts from "./pages/bunk/BunkArtifacts";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -30,6 +32,7 @@ const App = () => (
           <Routes>
             <Route path="/" element={<Navigate to="/bunk" replace />} />
             <Route path="/login" element={<Login />} />
+            <Route path="/invite/:token" element={<InviteAccept />} />
             <Route
               path="/bunk"
               element={
@@ -47,6 +50,7 @@ const App = () => (
               <Route path="coverage" element={<BunkCoverage />} />
               <Route path="admin" element={<BunkAdmin />} />
               <Route path="setup" element={<BunkSetup />} />
+              <Route path="artifacts" element={<BunkArtifacts />} />
             </Route>
             <Route path="*" element={<NotFound />} />
           </Routes>
