@@ -4,6 +4,8 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import { SidebarTrigger } from "@/components/ui/sidebar";
 import { useTour } from "@/hooks/useTour";
 import ReactMarkdown from "react-markdown";
+import { parseTelaActions } from "@/hooks/useTelaActions";
+import TelaActionCard from "@/components/bunk/TelaActionCard";
 
 type Msg = { role: "user" | "assistant"; content: string };
 
@@ -216,9 +218,19 @@ const BunkChat = () => {
                 }`}
               >
                 {msg.role === "assistant" ? (
-                  <div className="prose prose-sm prose-invert max-w-none text-[14px] leading-relaxed [&_p]:mb-2 [&_li]:mb-1 [&_strong]:text-foreground">
-                    <ReactMarkdown>{msg.content}</ReactMarkdown>
-                  </div>
+                  (() => {
+                    const { cleanText, actions } = parseTelaActions(msg.content);
+                    return (
+                      <>
+                        <div className="prose prose-sm prose-invert max-w-none text-[14px] leading-relaxed [&_p]:mb-2 [&_li]:mb-1 [&_strong]:text-foreground">
+                          <ReactMarkdown>{cleanText}</ReactMarkdown>
+                        </div>
+                        {actions.map((action, ai) => (
+                          <TelaActionCard key={ai} action={action} />
+                        ))}
+                      </>
+                    );
+                  })()
                 ) : (
                   <p className="text-[14px] leading-relaxed">{msg.content}</p>
                 )}
