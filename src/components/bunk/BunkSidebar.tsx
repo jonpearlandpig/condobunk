@@ -4,8 +4,6 @@ import {
   CalendarDays,
   MessageSquare,
   FileText,
-  HelpCircle,
-  AlertTriangle,
   BarChart3,
   Settings,
   Users,
@@ -34,8 +32,6 @@ const navItems = [
   { title: "Calendar", url: "/bunk/calendar", icon: CalendarDays },
   { title: "TELA", url: "/bunk/chat", icon: MessageSquare },
   { title: "Documents", url: "/bunk/documents", icon: FileText },
-  { title: "Gaps", url: "/bunk/gaps", icon: HelpCircle },
-  { title: "Conflicts", url: "/bunk/conflicts", icon: AlertTriangle },
   { title: "Coverage", url: "/bunk/coverage", icon: BarChart3 },
   { title: "Admin", url: "/bunk/admin", icon: Settings },
 ];
