@@ -66,7 +66,7 @@ const BunkCalendar = () => {
   const [entries, setEntries] = useState<CalendarEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [viewMode, setViewMode] = useState<ViewMode>("week");
-  const [currentDate, setCurrentDate] = useState(new Date());
+  const [currentDate, setCurrentDate] = useState(() => new Date());
   const [selectedEntry, setSelectedEntry] = useState<CalendarEntry | null>(null);
 
   useEffect(() => {
@@ -96,14 +96,7 @@ const BunkCalendar = () => {
     };
   }, [selectedTourId]);
 
-  useEffect(() => {
-    if (entries.length > 0) {
-      const firstDate = parseISO(entries[0].date);
-      if (!isNaN(firstDate.getTime())) {
-        setCurrentDate(firstDate);
-      }
-    }
-  }, [entries]);
+  // Always start on today — no auto-jump to first event date
 
   const loadCalendar = async () => {
     setLoading(true);
