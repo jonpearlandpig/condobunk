@@ -73,6 +73,29 @@ const BunkCalendar = () => {
     if (selectedTourId) loadCalendar();
   }, [selectedTourId]);
 
+  // Auto-resync: listen for changes to schedule_events and knowledge_gaps
+  useEffect(() => {
+    if (!selectedTourId) return;
+
+    const channel = supabase
+      .channel(`calendar-sync-${selectedTourId}`)
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "schedule_events", filter: `tour_id=eq.${selectedTourId}` },
+        () => loadCalendar()
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "knowledge_gaps", filter: `tour_id=eq.${selectedTourId}` },
+        () => loadCalendar()
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [selectedTourId]);
+
   useEffect(() => {
     if (entries.length > 0) {
       const firstDate = parseISO(entries[0].date);
