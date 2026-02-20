@@ -1,19 +1,19 @@
 import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-  DialogFooter,
-} from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import {
+  Drawer,
+  DrawerContent,
+  DrawerHeader,
+  DrawerTitle,
+  DrawerDescription,
+  DrawerFooter,
+} from "@/components/ui/drawer";
 import {
   CheckCircle2,
   Calendar,
@@ -21,6 +21,7 @@ import {
   Loader2,
   Trash2,
   MapPin,
+  Undo2,
 } from "lucide-react";
 
 interface ExtractionReviewDialogProps {
@@ -143,7 +144,6 @@ const ExtractionReviewDialog = ({
   const handleApprove = async () => {
     setApproving(true);
     try {
-      // Delete removed items
       if (deletedEventIds.size > 0) {
         await supabase
           .from("schedule_events")
@@ -157,7 +157,6 @@ const ExtractionReviewDialog = ({
           .in("id", Array.from(deletedContactIds));
       }
 
-      // Apply edits
       for (const [id, fields] of Object.entries(editedEvents)) {
         if (deletedEventIds.has(id)) continue;
         await supabase.from("schedule_events").update(fields).eq("id", id);
@@ -168,7 +167,6 @@ const ExtractionReviewDialog = ({
         await supabase.from("contacts").update(safeFields).eq("id", id);
       }
 
-      // Deactivate old docs of same type, activate this one
       const docType = extractionSummary?.doc_type;
       if (docType) {
         await supabase
@@ -205,99 +203,130 @@ const ExtractionReviewDialog = ({
     }
   };
 
+  const formatDate = (d: string | null) => {
+    if (!d) return "No date";
+    try {
+      const date = new Date(d + "T00:00:00");
+      return date.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
+    } catch {
+      return d;
+    }
+  };
+
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl max-h-[85vh] flex flex-col">
-        <DialogHeader>
-          <DialogTitle className="font-mono tracking-tight">
+    <Drawer open={open} onOpenChange={onOpenChange}>
+      <DrawerContent className="h-[95dvh] flex flex-col">
+        <DrawerHeader className="pb-3 border-b border-border shrink-0">
+          <DrawerTitle className="font-mono tracking-tight text-lg">
             Review Extraction
-          </DialogTitle>
-          <DialogDescription className="font-mono text-xs">
-            Edit or remove items before approving into the AKB. Strikethrough items will be deleted.
-          </DialogDescription>
+          </DrawerTitle>
+          <DrawerDescription className="font-mono text-xs text-muted-foreground">
+            Edit or remove before approving into AKB
+          </DrawerDescription>
           {extractionSummary && (
-            <div className="flex gap-2 flex-wrap pt-2">
-              <Badge variant="outline" className="font-mono text-[10px]">
+            <div className="flex gap-2 flex-wrap pt-1">
+              <Badge variant="outline" className="font-mono text-[11px]">
                 {extractionSummary.doc_type}
               </Badge>
-              <Badge variant="outline" className="font-mono text-[10px]">
+              <Badge variant="outline" className="font-mono text-[11px]">
                 {extractionSummary.extracted_count} items
               </Badge>
+              {deletedEventIds.size + deletedContactIds.size > 0 && (
+                <Badge variant="destructive" className="font-mono text-[11px]">
+                  {deletedEventIds.size + deletedContactIds.size} removing
+                </Badge>
+              )}
             </div>
           )}
-        </DialogHeader>
+        </DrawerHeader>
 
         {loading ? (
-          <div className="flex items-center justify-center py-12">
+          <div className="flex-1 flex items-center justify-center">
             <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
           </div>
         ) : (
-          <Tabs defaultValue="events" className="flex-1 min-h-0">
-            <TabsList className="font-mono text-xs">
-              <TabsTrigger value="events" className="gap-1.5">
-                <Calendar className="h-3 w-3" />
+          <Tabs defaultValue="events" className="flex-1 flex flex-col min-h-0 px-4 pt-3">
+            <TabsList className="font-mono text-sm w-full shrink-0">
+              <TabsTrigger value="events" className="gap-1.5 flex-1">
+                <Calendar className="h-3.5 w-3.5" />
                 Events ({activeEvents.length})
               </TabsTrigger>
-              <TabsTrigger value="contacts" className="gap-1.5">
-                <Users className="h-3 w-3" />
+              <TabsTrigger value="contacts" className="gap-1.5 flex-1">
+                <Users className="h-3.5 w-3.5" />
                 Contacts ({activeContacts.length})
               </TabsTrigger>
             </TabsList>
 
-            <ScrollArea className="flex-1 mt-3" style={{ maxHeight: "50vh" }}>
-              <TabsContent value="events" className="mt-0 space-y-2">
+            <ScrollArea className="flex-1 mt-3">
+              <TabsContent value="events" className="mt-0 space-y-3 pb-4">
                 {events.length === 0 ? (
-                  <p className="text-sm text-muted-foreground font-mono py-4 text-center">
+                  <p className="text-sm text-muted-foreground font-mono py-8 text-center">
                     No schedule events extracted
                   </p>
                 ) : (
                   events.map((evt) => {
                     const isDeleted = deletedEventIds.has(evt.id);
-                    const edited = editedEvents[evt.id] || {};
                     return (
                       <div
                         key={evt.id}
-                        className={`rounded-lg border border-border p-3 space-y-2 transition-opacity ${
-                          isDeleted ? "opacity-40 line-through" : ""
+                        className={`rounded-xl border border-border p-4 space-y-3 transition-all ${
+                          isDeleted ? "opacity-30 bg-destructive/5" : "bg-card"
                         }`}
                       >
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-2">
-                            <span className="font-mono text-xs font-medium">
-                              {evt.event_date || "No date"}
+                        {/* Header row */}
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="flex-1 min-w-0">
+                            <span className="font-mono text-sm font-semibold text-foreground">
+                              {formatDate(evt.event_date)}
                             </span>
-                            <span className="text-xs text-muted-foreground">
-                              {formatTime(evt.load_in)} → {formatTime(evt.show_time)}
-                            </span>
+                            {(evt.load_in || evt.show_time) && (
+                              <span className="font-mono text-xs text-muted-foreground ml-2">
+                                {formatTime(evt.load_in)}{evt.load_in && evt.show_time ? " → " : ""}{formatTime(evt.show_time)}
+                              </span>
+                            )}
                           </div>
                           <Button
-                            size="sm"
-                            variant="ghost"
-                            className="h-6 w-6 p-0"
+                            size="icon"
+                            variant={isDeleted ? "destructive" : "ghost"}
+                            className="h-9 w-9 shrink-0"
                             onClick={() => toggleDeleteEvent(evt.id)}
                           >
-                            <Trash2 className={`h-3 w-3 ${isDeleted ? "text-destructive" : "text-muted-foreground"}`} />
+                            {isDeleted ? (
+                              <Undo2 className="h-4 w-4" />
+                            ) : (
+                              <Trash2 className="h-4 w-4 text-muted-foreground" />
+                            )}
                           </Button>
                         </div>
+
+                        {/* Editable fields */}
                         {!isDeleted && (
-                          <div className="grid grid-cols-2 gap-2">
-                            <Input
-                              className="h-7 text-xs font-mono"
-                              placeholder="Venue"
-                              defaultValue={evt.venue || ""}
-                              onChange={(e) => updateEventField(evt.id, "venue", e.target.value)}
-                            />
-                            <Input
-                              className="h-7 text-xs font-mono"
-                              placeholder="City"
-                              defaultValue={evt.city || ""}
-                              onChange={(e) => updateEventField(evt.id, "city", e.target.value)}
-                            />
+                          <div className="space-y-2">
+                            <div>
+                              <label className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground mb-1 block">Venue</label>
+                              <Input
+                                className="h-10 text-sm font-mono"
+                                placeholder="Venue name"
+                                defaultValue={evt.venue || ""}
+                                onChange={(e) => updateEventField(evt.id, "venue", e.target.value)}
+                              />
+                            </div>
+                            <div>
+                              <label className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground mb-1 block">City</label>
+                              <Input
+                                className="h-10 text-sm font-mono"
+                                placeholder="City"
+                                defaultValue={evt.city || ""}
+                                onChange={(e) => updateEventField(evt.id, "city", e.target.value)}
+                              />
+                            </div>
                           </div>
                         )}
+
+                        {/* Notes preview */}
                         {!isDeleted && evt.notes && (
-                          <pre className="text-[10px] font-mono text-muted-foreground bg-muted/50 rounded p-2 max-h-20 overflow-auto whitespace-pre-wrap">
-                            {evt.notes.slice(0, 500)}
+                          <pre className="text-xs font-mono text-muted-foreground bg-muted/40 rounded-lg p-3 max-h-16 overflow-auto whitespace-pre-wrap leading-relaxed">
+                            {evt.notes.slice(0, 300)}
                           </pre>
                         )}
                       </div>
@@ -306,9 +335,9 @@ const ExtractionReviewDialog = ({
                 )}
               </TabsContent>
 
-              <TabsContent value="contacts" className="mt-0 space-y-2">
+              <TabsContent value="contacts" className="mt-0 space-y-3 pb-4">
                 {contacts.length === 0 ? (
-                  <p className="text-sm text-muted-foreground font-mono py-4 text-center">
+                  <p className="text-sm text-muted-foreground font-mono py-8 text-center">
                     No contacts extracted
                   </p>
                 ) : (
@@ -317,60 +346,81 @@ const ExtractionReviewDialog = ({
                     return (
                       <div
                         key={c.id}
-                        className={`rounded-lg border border-border p-3 transition-opacity ${
-                          isDeleted ? "opacity-40 line-through" : ""
+                        className={`rounded-xl border border-border p-4 transition-all ${
+                          isDeleted ? "opacity-30 bg-destructive/5" : "bg-card"
                         }`}
                       >
-                        <div className="flex items-center justify-between mb-2">
-                          <div className="flex items-center gap-2">
-                            <span className="text-sm font-medium">{c.name}</span>
+                        {/* Header */}
+                        <div className="flex items-center justify-between gap-2 mb-3">
+                          <div className="flex items-center gap-2 min-w-0 flex-1">
+                            <span className="text-sm font-semibold truncate">{c.name}</span>
                             {c.scope === "VENUE" && (
-                              <Badge variant="outline" className="font-mono text-[9px] gap-1">
+                              <Badge variant="outline" className="font-mono text-[10px] gap-1 shrink-0">
                                 <MapPin className="h-2.5 w-2.5" />
                                 {c.venue || "VENUE"}
                               </Badge>
                             )}
                             {c.scope === "TOUR" && (
-                              <Badge variant="outline" className="font-mono text-[9px] bg-primary/10 text-primary">
-                                TOUR TEAM
+                              <Badge variant="outline" className="font-mono text-[10px] bg-primary/10 text-primary shrink-0">
+                                TOUR
                               </Badge>
                             )}
                           </div>
                           <Button
-                            size="sm"
-                            variant="ghost"
-                            className="h-6 w-6 p-0"
+                            size="icon"
+                            variant={isDeleted ? "destructive" : "ghost"}
+                            className="h-9 w-9 shrink-0"
                             onClick={() => toggleDeleteContact(c.id)}
                           >
-                            <Trash2 className={`h-3 w-3 ${isDeleted ? "text-destructive" : "text-muted-foreground"}`} />
+                            {isDeleted ? (
+                              <Undo2 className="h-4 w-4" />
+                            ) : (
+                              <Trash2 className="h-4 w-4 text-muted-foreground" />
+                            )}
                           </Button>
                         </div>
+
+                        {/* Editable fields */}
                         {!isDeleted && (
-                          <div className="grid grid-cols-2 gap-2">
-                            <Input
-                              className="h-7 text-xs font-mono"
-                              placeholder="Role"
-                              defaultValue={c.role || ""}
-                              onChange={(e) => updateContactField(c.id, "role", e.target.value)}
-                            />
-                            <Input
-                              className="h-7 text-xs font-mono"
-                              placeholder="Phone"
-                              defaultValue={c.phone || ""}
-                              onChange={(e) => updateContactField(c.id, "phone", e.target.value)}
-                            />
-                            <Input
-                              className="h-7 text-xs font-mono"
-                              placeholder="Email"
-                              defaultValue={c.email || ""}
-                              onChange={(e) => updateContactField(c.id, "email", e.target.value)}
-                            />
-                            <Input
-                              className="h-7 text-xs font-mono"
-                              placeholder="Venue (if venue contact)"
-                              defaultValue={c.venue || ""}
-                              onChange={(e) => updateContactField(c.id, "venue", e.target.value)}
-                            />
+                          <div className="space-y-2">
+                            <div>
+                              <label className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground mb-1 block">Role</label>
+                              <Input
+                                className="h-10 text-sm font-mono"
+                                placeholder="Role"
+                                defaultValue={c.role || ""}
+                                onChange={(e) => updateContactField(c.id, "role", e.target.value)}
+                              />
+                            </div>
+                            <div>
+                              <label className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground mb-1 block">Phone</label>
+                              <Input
+                                className="h-10 text-sm font-mono"
+                                placeholder="Phone"
+                                defaultValue={c.phone || ""}
+                                onChange={(e) => updateContactField(c.id, "phone", e.target.value)}
+                              />
+                            </div>
+                            <div>
+                              <label className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground mb-1 block">Email</label>
+                              <Input
+                                className="h-10 text-sm font-mono"
+                                placeholder="Email"
+                                defaultValue={c.email || ""}
+                                onChange={(e) => updateContactField(c.id, "email", e.target.value)}
+                              />
+                            </div>
+                            {c.scope === "VENUE" && (
+                              <div>
+                                <label className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground mb-1 block">Venue</label>
+                                <Input
+                                  className="h-10 text-sm font-mono"
+                                  placeholder="Venue"
+                                  defaultValue={c.venue || ""}
+                                  onChange={(e) => updateContactField(c.id, "venue", e.target.value)}
+                                />
+                              </div>
+                            )}
                           </div>
                         )}
                       </div>
@@ -382,25 +432,29 @@ const ExtractionReviewDialog = ({
           </Tabs>
         )}
 
-        <DialogFooter className="pt-4 border-t border-border">
-          <Button variant="outline" onClick={() => onOpenChange(false)} className="font-mono text-xs">
+        <DrawerFooter className="shrink-0 border-t border-border pt-3 pb-6 flex-row gap-3">
+          <Button
+            variant="outline"
+            onClick={() => onOpenChange(false)}
+            className="font-mono text-sm flex-1"
+          >
             Cancel
           </Button>
           <Button
             onClick={handleApprove}
             disabled={approving || loading}
-            className="font-mono text-xs gap-1.5"
+            className="font-mono text-sm gap-2 flex-1"
           >
             {approving ? (
-              <Loader2 className="h-3 w-3 animate-spin" />
+              <Loader2 className="h-4 w-4 animate-spin" />
             ) : (
-              <CheckCircle2 className="h-3 w-3" />
+              <CheckCircle2 className="h-4 w-4" />
             )}
-            Approve into AKB
+            Approve
           </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+        </DrawerFooter>
+      </DrawerContent>
+    </Drawer>
   );
 };
 
