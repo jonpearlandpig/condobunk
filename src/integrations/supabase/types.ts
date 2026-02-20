@@ -600,6 +600,135 @@ export type Database = {
           },
         ]
       }
+      venue_risk_flags: {
+        Row: {
+          category: string
+          created_at: string
+          id: string
+          resolved: boolean
+          risk_detail: string | null
+          risk_title: string
+          severity: Database["public"]["Enums"]["risk_severity"]
+          tech_spec_id: string
+          tour_id: string
+          venue_name: string
+        }
+        Insert: {
+          category: string
+          created_at?: string
+          id?: string
+          resolved?: boolean
+          risk_detail?: string | null
+          risk_title: string
+          severity?: Database["public"]["Enums"]["risk_severity"]
+          tech_spec_id: string
+          tour_id: string
+          venue_name: string
+        }
+        Update: {
+          category?: string
+          created_at?: string
+          id?: string
+          resolved?: boolean
+          risk_detail?: string | null
+          risk_title?: string
+          severity?: Database["public"]["Enums"]["risk_severity"]
+          tech_spec_id?: string
+          tour_id?: string
+          venue_name?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "venue_risk_flags_tech_spec_id_fkey"
+            columns: ["tech_spec_id"]
+            isOneToOne: false
+            referencedRelation: "venue_tech_specs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "venue_risk_flags_tour_id_fkey"
+            columns: ["tour_id"]
+            isOneToOne: false
+            referencedRelation: "tours"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      venue_tech_specs: {
+        Row: {
+          created_at: string
+          dock_load_in: Json | null
+          id: string
+          labor_union: Json | null
+          lighting_audio: Json | null
+          normalized_venue_name: string
+          permanent_installations: Json | null
+          power: Json | null
+          production_compatibility: Json | null
+          rigging_system: Json | null
+          source_doc_id: string | null
+          stage_specs: Json | null
+          tour_id: string
+          updated_at: string
+          venue_identity: Json | null
+          venue_name: string
+          wardrobe_laundry: Json | null
+        }
+        Insert: {
+          created_at?: string
+          dock_load_in?: Json | null
+          id?: string
+          labor_union?: Json | null
+          lighting_audio?: Json | null
+          normalized_venue_name: string
+          permanent_installations?: Json | null
+          power?: Json | null
+          production_compatibility?: Json | null
+          rigging_system?: Json | null
+          source_doc_id?: string | null
+          stage_specs?: Json | null
+          tour_id: string
+          updated_at?: string
+          venue_identity?: Json | null
+          venue_name: string
+          wardrobe_laundry?: Json | null
+        }
+        Update: {
+          created_at?: string
+          dock_load_in?: Json | null
+          id?: string
+          labor_union?: Json | null
+          lighting_audio?: Json | null
+          normalized_venue_name?: string
+          permanent_installations?: Json | null
+          power?: Json | null
+          production_compatibility?: Json | null
+          rigging_system?: Json | null
+          source_doc_id?: string | null
+          stage_specs?: Json | null
+          tour_id?: string
+          updated_at?: string
+          venue_identity?: Json | null
+          venue_name?: string
+          wardrobe_laundry?: Json | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "venue_tech_specs_source_doc_id_fkey"
+            columns: ["source_doc_id"]
+            isOneToOne: false
+            referencedRelation: "documents"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "venue_tech_specs_tour_id_fkey"
+            columns: ["tour_id"]
+            isOneToOne: false
+            referencedRelation: "tours"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never
@@ -633,6 +762,7 @@ export type Database = {
         | "VENUE"
         | "UNKNOWN"
       integration_provider: "MASTER_TOUR" | "GENERIC_WEBHOOK" | "CSV_IMPORT"
+      risk_severity: "LOW" | "MEDIUM" | "HIGH" | "CRITICAL"
       sms_status: "queued" | "sent" | "failed"
       sync_status: "IDLE" | "SYNCING" | "SUCCESS" | "FAILED"
       tour_role: "TA" | "MGMT" | "CREW"
@@ -790,6 +920,7 @@ export const Constants = {
         "UNKNOWN",
       ],
       integration_provider: ["MASTER_TOUR", "GENERIC_WEBHOOK", "CSV_IMPORT"],
+      risk_severity: ["LOW", "MEDIUM", "HIGH", "CRITICAL"],
       sms_status: ["queued", "sent", "failed"],
       sync_status: ["IDLE", "SYNCING", "SUCCESS", "FAILED"],
       tour_role: ["TA", "MGMT", "CREW"],
