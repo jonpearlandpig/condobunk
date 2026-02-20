@@ -44,7 +44,7 @@ const SidebarContactList = ({ contacts, onNavigate, onUpdate, onDelete, onlineUs
 
   const handleChat = (contact: SidebarContact) => {
     const q = `What do we have on file for ${contact.name}${contact.role ? ` (${contact.role})` : ""}?`;
-    navigate(`/bunk/chat?q=${encodeURIComponent(q)}`);
+    navigate(`/bunk/chat?scope=tour&q=${encodeURIComponent(q)}`);
     onNavigate?.();
   };
 
@@ -475,7 +475,7 @@ const SidebarContactList = ({ contacts, onNavigate, onUpdate, onDelete, onlineUs
                         <button
                           onClick={() => {
                             const q = `We need venue contacts for ${group.venue}${group.city ? ` in ${group.city}` : ""}. What do we need to cover?`;
-                            navigate(`/bunk/chat?q=${encodeURIComponent(q)}`);
+                            navigate(`/bunk/chat?scope=tour&q=${encodeURIComponent(q)}`);
                             onNavigate?.();
                           }}
                           className="inline-flex items-center gap-1.5 text-[10px] font-mono tracking-wider text-primary hover:text-primary/80 transition-colors"
