@@ -6,6 +6,7 @@ import { useTour } from "@/hooks/useTour";
 import ReactMarkdown from "react-markdown";
 import { parseTelaActions } from "@/hooks/useTelaActions";
 import TelaActionCard from "@/components/bunk/TelaActionCard";
+import TelaSuggestionChips from "@/components/bunk/TelaSuggestionChips";
 import MessageActions from "@/components/bunk/MessageActions";
 
 type Msg = { role: "user" | "assistant"; content: string };
@@ -221,6 +222,7 @@ const BunkChat = () => {
                 {msg.role === "assistant" ? (
                   (() => {
                     const { cleanText, actions } = parseTelaActions(msg.content);
+                    const isLatestAssistant = !isStreaming && i === messages.length - 1;
                     return (
                       <>
                         <div className="prose prose-sm md:prose-base prose-invert max-w-none text-[14px] md:text-[15px] leading-relaxed md:leading-7 [&_p]:mb-2 md:[&_p]:mb-3 [&_li]:mb-1 md:[&_li]:mb-2 [&_strong]:text-foreground [&_a]:text-primary [&_a]:underline">
@@ -237,6 +239,11 @@ const BunkChat = () => {
                         {actions.map((action, ai) => (
                           <TelaActionCard key={ai} action={action} />
                         ))}
+                        <TelaSuggestionChips
+                          content={cleanText}
+                          onFollowUp={sendMessage}
+                          isLatest={isLatestAssistant}
+                        />
                       </>
                     );
                   })()
