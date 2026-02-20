@@ -16,7 +16,7 @@ type InviteData = {
   role: string;
   used_at: string | null;
   expires_at: string;
-  tours: { name: string } | null;
+  tour_name: string | null;
 };
 
 const InviteAccept = () => {
@@ -41,7 +41,7 @@ const InviteAccept = () => {
       if (!token) { setInviteError("Invalid invite link."); setInviteLoading(false); return; }
       const { data, error } = await supabase
         .from("tour_invites")
-        .select("id, tour_id, email, role, used_at, expires_at, tours(name)")
+        .select("id, tour_id, email, role, used_at, expires_at, tour_name")
         .eq("token", token)
         .maybeSingle();
 
@@ -165,7 +165,7 @@ const InviteAccept = () => {
           <CheckCircle className="h-12 w-12 text-primary mx-auto" />
           <h2 className="text-xl font-bold font-mono">Welcome to the Bunk!</h2>
           <p className="text-sm text-muted-foreground">
-            You've joined <strong>{invite?.tours?.name}</strong>. Redirecting…
+            You've joined <strong>{invite?.tour_name}</strong>. Redirecting…
           </p>
         </motion.div>
       </div>
@@ -204,7 +204,7 @@ const InviteAccept = () => {
             <p className="text-sm font-mono text-primary">
               You've been invited to join
             </p>
-            <p className="text-lg font-bold mt-0.5">{invite?.tours?.name}</p>
+            <p className="text-lg font-bold mt-0.5">{invite?.tour_name}</p>
             <p className="text-xs font-mono text-muted-foreground mt-1">
               Role: <span className="text-foreground">{invite?.role}</span>
             </p>
