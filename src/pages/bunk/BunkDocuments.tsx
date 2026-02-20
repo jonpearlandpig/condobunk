@@ -16,6 +16,8 @@ import {
   Trash2,
   Pencil,
   MoreVertical,
+  Archive,
+  RotateCcw,
 } from "lucide-react";
 import ExtractionReviewDialog from "@/components/bunk/ExtractionReviewDialog";
 import TechPackReviewDialog from "@/components/bunk/TechPackReviewDialog";
@@ -62,6 +64,7 @@ interface DocRow {
   file_path: string | null;
   raw_text: string | null;
   created_at: string;
+  archived_at: string | null;
 }
 
 const DOC_TYPE_COLORS: Record<string, string> = {
@@ -95,6 +98,10 @@ const BunkDocuments = () => {
   const [deleteTarget, setDeleteTarget] = useState<DocRow | null>(null);
   const [renameTarget, setRenameTarget] = useState<DocRow | null>(null);
   const [renameValue, setRenameValue] = useState("");
+  const [showArchived, setShowArchived] = useState(false);
+
+  const activeDocuments = documents.filter(d => !d.archived_at);
+  const archivedDocuments = documents.filter(d => !!d.archived_at);
 
   const openTechReview = async (docId: string) => {
     setReviewLoading(true);
@@ -238,18 +245,25 @@ const BunkDocuments = () => {
     }
   };
 
-  const handleDelete = async (doc: DocRow) => {
+  const handleArchive = async (doc: DocRow) => {
     try {
-      if (doc.file_path) {
-        await supabase.storage.from("document-files").remove([doc.file_path]);
-      }
-      await supabase.from("documents").delete().eq("id", doc.id);
-      toast({ title: "Document deleted" });
+      await supabase.from("documents").update({ archived_at: new Date().toISOString(), is_active: false }).eq("id", doc.id);
+      toast({ title: "Document archived" });
       loadDocuments();
     } catch (err: any) {
-      toast({ title: "Delete failed", description: err.message, variant: "destructive" });
+      toast({ title: "Archive failed", description: err.message, variant: "destructive" });
     } finally {
       setDeleteTarget(null);
+    }
+  };
+
+  const handleRestore = async (doc: DocRow) => {
+    try {
+      await supabase.from("documents").update({ archived_at: null }).eq("id", doc.id);
+      toast({ title: "Document restored" });
+      loadDocuments();
+    } catch (err: any) {
+      toast({ title: "Restore failed", description: err.message, variant: "destructive" });
     }
   };
 
@@ -341,9 +355,9 @@ const BunkDocuments = () => {
       {/* Document List */}
       <div>
         <h2 className="text-sm font-mono text-muted-foreground tracking-wider mb-4">
-          UPLOADED DOCUMENTS ({documents.length})
+          UPLOADED DOCUMENTS ({activeDocuments.length})
         </h2>
-        {documents.length === 0 ? (
+        {activeDocuments.length === 0 ? (
           <div className="rounded-lg border border-border border-dashed bg-card/50 p-8 text-center">
             <FileText className="h-8 w-8 text-muted-foreground/40 mx-auto mb-3" />
             <p className="text-sm text-muted-foreground font-mono">
@@ -353,7 +367,7 @@ const BunkDocuments = () => {
         ) : (
           <div className="space-y-2">
             <AnimatePresence>
-              {documents.map((doc, i) => (
+              {activeDocuments.map((doc, i) => (
                 <motion.div
                   key={doc.id}
                   initial={{ opacity: 0, y: 8 }}
@@ -395,7 +409,7 @@ const BunkDocuments = () => {
                                   <Pencil className="h-3 w-3 mr-2" /> Rename
                                 </DropdownMenuItem>
                                 <DropdownMenuItem className="text-destructive" onClick={() => setDeleteTarget(doc)}>
-                                  <Trash2 className="h-3 w-3 mr-2" /> Delete
+                                  <Archive className="h-3 w-3 mr-2" /> Archive
                                 </DropdownMenuItem>
                               </DropdownMenuContent>
                             </DropdownMenu>
@@ -487,6 +501,41 @@ const BunkDocuments = () => {
           </div>
         )}
       </div>
+
+      {/* Archived Documents */}
+      {archivedDocuments.length > 0 && (
+        <Collapsible open={showArchived} onOpenChange={setShowArchived}>
+          <CollapsibleTrigger asChild>
+            <button className="flex items-center gap-2 text-sm font-mono text-muted-foreground tracking-wider hover:text-foreground transition-colors w-full">
+              <Archive className="h-3.5 w-3.5" />
+              ARCHIVED ({archivedDocuments.length})
+              <ChevronDown className={`h-3 w-3 transition-transform ${showArchived ? "rotate-180" : ""}`} />
+            </button>
+          </CollapsibleTrigger>
+          <CollapsibleContent>
+            <div className="space-y-2 mt-3 opacity-60">
+              {archivedDocuments.map((doc) => (
+                <div key={doc.id} className="rounded-lg border border-border bg-card/50 px-3 sm:px-4 py-3">
+                  <div className="flex items-center justify-between gap-2 overflow-hidden">
+                    <div className="flex items-center gap-2 min-w-0 flex-1 overflow-hidden">
+                      <FileText className="h-4 w-4 text-muted-foreground shrink-0" />
+                      <div className="min-w-0 flex-1">
+                        <p className="font-medium text-sm truncate">{doc.filename || "Untitled"}</p>
+                        <p className="text-xs font-mono text-muted-foreground mt-0.5">
+                          v{doc.version} · archived {new Date(doc.archived_at!).toLocaleDateString()}
+                        </p>
+                      </div>
+                    </div>
+                    <Button size="sm" variant="ghost" className="h-7 gap-1 font-mono text-[10px] shrink-0" onClick={() => handleRestore(doc)}>
+                      <RotateCcw className="h-3 w-3" /> RESTORE
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </CollapsibleContent>
+        </Collapsible>
+      )}
       {reviewDocId && (
         <ExtractionReviewDialog
           open={!!reviewDocId}
@@ -518,19 +567,19 @@ const BunkDocuments = () => {
         />
       )}
 
-      {/* Delete Confirmation */}
+      {/* Archive Confirmation */}
       <AlertDialog open={!!deleteTarget} onOpenChange={(open) => { if (!open) setDeleteTarget(null); }}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete document?</AlertDialogTitle>
+            <AlertDialogTitle>Archive document?</AlertDialogTitle>
             <AlertDialogDescription>
-              This will permanently delete "{deleteTarget?.filename}" and its stored file. This cannot be undone.
+              "{deleteTarget?.filename}" will be moved to the Archived folder. You can restore it later.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={() => deleteTarget && handleDelete(deleteTarget)} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
-              Delete
+            <AlertDialogAction onClick={() => deleteTarget && handleArchive(deleteTarget)}>
+              Archive
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
