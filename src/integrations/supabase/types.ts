@@ -557,6 +557,7 @@ export type Database = {
           role: Database["public"]["Enums"]["tour_role"]
           token: string
           tour_id: string
+          tour_name: string | null
           used_at: string | null
           used_by: string | null
         }
@@ -569,6 +570,7 @@ export type Database = {
           role?: Database["public"]["Enums"]["tour_role"]
           token?: string
           tour_id: string
+          tour_name?: string | null
           used_at?: string | null
           used_by?: string | null
         }
@@ -581,6 +583,7 @@ export type Database = {
           role?: Database["public"]["Enums"]["tour_role"]
           token?: string
           tour_id?: string
+          tour_name?: string | null
           used_at?: string | null
           used_by?: string | null
         }

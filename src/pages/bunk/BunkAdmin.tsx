@@ -71,7 +71,7 @@ const roleBadgeVariant = (role: string) => {
 };
 
 const BunkAdmin = () => {
-  const { selectedTourId } = useTour();
+  const { selectedTourId, selectedTour } = useTour();
   const { user } = useAuth();
   const [integrations, setIntegrations] = useState<Integration[]>([]);
   const [syncLogs, setSyncLogs] = useState<SyncLog[]>([]);
@@ -196,7 +196,7 @@ const BunkAdmin = () => {
     setInvitingLoading(true);
     const { data, error } = await supabase
       .from("tour_invites")
-      .insert({ tour_id: selectedTourId, email: inviteEmail, role: inviteRole as "TA" | "MGMT" | "CREW", created_by: user.id } as any)
+      .insert({ tour_id: selectedTourId, email: inviteEmail, role: inviteRole as "TA" | "MGMT" | "CREW", created_by: user.id, tour_name: selectedTour?.name || null } as any)
       .select()
       .single();
     if (error) {
