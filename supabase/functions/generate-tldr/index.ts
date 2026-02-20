@@ -67,9 +67,35 @@ Rules:
 
     const data = await resp.json();
     let content = data.choices?.[0]?.message?.content || "[]";
+    // Strip markdown fences
     content = content.replace(/^```(?:json)?\s*\n?/i, "").replace(/\n?```\s*$/i, "").trim();
 
-    const lines = JSON.parse(content);
+    let lines: string[];
+    try {
+      // Try to find a JSON array in the response
+      const arrayMatch = content.match(/\[[\s\S]*\]/);
+      if (arrayMatch) {
+        lines = JSON.parse(arrayMatch[0]);
+      } else {
+        // Fallback: split by newlines and treat each as a bullet
+        lines = content
+          .split("\n")
+          .map((l: string) => l.replace(/^[-•*\d.)\s]+/, "").trim())
+          .filter((l: string) => l.length > 10)
+          .slice(0, 5);
+      }
+    } catch (_parseErr) {
+      // Final fallback: split by newlines
+      lines = content
+        .split("\n")
+        .map((l: string) => l.replace(/^[-•*\d.)\s]+/, "").trim())
+        .filter((l: string) => l.length > 10)
+        .slice(0, 5);
+    }
+
+    if (!lines.length) {
+      lines = ["Tour briefing is being prepared — check back shortly."];
+    }
 
     return new Response(JSON.stringify({ lines }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
