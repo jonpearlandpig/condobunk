@@ -11,7 +11,7 @@ const BunkLayout = () => {
   return (
     <TourProvider>
       <SidebarProvider>
-        <div className="min-h-screen flex w-full">
+        <div className="h-screen flex w-full overflow-hidden">
           <BunkSidebar />
           <div className="flex-1 flex flex-col">
             <header className="h-12 flex items-center justify-between border-b border-border px-4 bg-card/50">
