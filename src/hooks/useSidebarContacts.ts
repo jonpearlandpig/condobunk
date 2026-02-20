@@ -89,5 +89,16 @@ export const useSidebarContacts = () => {
     setVenueContacts(updater);
   }, []);
 
-  return { tourContacts, venueContacts, venueLabel, loading, updateContact, refetch: fetchContacts };
+  const deleteContact = useCallback(async (id: string) => {
+    const { error } = await supabase
+      .from("contacts")
+      .delete()
+      .eq("id", id);
+    if (error) throw error;
+    const remover = (prev: SidebarContact[]) => prev.filter(c => c.id !== id);
+    setTourContacts(remover);
+    setVenueContacts(remover);
+  }, []);
+
+  return { tourContacts, venueContacts, venueLabel, loading, updateContact, deleteContact, refetch: fetchContacts };
 };
