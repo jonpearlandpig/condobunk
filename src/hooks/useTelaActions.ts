@@ -2,6 +2,8 @@ import { useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 export type TelaActionType =
   | "resolve_conflict"
   | "resolve_gap"
@@ -95,7 +97,7 @@ export function useTelaActions() {
         }
         case "update_contact": {
           if (!action.fields) throw new Error("No fields to update");
-          // Only allow valid contact columns
+          if (!UUID_RE.test(action.id)) throw new Error("Invalid contact ID — use 'Add Contact' for new contacts");
           const validContactFields = ["name", "role", "phone", "email", "scope", "venue"];
           const sanitized: Record<string, unknown> = {};
           for (const [k, v] of Object.entries(action.fields)) {
@@ -107,6 +109,7 @@ export function useTelaActions() {
             .update(sanitized)
             .eq("id", action.id);
           if (error) throw error;
+          window.dispatchEvent(new Event("contacts-changed"));
           toast({ title: "Contact updated", description: "TELA updated the contact info." });
           return true;
         }
@@ -129,6 +132,7 @@ export function useTelaActions() {
             .from("contacts")
             .insert(insert as any);
           if (error) throw error;
+          window.dispatchEvent(new Event("contacts-changed"));
           toast({ title: "Contact added", description: `TELA added ${action.fields.name} to the AKB.` });
           return true;
         }
