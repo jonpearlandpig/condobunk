@@ -18,7 +18,9 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
+  useSidebar,
 } from "@/components/ui/sidebar";
+import { useIsMobile } from "@/hooks/use-mobile";
 
 const navItems = [
   { title: "Overview", url: "/bunk", icon: LayoutDashboard },
@@ -32,6 +34,17 @@ const navItems = [
 ];
 
 const BunkSidebar = () => {
+  const { setOpenMobile, setOpen } = useSidebar();
+  const isMobile = useIsMobile();
+
+  const handleNavClick = () => {
+    if (isMobile) {
+      setOpenMobile(false);
+    } else {
+      setOpen(false);
+    }
+  };
+
   return (
     <Sidebar className="border-r border-border">
       <SidebarContent className="pt-4">
@@ -47,6 +60,7 @@ const BunkSidebar = () => {
                     <NavLink
                       to={item.url}
                       end={item.url === "/bunk"}
+                      onClick={handleNavClick}
                       className="flex items-center gap-3 px-4 py-2 text-sm text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground transition-colors rounded-md"
                       activeClassName="bg-sidebar-accent text-primary font-medium"
                     >
