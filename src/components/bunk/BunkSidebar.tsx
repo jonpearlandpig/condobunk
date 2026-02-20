@@ -29,7 +29,7 @@ import SidebarContactList from "@/components/bunk/SidebarContactList";
 import { Separator } from "@/components/ui/separator";
 
 const navItems = [
-  { title: "Overview", url: "/bunk", icon: LayoutDashboard },
+  { title: "TL;DR", url: "/bunk", icon: LayoutDashboard },
   { title: "Calendar", url: "/bunk/calendar", icon: CalendarDays },
   { title: "TELA", url: "/bunk/chat", icon: MessageSquare },
   { title: "AKB Builder", url: "/bunk/documents", icon: FileText },
