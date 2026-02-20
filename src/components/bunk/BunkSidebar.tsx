@@ -8,6 +8,9 @@ import {
   AlertTriangle,
   BarChart3,
   Settings,
+  Users,
+  Building2,
+  Loader2,
 } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
 import {
@@ -22,6 +25,9 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar";
 import { useIsMobile } from "@/hooks/use-mobile";
+import { useSidebarContacts } from "@/hooks/useSidebarContacts";
+import SidebarContactList from "@/components/bunk/SidebarContactList";
+import { Separator } from "@/components/ui/separator";
 
 const navItems = [
   { title: "Overview", url: "/bunk", icon: LayoutDashboard },
@@ -37,6 +43,7 @@ const navItems = [
 const BunkSidebar = () => {
   const { setOpenMobile, setOpen } = useSidebar();
   const isMobile = useIsMobile();
+  const { tourContacts, venueContacts, venueLabel, loading } = useSidebarContacts();
 
   // Listen for hover-open event from layout edge zone
   useEffect(() => {
@@ -60,6 +67,7 @@ const BunkSidebar = () => {
       onMouseLeave={() => { if (!isMobile) setOpen(false); }}
     >
       <SidebarContent className="pt-4">
+        {/* Navigation */}
         <SidebarGroup>
           <SidebarGroupLabel className="font-mono text-[10px] tracking-[0.2em] text-muted-foreground/60 uppercase px-4">
             Operations
@@ -83,6 +91,42 @@ const BunkSidebar = () => {
                 </SidebarMenuItem>
               ))}
             </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
+
+        <Separator className="mx-4 w-auto" />
+
+        {/* Tour Team Contacts */}
+        <SidebarGroup>
+          <SidebarGroupLabel className="font-mono text-[10px] tracking-[0.2em] text-muted-foreground/60 uppercase px-4 flex items-center gap-2">
+            <Users className="h-3 w-3" />
+            Tour Team
+          </SidebarGroupLabel>
+          <SidebarGroupContent>
+            {loading ? (
+              <div className="px-4 py-2">
+                <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground/40" />
+              </div>
+            ) : (
+              <SidebarContactList contacts={tourContacts} onNavigate={handleNavClick} />
+            )}
+          </SidebarGroupContent>
+        </SidebarGroup>
+
+        {/* Venue Contacts (rolling weekly) */}
+        <SidebarGroup>
+          <SidebarGroupLabel className="font-mono text-[10px] tracking-[0.2em] text-muted-foreground/60 uppercase px-4 flex items-center gap-2">
+            <Building2 className="h-3 w-3" />
+            {venueLabel || "This Week's Venues"}
+          </SidebarGroupLabel>
+          <SidebarGroupContent>
+            {loading ? (
+              <div className="px-4 py-2">
+                <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground/40" />
+              </div>
+            ) : (
+              <SidebarContactList contacts={venueContacts} onNavigate={handleNavClick} />
+            )}
           </SidebarGroupContent>
         </SidebarGroup>
       </SidebarContent>
