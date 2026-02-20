@@ -193,7 +193,7 @@ const BunkChat = () => {
             <div className="flex flex-col items-center justify-center pt-16 text-center">
              <Zap className="h-10 w-10 text-primary/30 mb-4" />
                <h2 className="text-xl font-semibold text-foreground mb-1">
-                TELA — Touring Efficiency Liaison Assistant
+                TELA
                </h2>
                <p className="text-[15px] leading-relaxed text-muted-foreground max-w-md">
                  What you see here is <strong className="text-foreground">exactly</strong> what your crew and production teams get when they text <span className="font-mono text-primary">888-340-0564</span>. Ask TELA anything — she only answers from verified tour data.
