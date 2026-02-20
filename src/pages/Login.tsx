@@ -70,7 +70,7 @@ const Login = () => {
             </h1>
           </div>
           <p className="text-sm text-muted-foreground tracking-wide">
-            Hide out. Get schtuff done!
+            Close the curtain. Get schtuff done!
           </p>
         </div>
 
