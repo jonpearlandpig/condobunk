@@ -570,8 +570,9 @@ Deno.serve(async (req) => {
       totalExtracted += events.length;
     }
 
-    // Contacts - batch insert
+    // Contacts - batch insert with scope detection
     const contacts = aiResult?.contacts || [];
+    const isVenueDoc = ["TECH", "VENUE"].includes(finalDocType);
     if (contacts.length > 0) {
       const rows = contacts.map(c => ({
         tour_id: doc.tour_id,
@@ -580,12 +581,35 @@ Deno.serve(async (req) => {
         email: c.email || null,
         role: c.role || null,
         source_doc_id: document_id,
+        scope: isVenueDoc ? "VENUE" : "TOUR",
+        venue: isVenueDoc ? (aiResult?.venues?.[0]?.name || filename.replace(/\.[^.]+$/, "")) : null,
       }));
 
       const { error: cErr } = await adminClient.from("contacts").insert(rows);
       if (cErr) console.error("[extract] contacts insert error:", cErr);
-      else console.log("[extract] Inserted", contacts.length, "contacts");
+      else console.log("[extract] Inserted", contacts.length, "contacts (scope:", isVenueDoc ? "VENUE" : "TOUR", ")");
       totalExtracted += contacts.length;
+    }
+
+    // Venue contacts from venues array → insert as VENUE-scoped contacts
+    const venues = aiResult?.venues || [];
+    const venueContacts = venues
+      .filter(v => v.contact_name)
+      .map(v => ({
+        tour_id: doc.tour_id,
+        name: v.contact_name!,
+        phone: v.contact_phone || null,
+        email: v.contact_email || null,
+        role: "Venue Contact",
+        source_doc_id: document_id,
+        scope: "VENUE" as const,
+        venue: v.name || null,
+      }));
+    if (venueContacts.length > 0) {
+      const { error: vcErr } = await adminClient.from("contacts").insert(venueContacts);
+      if (vcErr) console.error("[extract] venue contacts insert error:", vcErr);
+      else console.log("[extract] Inserted", venueContacts.length, "venue contacts");
+      totalExtracted += venueContacts.length;
     }
 
     // Finance - batch insert

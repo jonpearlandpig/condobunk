@@ -67,8 +67,10 @@ export type Database = {
           name: string
           phone: string | null
           role: string | null
+          scope: Database["public"]["Enums"]["contact_scope"]
           source_doc_id: string | null
           tour_id: string
+          venue: string | null
         }
         Insert: {
           created_at?: string
@@ -77,8 +79,10 @@ export type Database = {
           name: string
           phone?: string | null
           role?: string | null
+          scope?: Database["public"]["Enums"]["contact_scope"]
           source_doc_id?: string | null
           tour_id: string
+          venue?: string | null
         }
         Update: {
           created_at?: string
@@ -87,8 +91,10 @@ export type Database = {
           name?: string
           phone?: string | null
           role?: string | null
+          scope?: Database["public"]["Enums"]["contact_scope"]
           source_doc_id?: string | null
           tour_id?: string
+          venue?: string | null
         }
         Relationships: [
           {
@@ -494,6 +500,7 @@ export type Database = {
         | "DATE_PARSE_AMBIGUITY"
         | "DUPLICATE_CONTACT_DIFFERENT_ROLE"
         | "MISSING_REQUIRED_FIELDS"
+      contact_scope: "TOUR" | "VENUE"
       doc_type:
         | "SCHEDULE"
         | "CONTACTS"
@@ -647,6 +654,7 @@ export const Constants = {
         "DUPLICATE_CONTACT_DIFFERENT_ROLE",
         "MISSING_REQUIRED_FIELDS",
       ],
+      contact_scope: ["TOUR", "VENUE"],
       doc_type: [
         "SCHEDULE",
         "CONTACTS",
