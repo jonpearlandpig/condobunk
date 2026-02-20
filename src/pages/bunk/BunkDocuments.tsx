@@ -247,8 +247,17 @@ const BunkDocuments = () => {
 
   const handleArchive = async (doc: DocRow) => {
     try {
+      // Remove all AKB data extracted from this document
+      await Promise.all([
+        supabase.from("schedule_events").delete().eq("source_doc_id", doc.id),
+        supabase.from("contacts").delete().eq("source_doc_id", doc.id),
+        supabase.from("venue_tech_specs").delete().eq("source_doc_id", doc.id),
+      ]);
+      // venue_risk_flags and venue_scores cascade from tech_specs FK, but clean up explicitly
+      // finance_lines don't have source_doc_id, so they stay
+
       await supabase.from("documents").update({ archived_at: new Date().toISOString(), is_active: false }).eq("id", doc.id);
-      toast({ title: "Document archived" });
+      toast({ title: "Document archived", description: "All extracted data has been removed from the AKB." });
       loadDocuments();
     } catch (err: any) {
       toast({ title: "Archive failed", description: err.message, variant: "destructive" });

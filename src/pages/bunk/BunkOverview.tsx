@@ -60,7 +60,7 @@ const BunkOverview = () => {
   }, [user, tours]);
 
   useEffect(() => {
-    if (tours.length > 0 && eventCount > 0) {
+    if (tours.length > 0) {
       generateTldr();
     }
   }, [tours, eventCount]);
@@ -131,15 +131,32 @@ const BunkOverview = () => {
       const openGaps = gapsRes.data || [];
       const openConflicts = conflictsRes.data || [];
 
+      // If AKB is completely empty, show "Begin Tour Build"
       if (upcomingEvents.length === 0 && openGaps.length === 0 && openConflicts.length === 0) {
-        setTldr([{ text: "No upcoming events or open items. Upload documents to populate your tour data.", actionable: false }]);
+        setTldr([{ text: "Begin Tour Build", actionable: false }]);
         setTldrLoading(false);
         return;
       }
 
+      // Bucket events by time horizon: 1 day, 3 days, 7 days
+      const todayDate = new Date(today);
+      const day1 = new Date(todayDate); day1.setDate(day1.getDate() + 1);
+      const day3 = new Date(todayDate); day3.setDate(day3.getDate() + 3);
+      const day7 = new Date(todayDate); day7.setDate(day7.getDate() + 7);
+      const fmt = (d: Date) => d.toISOString().split("T")[0];
+
+      const within1 = upcomingEvents.filter(e => e.event_date && e.event_date <= fmt(day1));
+      const within3 = upcomingEvents.filter(e => e.event_date && e.event_date > fmt(day1) && e.event_date <= fmt(day3));
+      const within7 = upcomingEvents.filter(e => e.event_date && e.event_date > fmt(day3) && e.event_date <= fmt(day7));
+
       const context = JSON.stringify({
         today,
         tours: tours.map(t => ({ name: t.name, state: t.akb_state })),
+        time_horizons: {
+          next_24h: within1.map(e => ({ date: e.event_date, venue: e.venue, city: e.city, day_title: e.notes?.split("\n")[0] || null })),
+          next_3_days: within3.map(e => ({ date: e.event_date, venue: e.venue, city: e.city, day_title: e.notes?.split("\n")[0] || null })),
+          next_7_days: within7.map(e => ({ date: e.event_date, venue: e.venue, city: e.city, day_title: e.notes?.split("\n")[0] || null })),
+        },
         upcoming_events: upcomingEvents.map(e => ({
           date: e.event_date,
           venue: e.venue,
