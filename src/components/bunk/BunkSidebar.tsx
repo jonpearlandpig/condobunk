@@ -10,6 +10,7 @@ import {
   Building2,
   Loader2,
   ChevronRight,
+  StickyNote,
 } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
 import {
@@ -34,6 +35,7 @@ const navItems = [
   { title: "Calendar", url: "/bunk/calendar", icon: CalendarDays },
   { title: "TELA", url: "/bunk/chat", icon: MessageSquare },
   { title: "AKB Builder", url: "/bunk/documents", icon: FileText },
+  { title: "My Artifacts", url: "/bunk/artifacts", icon: StickyNote },
   { title: "Coverage", url: "/bunk/coverage", icon: BarChart3 },
   { title: "Admin", url: "/bunk/admin", icon: Settings },
 ];

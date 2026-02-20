@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-import { Settings, RefreshCw, Plus, Trash2, Copy, CheckCircle, XCircle, Clock, Loader2 } from "lucide-react";
+import { Settings, RefreshCw, Plus, Trash2, Copy, CheckCircle, XCircle, Clock, Loader2, Users, Mail, Link, UserPlus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -7,7 +7,9 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Separator } from "@/components/ui/separator";
 import { useTour } from "@/hooks/useTour";
+import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 
@@ -35,6 +37,24 @@ type SyncLog = {
   error_message: string | null;
 };
 
+type TourMember = {
+  id: string;
+  user_id: string;
+  role: string;
+  created_at: string;
+  profiles: { display_name: string | null; email: string | null } | null;
+};
+
+type TourInvite = {
+  id: string;
+  email: string;
+  role: string;
+  token: string;
+  used_at: string | null;
+  expires_at: string;
+  created_at: string;
+};
+
 const statusIcon = (s: string) => {
   switch (s) {
     case "SUCCESS": return <CheckCircle className="h-4 w-4 text-primary" />;
@@ -44,23 +64,36 @@ const statusIcon = (s: string) => {
   }
 };
 
+const roleBadgeVariant = (role: string) => {
+  if (role === "TA") return "default";
+  if (role === "MGMT") return "secondary";
+  return "outline";
+};
+
 const BunkAdmin = () => {
   const { selectedTourId } = useTour();
+  const { user } = useAuth();
   const [integrations, setIntegrations] = useState<Integration[]>([]);
   const [syncLogs, setSyncLogs] = useState<SyncLog[]>([]);
+  const [members, setMembers] = useState<TourMember[]>([]);
+  const [invites, setInvites] = useState<TourInvite[]>([]);
   const [loading, setLoading] = useState(false);
   const [syncing, setSyncing] = useState<string | null>(null);
   const [addOpen, setAddOpen] = useState(false);
+  const [inviteOpen, setInviteOpen] = useState(false);
   const [newProvider, setNewProvider] = useState<string>("MASTER_TOUR");
   const [newLabel, setNewLabel] = useState("");
   const [mtApiKey, setMtApiKey] = useState("");
   const [mtApiSecret, setMtApiSecret] = useState("");
   const [mtTourId, setMtTourId] = useState("");
+  const [inviteEmail, setInviteEmail] = useState("");
+  const [inviteRole, setInviteRole] = useState<string>("CREW");
+  const [invitingLoading, setInvitingLoading] = useState(false);
 
   const load = useCallback(async () => {
     if (!selectedTourId) return;
     setLoading(true);
-    const [intRes, logRes] = await Promise.all([
+    const [intRes, logRes, memberRes, inviteRes] = await Promise.all([
       supabase
         .from("tour_integrations")
         .select("*")
@@ -72,9 +105,21 @@ const BunkAdmin = () => {
         .eq("tour_id", selectedTourId)
         .order("started_at", { ascending: false })
         .limit(20),
+      supabase
+        .from("tour_members")
+        .select("id, user_id, role, created_at, profiles(display_name, email)")
+        .eq("tour_id", selectedTourId)
+        .order("created_at", { ascending: true }),
+      supabase
+        .from("tour_invites")
+        .select("id, email, role, token, used_at, expires_at, created_at")
+        .eq("tour_id", selectedTourId)
+        .order("created_at", { ascending: false }),
     ]);
     if (intRes.data) setIntegrations(intRes.data as unknown as Integration[]);
     if (logRes.data) setSyncLogs(logRes.data as unknown as SyncLog[]);
+    if (memberRes.data) setMembers(memberRes.data as unknown as TourMember[]);
+    if (inviteRes.data) setInvites(inviteRes.data as TourInvite[]);
     setLoading(false);
   }, [selectedTourId]);
 
@@ -82,13 +127,11 @@ const BunkAdmin = () => {
 
   const handleAdd = async () => {
     if (!selectedTourId) return;
-
     const insertData: Record<string, unknown> = {
       tour_id: selectedTourId,
       provider: newProvider,
       label: newLabel || null,
     };
-
     if (newProvider === "MASTER_TOUR") {
       if (!mtApiKey || !mtApiSecret || !mtTourId) {
         toast.error("All Master Tour fields are required");
@@ -98,23 +141,17 @@ const BunkAdmin = () => {
       insertData.api_secret_encrypted = mtApiSecret;
       insertData.config = { mt_tour_id: mtTourId };
     }
-
     if (newProvider === "GENERIC_WEBHOOK") {
-      // Generate a random webhook secret
       const secret = crypto.randomUUID();
       insertData.webhook_secret = secret;
     }
-
     const { error } = await supabase.from("tour_integrations").insert(insertData as any);
     if (error) {
       toast.error(error.message);
     } else {
       toast.success("Integration added");
       setAddOpen(false);
-      setNewLabel("");
-      setMtApiKey("");
-      setMtApiSecret("");
-      setMtTourId("");
+      setNewLabel(""); setMtApiKey(""); setMtApiSecret(""); setMtTourId("");
       load();
     }
   };
@@ -126,11 +163,8 @@ const BunkAdmin = () => {
         body: { integration_id: integration.id },
       });
       if (error) throw error;
-      if (data?.success) {
-        toast.success(data.message || "Sync completed");
-      } else {
-        toast.error(data?.error || "Sync failed");
-      }
+      if (data?.success) toast.success(data.message || "Sync completed");
+      else toast.error(data?.error || "Sync failed");
     } catch (err: any) {
       toast.error(err.message || "Sync request failed");
     }
@@ -144,7 +178,53 @@ const BunkAdmin = () => {
     else { toast.success("Integration removed"); load(); }
   };
 
-  const copyWebhookUrl = (secret: string) => {
+  const handleRemoveMember = async (memberId: string, userId: string) => {
+    if (userId === user?.id) { toast.error("You can't remove yourself"); return; }
+    const { error } = await supabase.from("tour_members").delete().eq("id", memberId);
+    if (error) toast.error(error.message);
+    else { toast.success("Member removed"); load(); }
+  };
+
+  const handleUpdateRole = async (memberId: string, newRole: string) => {
+    const { error } = await supabase.from("tour_members").update({ role: newRole as "TA" | "MGMT" | "CREW" }).eq("id", memberId);
+    if (error) toast.error(error.message);
+    else { toast.success("Role updated"); load(); }
+  };
+
+  const handleCreateInvite = async () => {
+    if (!selectedTourId || !inviteEmail || !user) return;
+    setInvitingLoading(true);
+    const { data, error } = await supabase
+      .from("tour_invites")
+      .insert({ tour_id: selectedTourId, email: inviteEmail, role: inviteRole as "TA" | "MGMT" | "CREW", created_by: user.id } as any)
+      .select()
+      .single();
+    if (error) {
+      toast.error(error.message);
+    } else {
+      const inviteUrl = `${window.location.origin}/invite/${data.token}`;
+      await navigator.clipboard.writeText(inviteUrl);
+      toast.success("Invite link copied to clipboard! Send it to " + inviteEmail);
+      setInviteOpen(false);
+      setInviteEmail("");
+      load();
+    }
+    setInvitingLoading(false);
+  };
+
+  const handleRevokeInvite = async (inviteId: string) => {
+    const { error } = await supabase.from("tour_invites").delete().eq("id", inviteId);
+    if (error) toast.error(error.message);
+    else { toast.success("Invite revoked"); load(); }
+  };
+
+  const copyInviteLink = (token: string) => {
+    const inviteUrl = `${window.location.origin}/invite/${token}`;
+    navigator.clipboard.writeText(inviteUrl);
+    toast.success("Invite link copied!");
+  };
+
+  const copyWebhookUrl = () => {
     const projectId = import.meta.env.VITE_SUPABASE_PROJECT_ID;
     const url = `https://${projectId}.supabase.co/functions/v1/inbound-sync`;
     navigator.clipboard.writeText(url);
@@ -156,6 +236,8 @@ const BunkAdmin = () => {
     toast.success("Webhook secret copied");
   };
 
+  const isExpired = (expires_at: string) => new Date(expires_at) < new Date();
+
   if (!selectedTourId) {
     return (
       <div className="space-y-6 max-w-4xl">
@@ -166,13 +248,172 @@ const BunkAdmin = () => {
   }
 
   return (
-    <div className="space-y-6 max-w-4xl">
+    <div className="space-y-8 max-w-4xl">
       <div>
         <h1 className="text-2xl font-bold tracking-tight">Admin</h1>
         <p className="text-sm text-muted-foreground font-mono mt-1">
-          Integrations & sync management
+          Team, integrations & sync management
         </p>
       </div>
+
+      {/* Team Management */}
+      <div className="space-y-3">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Users className="h-5 w-5 text-primary" />
+            <h2 className="text-lg font-semibold">Tour Team</h2>
+            <Badge variant="secondary" className="font-mono text-xs">{members.length}</Badge>
+          </div>
+          <Dialog open={inviteOpen} onOpenChange={setInviteOpen}>
+            <DialogTrigger asChild>
+              <Button size="sm" variant="outline">
+                <UserPlus className="h-4 w-4 mr-1" /> Invite Member
+              </Button>
+            </DialogTrigger>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle className="flex items-center gap-2">
+                  <Mail className="h-4 w-4" /> Invite to Tour
+                </DialogTitle>
+              </DialogHeader>
+              <div className="space-y-4">
+                <p className="text-sm text-muted-foreground">
+                  Enter their email and role. An invite link will be generated — copy it and send it to them directly (SMS, email, etc.).
+                </p>
+                <div>
+                  <Label>Email address</Label>
+                  <Input
+                    value={inviteEmail}
+                    onChange={(e) => setInviteEmail(e.target.value)}
+                    type="email"
+                    placeholder="caleb@tourcompany.com"
+                    className="font-mono text-sm"
+                  />
+                </div>
+                <div>
+                  <Label>Role</Label>
+                  <Select value={inviteRole} onValueChange={setInviteRole}>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="MGMT">MGMT — Management (can edit tour data)</SelectItem>
+                      <SelectItem value="CREW">CREW — Crew (read access)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <Button
+                  onClick={handleCreateInvite}
+                  disabled={!inviteEmail || invitingLoading}
+                  className="w-full"
+                >
+                  {invitingLoading ? (
+                    <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                  ) : (
+                    <Link className="h-4 w-4 mr-2" />
+                  )}
+                  Generate & Copy Invite Link
+                </Button>
+              </div>
+            </DialogContent>
+          </Dialog>
+        </div>
+
+        {loading ? (
+          <p className="text-sm text-muted-foreground font-mono">Loading…</p>
+        ) : members.length === 0 ? (
+          <Card className="p-8 text-center border-dashed">
+            <Users className="h-8 w-8 text-muted-foreground/40 mx-auto mb-3" />
+            <p className="text-sm text-muted-foreground font-mono">No team members yet.</p>
+          </Card>
+        ) : (
+          <div className="space-y-2">
+            {members.map((m) => (
+              <Card key={m.id} className="p-3 flex items-center justify-between gap-3">
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
+                    <span className="text-xs font-mono font-bold text-primary">
+                      {(m.profiles?.display_name || m.profiles?.email || "?")[0].toUpperCase()}
+                    </span>
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium truncate">
+                      {m.profiles?.display_name || m.profiles?.email || "Unknown user"}
+                      {m.user_id === user?.id && (
+                        <span className="ml-1.5 text-xs text-muted-foreground font-mono">(you)</span>
+                      )}
+                    </p>
+                    {m.profiles?.display_name && m.profiles?.email && (
+                      <p className="text-xs text-muted-foreground truncate font-mono">{m.profiles.email}</p>
+                    )}
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  <Select
+                    value={m.role}
+                    onValueChange={(v) => handleUpdateRole(m.id, v)}
+                    disabled={m.user_id === user?.id}
+                  >
+                    <SelectTrigger className="h-7 text-xs w-24">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="TA">TA</SelectItem>
+                      <SelectItem value="MGMT">MGMT</SelectItem>
+                      <SelectItem value="CREW">CREW</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  {m.user_id !== user?.id && (
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => handleRemoveMember(m.id, m.user_id)}
+                    >
+                      <Trash2 className="h-4 w-4 text-destructive" />
+                    </Button>
+                  )}
+                </div>
+              </Card>
+            ))}
+          </div>
+        )}
+
+        {/* Pending Invites */}
+        {invites.filter(i => !i.used_at).length > 0 && (
+          <div className="space-y-2 pt-1">
+            <h3 className="text-sm font-mono text-muted-foreground tracking-wider">PENDING INVITES</h3>
+            {invites.filter(i => !i.used_at).map((inv) => (
+              <Card key={inv.id} className={`p-3 flex items-center justify-between gap-3 ${isExpired(inv.expires_at) ? "opacity-50" : ""}`}>
+                <div className="min-w-0">
+                  <p className="text-sm font-mono truncate">{inv.email}</p>
+                  <div className="flex items-center gap-2 mt-0.5">
+                    <Badge variant={roleBadgeVariant(inv.role)} className="text-xs">{inv.role}</Badge>
+                    {isExpired(inv.expires_at) ? (
+                      <span className="text-xs text-destructive font-mono">EXPIRED</span>
+                    ) : (
+                      <span className="text-xs text-muted-foreground font-mono">
+                        Expires {new Date(inv.expires_at).toLocaleDateString()}
+                      </span>
+                    )}
+                  </div>
+                </div>
+                <div className="flex items-center gap-1 shrink-0">
+                  {!isExpired(inv.expires_at) && (
+                    <Button size="sm" variant="ghost" onClick={() => copyInviteLink(inv.token)}>
+                      <Copy className="h-4 w-4" />
+                    </Button>
+                  )}
+                  <Button size="sm" variant="ghost" onClick={() => handleRevokeInvite(inv.id)}>
+                    <Trash2 className="h-4 w-4 text-destructive" />
+                  </Button>
+                </div>
+              </Card>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <Separator />
 
       {/* Integrations */}
       <div className="space-y-3">
@@ -259,7 +500,7 @@ const BunkAdmin = () => {
                   </div>
                   {int.provider === "GENERIC_WEBHOOK" && int.webhook_secret && (
                     <div className="flex items-center gap-1 mt-2">
-                      <Button size="sm" variant="ghost" className="h-6 text-xs" onClick={() => copyWebhookUrl(int.webhook_secret!)}>
+                      <Button size="sm" variant="ghost" className="h-6 text-xs" onClick={() => copyWebhookUrl()}>
                         <Copy className="h-3 w-3 mr-1" /> URL
                       </Button>
                       <Button size="sm" variant="ghost" className="h-6 text-xs" onClick={() => copySecret(int.webhook_secret!)}>

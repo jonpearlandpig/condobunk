@@ -547,6 +547,53 @@ export type Database = {
           },
         ]
       }
+      tour_invites: {
+        Row: {
+          created_at: string
+          created_by: string
+          email: string
+          expires_at: string
+          id: string
+          role: Database["public"]["Enums"]["tour_role"]
+          token: string
+          tour_id: string
+          used_at: string | null
+          used_by: string | null
+        }
+        Insert: {
+          created_at?: string
+          created_by: string
+          email: string
+          expires_at?: string
+          id?: string
+          role?: Database["public"]["Enums"]["tour_role"]
+          token?: string
+          tour_id: string
+          used_at?: string | null
+          used_by?: string | null
+        }
+        Update: {
+          created_at?: string
+          created_by?: string
+          email?: string
+          expires_at?: string
+          id?: string
+          role?: Database["public"]["Enums"]["tour_role"]
+          token?: string
+          tour_id?: string
+          used_at?: string | null
+          used_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tour_invites_tour_id_fkey"
+            columns: ["tour_id"]
+            isOneToOne: false
+            referencedRelation: "tours"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       tour_members: {
         Row: {
           created_at: string
@@ -634,6 +681,47 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "travel_windows_tour_id_fkey"
+            columns: ["tour_id"]
+            isOneToOne: false
+            referencedRelation: "tours"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      user_artifacts: {
+        Row: {
+          artifact_type: string
+          content: string | null
+          created_at: string
+          id: string
+          title: string
+          tour_id: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          artifact_type?: string
+          content?: string | null
+          created_at?: string
+          id?: string
+          title: string
+          tour_id?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          artifact_type?: string
+          content?: string | null
+          created_at?: string
+          id?: string
+          title?: string
+          tour_id?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "user_artifacts_tour_id_fkey"
             columns: ["tour_id"]
             isOneToOne: false
             referencedRelation: "tours"
