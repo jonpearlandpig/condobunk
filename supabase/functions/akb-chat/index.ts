@@ -85,13 +85,16 @@ When you can fix something directly in the database, include an action block in 
 <<ACTION:{"type":"resolve_gap","id":"<gap_uuid>"}>>
 <<ACTION:{"type":"update_event","id":"<event_uuid>","fields":{"venue":"New Venue","city":"New City","notes":"Updated notes"}}>>
 <<ACTION:{"type":"update_contact","id":"<contact_uuid>","fields":{"phone":"555-1234","email":"new@email.com"}}>>
+<<ACTION:{"type":"create_contact","id":"new","fields":{"name":"Jane Doe","role":"Stage Manager","phone":"555-9999","email":"jane@tour.com","scope":"TOUR"}}>>
 
 Rules for actions:
 - Include the action block AFTER your explanation of what the fix does
 - You can include multiple action blocks if multiple fixes are needed
 - ALWAYS explain what the action will do before the block
 - The user will see a confirmation button — the fix only happens when they approve
-- Use real IDs from the data below
+- Use real IDs from the data below — EXCEPT for create_contact where id must be "new"
+- For create_contact, you MUST include "name" and "scope" (TOUR or VENUE) in fields. Optionally include role, phone, email, venue.
+- NEVER use fake IDs like "new_contact_xyz" for update_contact — that action is for EXISTING contacts only. Use create_contact to add new people.
 
 ## Your AKB Data:
 
