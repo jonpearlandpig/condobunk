@@ -29,7 +29,7 @@ Deno.serve(async (req) => {
 
     const [eventsRes, contactsRes, gapsRes, conflictsRes, docsRes] = await Promise.all([
       admin.from("schedule_events").select("id, event_date, venue, city, load_in, show_time, notes").eq("tour_id", tour_id).order("event_date").limit(50),
-      admin.from("contacts").select("id, name, role, email, phone").eq("tour_id", tour_id).limit(30),
+      admin.from("contacts").select("id, name, role, email, phone, scope, venue").eq("tour_id", tour_id).limit(50),
       admin.from("knowledge_gaps").select("id, question, domain, resolved").eq("tour_id", tour_id).limit(20),
       admin.from("calendar_conflicts").select("id, conflict_type, severity, resolved, event_id").eq("tour_id", tour_id).limit(20),
       admin.from("documents").select("id, filename, doc_type, raw_text").eq("tour_id", tour_id).eq("is_active", true).limit(5),
@@ -81,8 +81,11 @@ Rules for actions:
 ### Schedule Events (with IDs):
 ${JSON.stringify(akbContext.schedule, null, 1)}
 
-### Contacts (with IDs):
-${JSON.stringify(akbContext.contacts, null, 1)}
+### Tour Team Contacts (scope=TOUR):
+${JSON.stringify((akbContext.contacts as any[]).filter((c: any) => c.scope !== "VENUE"), null, 1)}
+
+### Venue Contacts (scope=VENUE — these are venue-specific staff, NOT your touring team):
+${JSON.stringify((akbContext.contacts as any[]).filter((c: any) => c.scope === "VENUE"), null, 1)}
 
 ### Knowledge Gaps (with IDs):
 ${JSON.stringify(akbContext.knowledge_gaps, null, 1)}
