@@ -517,6 +517,7 @@ Deno.serve(async (req) => {
         end_time: toTimestamp(evt.event_date, evt.end_time),
         confidence_score: 0.85,
         source_doc_id: document_id,
+        notes: evt.notes || null,
       }));
 
       const { error: evtErr } = await adminClient.from("schedule_events").insert(rows);

@@ -127,11 +127,20 @@ const BunkCalendar = () => {
         if (s.end_time) {
           try { details.push(`End: ${format(new Date(s.end_time), "h:mm a")}`); } catch {}
         }
+        // Parse notes into detail lines
+        const notes = (s as any).notes as string | null;
+        if (notes) {
+          const noteLines = notes.split("\n").filter(Boolean);
+          // First line is the day title, rest are schedule items
+          for (const line of noteLines.slice(1)) {
+            details.push(line.trim());
+          }
+        }
         merged.push({
           id: s.id,
           date: s.event_date || "9999-12-31",
           category: "SHOW",
-          title: s.venue || "TBD Venue",
+          title: notes ? notes.split("\n")[0] : (s.venue || "TBD Venue"),
           subtitle: s.city || undefined,
           details,
           confidence: s.confidence_score ?? undefined,
@@ -347,6 +356,9 @@ const BunkCalendar = () => {
                           <Icon className="h-2.5 w-2.5 shrink-0" />
                           <span className="font-medium truncate">{entry.title}</span>
                         </div>
+                        {entry.subtitle && (
+                          <div className="text-[9px] opacity-70 truncate pl-3.5">{entry.subtitle}</div>
+                        )}
                       </motion.button>
                     );
                   })}
