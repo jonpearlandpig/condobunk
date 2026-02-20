@@ -163,10 +163,17 @@ const SidebarContactList = ({ contacts, onNavigate, onUpdate, onDelete, onlineUs
     setChattingWith(null);
   };
 
+  // Sort: online first, then offline, then no app user
+  const sorted = [...contacts].sort((a, b) => {
+    const aOnline = a.appUserId && onlineUserIds?.has(a.appUserId) ? 0 : a.appUserId ? 1 : 2;
+    const bOnline = b.appUserId && onlineUserIds?.has(b.appUserId) ? 0 : b.appUserId ? 1 : 2;
+    return aOnline - bOnline;
+  });
+
   return (
     <TooltipProvider delayDuration={300}>
       <div className="space-y-0.5">
-        {contacts.map((c) =>
+        {sorted.map((c) =>
           editingId === c.id ? (
             <div key={c.id} className="px-3 py-2 space-y-1.5 bg-sidebar-accent/30 rounded-md mx-1">
               <input value={editForm.name} onChange={(e) => setEditForm(p => ({ ...p, name: e.target.value }))} placeholder="Name" className="w-full bg-background/80 border border-border rounded px-2 py-1 text-sm text-foreground outline-none focus:border-primary" autoFocus />
