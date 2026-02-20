@@ -13,7 +13,7 @@ const BunkLayout = () => {
       <SidebarProvider>
         <div className="h-dvh flex w-full overflow-hidden">
           <BunkSidebar />
-          <div className="flex-1 flex flex-col">
+          <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
             <header className="h-12 flex items-center justify-between border-b border-border px-4 bg-card/50">
               <div className="flex items-center gap-3">
                 <SidebarTrigger />
@@ -31,7 +31,7 @@ const BunkLayout = () => {
                 SIGN OUT
               </button>
             </header>
-            <main className="flex-1 p-6 overflow-auto">
+            <main className="flex-1 p-3 sm:p-6 overflow-auto min-w-0">
               <Outlet />
             </main>
           </div>

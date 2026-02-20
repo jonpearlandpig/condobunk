@@ -288,7 +288,7 @@ const BunkDocuments = () => {
   };
 
   return (
-    <div className="space-y-4 max-w-4xl">
+    <div className="space-y-4 max-w-4xl w-full overflow-hidden">
       <div className="space-y-3">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Documents</h1>
@@ -367,13 +367,13 @@ const BunkDocuments = () => {
                       setExpandedDoc(open ? doc.id : null)
                     }
                   >
-                    <div className="rounded-lg border border-border bg-card">
-                      <div className="px-4 py-3 space-y-2">
+                    <div className="rounded-lg border border-border bg-card overflow-hidden">
+                      <div className="px-3 sm:px-4 py-3 space-y-2">
                         {/* Top row: icon + filename + chevron */}
-                        <div className="flex items-center justify-between gap-2">
-                          <div className="flex items-center gap-2 min-w-0">
+                        <div className="flex items-center justify-between gap-2 overflow-hidden">
+                          <div className="flex items-center gap-2 min-w-0 flex-1 overflow-hidden">
                             <FileText className="h-4 w-4 text-muted-foreground shrink-0" />
-                            <div className="min-w-0">
+                            <div className="min-w-0 flex-1">
                               <p className="font-medium text-sm truncate">
                                 {doc.filename || "Untitled"}
                               </p>
