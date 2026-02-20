@@ -1,8 +1,11 @@
-import { useState } from "react";
-import { Phone, Mail, MessageSquare, Pencil, Check, X, Trash2, MessageCircle } from "lucide-react";
+import { useState, useEffect, useRef } from "react";
+import { Phone, Mail, MessageSquare, Pencil, Check, X, Trash2, MessageCircle, Send } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import type { SidebarContact } from "@/hooks/useSidebarContacts";
 import { useIsMobile } from "@/hooks/use-mobile";
+import { useAuth } from "@/hooks/useAuth";
+import { useTour } from "@/hooks/useTour";
+import { supabase } from "@/integrations/supabase/client";
 import {
   Tooltip,
   TooltipContent,
@@ -16,14 +19,23 @@ interface SidebarContactListProps {
   onNavigate?: () => void;
   onUpdate?: (id: string, updates: Partial<Pick<SidebarContact, "name" | "role" | "phone" | "email">>) => Promise<void>;
   onDelete?: (id: string) => Promise<void>;
+  onlineUserIds?: Set<string>;
 }
 
-const SidebarContactList = ({ contacts, onNavigate, onUpdate, onDelete }: SidebarContactListProps) => {
+const SidebarContactList = ({ contacts, onNavigate, onUpdate, onDelete, onlineUserIds }: SidebarContactListProps) => {
   const navigate = useNavigate();
   const isMobile = useIsMobile();
+  const { user } = useAuth();
+  const { tours } = useTour();
+  const tourId = tours[0]?.id;
   const [editingId, setEditingId] = useState<string | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState({ name: "", role: "", phone: "", email: "" });
+  const [chattingWith, setChattingWith] = useState<string | null>(null); // contact id
+  const [chatMessages, setChatMessages] = useState<Array<{ id: string; sender_id: string; message_text: string; created_at: string }>>([]);
+  const [chatInput, setChatInput] = useState("");
+  const [sending, setSending] = useState(false);
+  const chatEndRef = useRef<HTMLDivElement>(null);
 
   const handleChat = (contact: SidebarContact) => {
     const q = `What do we have on file for ${contact.name}${contact.role ? ` (${contact.role})` : ""}?`;
@@ -31,20 +43,102 @@ const SidebarContactList = ({ contacts, onNavigate, onUpdate, onDelete }: Sideba
     onNavigate?.();
   };
 
+  const isContactOnline = (c: SidebarContact) => {
+    return c.appUserId && onlineUserIds?.has(c.appUserId);
+  };
+
+  const handleMessage = (c: SidebarContact) => {
+    if (isContactOnline(c)) {
+      // Open inline bunk chat
+      setChattingWith(prev => prev === c.id ? null : c.id);
+      setExpandedId(null);
+    } else if (c.phone) {
+      // Fall back to native SMS
+      window.open(`sms:${c.phone}`, "_self");
+    } else {
+      toast.info("No phone number available for this contact");
+    }
+  };
+
+  // Load DM history when chat opens
+  useEffect(() => {
+    if (!chattingWith || !user || !tourId) return;
+    const contact = contacts.find(c => c.id === chattingWith);
+    if (!contact?.appUserId) return;
+
+    const recipientUserId = contact.appUserId;
+
+    const loadMessages = async () => {
+      const { data } = await supabase
+        .from("direct_messages")
+        .select("id, sender_id, message_text, created_at")
+        .eq("tour_id", tourId)
+        .or(`and(sender_id.eq.${user.id},recipient_id.eq.${recipientUserId}),and(sender_id.eq.${recipientUserId},recipient_id.eq.${user.id})`)
+        .order("created_at", { ascending: true })
+        .limit(50);
+      setChatMessages(data || []);
+    };
+    loadMessages();
+
+    // Subscribe to new messages
+    const channel = supabase
+      .channel(`dm-${chattingWith}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "direct_messages",
+          filter: `tour_id=eq.${tourId}`,
+        },
+        (payload) => {
+          const msg = payload.new as any;
+          if (
+            (msg.sender_id === user.id && msg.recipient_id === recipientUserId) ||
+            (msg.sender_id === recipientUserId && msg.recipient_id === user.id)
+          ) {
+            setChatMessages(prev => [...prev, msg]);
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [chattingWith, user, tourId, contacts]);
+
+  // Auto-scroll chat
+  useEffect(() => {
+    chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [chatMessages]);
+
+  const sendMessage = async (contact: SidebarContact) => {
+    if (!chatInput.trim() || !user || !tourId || !contact.appUserId) return;
+    setSending(true);
+    try {
+      const { error } = await supabase.from("direct_messages").insert({
+        tour_id: tourId,
+        sender_id: user.id,
+        recipient_id: contact.appUserId,
+        message_text: chatInput.trim(),
+      });
+      if (error) throw error;
+      setChatInput("");
+    } catch (err: any) {
+      toast.error("Failed to send: " + err.message);
+    }
+    setSending(false);
+  };
+
   const startEdit = (c: SidebarContact) => {
     setEditingId(c.id);
     setExpandedId(null);
-    setEditForm({
-      name: c.name,
-      role: c.role || "",
-      phone: c.phone || "",
-      email: c.email || "",
-    });
+    setChattingWith(null);
+    setEditForm({ name: c.name, role: c.role || "", phone: c.phone || "", email: c.email || "" });
   };
 
-  const cancelEdit = () => {
-    setEditingId(null);
-  };
+  const cancelEdit = () => setEditingId(null);
 
   const saveEdit = async () => {
     if (!editingId || !onUpdate) return;
@@ -57,21 +151,16 @@ const SidebarContactList = ({ contacts, onNavigate, onUpdate, onDelete }: Sideba
       });
       toast.success("Contact updated");
       setEditingId(null);
-    } catch {
-      toast.error("Failed to update contact");
-    }
+    } catch { toast.error("Failed to update contact"); }
   };
 
   if (contacts.length === 0) {
-    return (
-      <p className="px-4 py-1.5 text-xs text-muted-foreground/50 italic">
-        None available
-      </p>
-    );
+    return <p className="px-4 py-1.5 text-xs text-muted-foreground/50 italic">None available</p>;
   }
 
   const toggleExpand = (id: string) => {
     setExpandedId(prev => prev === id ? null : id);
+    setChattingWith(null);
   };
 
   return (
@@ -80,63 +169,19 @@ const SidebarContactList = ({ contacts, onNavigate, onUpdate, onDelete }: Sideba
         {contacts.map((c) =>
           editingId === c.id ? (
             <div key={c.id} className="px-3 py-2 space-y-1.5 bg-sidebar-accent/30 rounded-md mx-1">
-              <input
-                value={editForm.name}
-                onChange={(e) => setEditForm(p => ({ ...p, name: e.target.value }))}
-                placeholder="Name"
-                className="w-full bg-background/80 border border-border rounded px-2 py-1 text-sm text-foreground outline-none focus:border-primary"
-                autoFocus
-              />
-              <input
-                value={editForm.role}
-                onChange={(e) => setEditForm(p => ({ ...p, role: e.target.value }))}
-                placeholder="Role"
-                className="w-full bg-background/80 border border-border rounded px-2 py-1 text-xs text-foreground outline-none focus:border-primary font-mono"
-              />
-              <input
-                value={editForm.phone}
-                onChange={(e) => setEditForm(p => ({ ...p, phone: e.target.value }))}
-                placeholder="Phone"
-                className="w-full bg-background/80 border border-border rounded px-2 py-1 text-xs text-foreground outline-none focus:border-primary font-mono"
-              />
-              <input
-                value={editForm.email}
-                onChange={(e) => setEditForm(p => ({ ...p, email: e.target.value }))}
-                placeholder="Email"
-                className="w-full bg-background/80 border border-border rounded px-2 py-1 text-xs text-foreground outline-none focus:border-primary font-mono"
-              />
+              <input value={editForm.name} onChange={(e) => setEditForm(p => ({ ...p, name: e.target.value }))} placeholder="Name" className="w-full bg-background/80 border border-border rounded px-2 py-1 text-sm text-foreground outline-none focus:border-primary" autoFocus />
+              <input value={editForm.role} onChange={(e) => setEditForm(p => ({ ...p, role: e.target.value }))} placeholder="Role" className="w-full bg-background/80 border border-border rounded px-2 py-1 text-xs text-foreground outline-none focus:border-primary font-mono" />
+              <input value={editForm.phone} onChange={(e) => setEditForm(p => ({ ...p, phone: e.target.value }))} placeholder="Phone" className="w-full bg-background/80 border border-border rounded px-2 py-1 text-xs text-foreground outline-none focus:border-primary font-mono" />
+              <input value={editForm.email} onChange={(e) => setEditForm(p => ({ ...p, email: e.target.value }))} placeholder="Email" className="w-full bg-background/80 border border-border rounded px-2 py-1 text-xs text-foreground outline-none focus:border-primary font-mono" />
               <div className="flex items-center justify-between pt-0.5">
                 {onDelete && (
-                  <button
-                    onClick={async () => {
-                      try {
-                        await onDelete(c.id);
-                        toast.success("Contact deleted");
-                        setEditingId(null);
-                      } catch { toast.error("Failed to delete"); }
-                    }}
-                    className="p-1 rounded text-muted-foreground hover:text-destructive transition-colors"
-                    aria-label="Delete"
-                  >
+                  <button onClick={async () => { try { await onDelete(c.id); toast.success("Contact deleted"); setEditingId(null); } catch { toast.error("Failed to delete"); } }} className="p-1 rounded text-muted-foreground hover:text-destructive transition-colors" aria-label="Delete">
                     <Trash2 className="h-3.5 w-3.5" />
                   </button>
                 )}
                 <div className="flex items-center gap-1">
-                  <button
-                    onClick={cancelEdit}
-                    className="p-1 rounded text-muted-foreground hover:text-destructive transition-colors"
-                    aria-label="Cancel"
-                  >
-                    <X className="h-3.5 w-3.5" />
-                  </button>
-                  <button
-                    onClick={saveEdit}
-                    disabled={!editForm.name.trim()}
-                    className="p-1 rounded text-muted-foreground hover:text-primary transition-colors disabled:opacity-30"
-                    aria-label="Save"
-                  >
-                    <Check className="h-3.5 w-3.5" />
-                  </button>
+                  <button onClick={cancelEdit} className="p-1 rounded text-muted-foreground hover:text-destructive transition-colors" aria-label="Cancel"><X className="h-3.5 w-3.5" /></button>
+                  <button onClick={saveEdit} disabled={!editForm.name.trim()} className="p-1 rounded text-muted-foreground hover:text-primary transition-colors disabled:opacity-30" aria-label="Save"><Check className="h-3.5 w-3.5" /></button>
                 </div>
               </div>
             </div>
@@ -146,52 +191,59 @@ const SidebarContactList = ({ contacts, onNavigate, onUpdate, onDelete }: Sideba
                 className="group flex items-center justify-between px-4 py-1.5 hover:bg-sidebar-accent/50 rounded-md transition-colors cursor-pointer"
                 onClick={() => isMobile && toggleExpand(c.id)}
               >
-                <div className="min-w-0 flex-1">
-                  <p className="text-sm text-sidebar-foreground truncate leading-tight">
-                    {c.name}
-                  </p>
-                  {c.role && (
-                    <p className="text-[10px] font-mono text-muted-foreground/60 truncate leading-tight">
-                      {c.role}
-                    </p>
+                <div className="min-w-0 flex-1 flex items-center gap-2">
+                  {/* Online indicator */}
+                  {c.appUserId && (
+                    <span className={`h-2 w-2 rounded-full shrink-0 ${isContactOnline(c) ? "bg-success" : "bg-muted-foreground/30"}`} />
                   )}
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm text-sidebar-foreground truncate leading-tight">{c.name}</p>
+                    {c.role && <p className="text-[10px] font-mono text-muted-foreground/60 truncate leading-tight">{c.role}</p>}
+                  </div>
                 </div>
 
                 {/* Desktop: hover-reveal actions */}
                 {!isMobile && (
                   <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity shrink-0 ml-2">
-                    {onUpdate && (
+                    {/* Message button - auto-routes based on presence */}
+                    {(c.appUserId || c.phone) && (
                       <Tooltip>
                         <TooltipTrigger asChild>
                           <button
-                            onClick={() => startEdit(c)}
-                            className="p-1 rounded text-muted-foreground hover:text-primary transition-colors"
-                            aria-label="Edit"
+                            onClick={() => handleMessage(c)}
+                            className={`p-1 rounded transition-colors ${
+                              isContactOnline(c)
+                                ? "text-success hover:text-success/80"
+                                : "text-muted-foreground hover:text-primary"
+                            }`}
+                            aria-label="Message"
                           >
-                            <Pencil className="h-3.5 w-3.5" />
+                            <MessageCircle className="h-3.5 w-3.5" />
                           </button>
+                        </TooltipTrigger>
+                        <TooltipContent side="top" className="text-xs">
+                          {isContactOnline(c) ? "Bunk Chat (online)" : c.phone ? "Text (offline)" : "Not available"}
+                        </TooltipContent>
+                      </Tooltip>
+                    )}
+                    {onUpdate && (
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <button onClick={() => startEdit(c)} className="p-1 rounded text-muted-foreground hover:text-primary transition-colors" aria-label="Edit"><Pencil className="h-3.5 w-3.5" /></button>
                         </TooltipTrigger>
                         <TooltipContent side="top" className="text-xs">Edit</TooltipContent>
                       </Tooltip>
                     )}
                     <Tooltip>
                       <TooltipTrigger asChild>
-                        <button
-                          onClick={() => handleChat(c)}
-                          className="p-1 rounded text-muted-foreground hover:text-primary transition-colors"
-                          aria-label="Ask TELA"
-                        >
-                          <MessageSquare className="h-3.5 w-3.5" />
-                        </button>
+                        <button onClick={() => handleChat(c)} className="p-1 rounded text-muted-foreground hover:text-primary transition-colors" aria-label="Ask TELA"><MessageSquare className="h-3.5 w-3.5" /></button>
                       </TooltipTrigger>
                       <TooltipContent side="top" className="text-xs">Ask TELA</TooltipContent>
                     </Tooltip>
                     {c.phone && (
                       <Tooltip>
                         <TooltipTrigger asChild>
-                          <a href={`tel:${c.phone}`} className="p-1 rounded text-muted-foreground hover:text-primary transition-colors" aria-label="Call">
-                            <Phone className="h-3.5 w-3.5" />
-                          </a>
+                          <a href={`tel:${c.phone}`} className="p-1 rounded text-muted-foreground hover:text-primary transition-colors" aria-label="Call"><Phone className="h-3.5 w-3.5" /></a>
                         </TooltipTrigger>
                         <TooltipContent side="top" className="text-xs">{c.phone}</TooltipContent>
                       </Tooltip>
@@ -199,9 +251,7 @@ const SidebarContactList = ({ contacts, onNavigate, onUpdate, onDelete }: Sideba
                     {c.email && (
                       <Tooltip>
                         <TooltipTrigger asChild>
-                          <a href={`mailto:${c.email}`} className="p-1 rounded text-muted-foreground hover:text-primary transition-colors" aria-label="Email">
-                            <Mail className="h-3.5 w-3.5" />
-                          </a>
+                          <a href={`mailto:${c.email}`} className="p-1 rounded text-muted-foreground hover:text-primary transition-colors" aria-label="Email"><Mail className="h-3.5 w-3.5" /></a>
                         </TooltipTrigger>
                         <TooltipContent side="top" className="text-xs">{c.email}</TooltipContent>
                       </Tooltip>
@@ -209,9 +259,12 @@ const SidebarContactList = ({ contacts, onNavigate, onUpdate, onDelete }: Sideba
                   </div>
                 )}
 
-                {/* Mobile: show chevron / indicator for expandable */}
+                {/* Mobile: indicators */}
                 {isMobile && (
                   <div className="flex items-center gap-1 shrink-0 ml-2">
+                    {c.appUserId && (
+                      <span className={`h-1.5 w-1.5 rounded-full ${isContactOnline(c) ? "bg-success" : "bg-muted-foreground/30"}`} />
+                    )}
                     {c.phone && <Phone className="h-3 w-3 text-muted-foreground/40" />}
                     {c.email && <Mail className="h-3 w-3 text-muted-foreground/40" />}
                   </div>
@@ -221,6 +274,20 @@ const SidebarContactList = ({ contacts, onNavigate, onUpdate, onDelete }: Sideba
               {/* Mobile: expanded action bar */}
               {isMobile && expandedId === c.id && (
                 <div className="flex items-center gap-1 px-4 py-2 bg-sidebar-accent/30 rounded-b-md mx-1 mb-0.5">
+                  {/* Smart message button */}
+                  {(c.appUserId || c.phone) && (
+                    <button
+                      onClick={() => handleMessage(c)}
+                      className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-md text-xs font-mono font-medium transition-colors ${
+                        isContactOnline(c)
+                          ? "bg-success/10 text-success active:bg-success/20"
+                          : "bg-info/10 text-info active:bg-info/20"
+                      }`}
+                    >
+                      <MessageCircle className="h-3.5 w-3.5" />
+                      {isContactOnline(c) ? "BUNK" : "TEXT"}
+                    </button>
+                  )}
                   <button
                     onClick={() => { handleChat(c); setExpandedId(null); }}
                     className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-md bg-primary/10 text-primary text-xs font-mono font-medium active:bg-primary/20 transition-colors"
@@ -229,41 +296,66 @@ const SidebarContactList = ({ contacts, onNavigate, onUpdate, onDelete }: Sideba
                     TELA
                   </button>
                   {c.phone && (
-                    <>
-                      <a
-                        href={`sms:${c.phone}`}
-                        className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-md bg-info/10 text-info text-xs font-mono font-medium active:bg-info/20 transition-colors"
-                      >
-                        <MessageCircle className="h-3.5 w-3.5" />
-                        TEXT
-                      </a>
-                      <a
-                        href={`tel:${c.phone}`}
-                        className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-md bg-success/10 text-success text-xs font-mono font-medium active:bg-success/20 transition-colors"
-                      >
-                        <Phone className="h-3.5 w-3.5" />
-                        CALL
-                      </a>
-                    </>
+                    <a href={`tel:${c.phone}`} className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-md bg-success/10 text-success text-xs font-mono font-medium active:bg-success/20 transition-colors">
+                      <Phone className="h-3.5 w-3.5" />
+                      CALL
+                    </a>
                   )}
                   {c.email && (
-                    <a
-                      href={`mailto:${c.email}`}
-                      className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-md bg-warning/10 text-warning text-xs font-mono font-medium active:bg-warning/20 transition-colors"
-                    >
+                    <a href={`mailto:${c.email}`} className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-md bg-warning/10 text-warning text-xs font-mono font-medium active:bg-warning/20 transition-colors">
                       <Mail className="h-3.5 w-3.5" />
                       EMAIL
                     </a>
                   )}
                   {onUpdate && (
-                    <button
-                      onClick={() => startEdit(c)}
-                      className="p-2 rounded-md bg-muted/50 text-muted-foreground active:bg-muted transition-colors"
-                      aria-label="Edit"
-                    >
+                    <button onClick={() => startEdit(c)} className="p-2 rounded-md bg-muted/50 text-muted-foreground active:bg-muted transition-colors" aria-label="Edit">
                       <Pencil className="h-3.5 w-3.5" />
                     </button>
                   )}
+                </div>
+              )}
+
+              {/* Inline Bunk Chat */}
+              {chattingWith === c.id && c.appUserId && (
+                <div className="mx-1 mb-1 rounded-md border border-border bg-background/80 overflow-hidden">
+                  <div className="px-3 py-1.5 border-b border-border bg-muted/30 flex items-center justify-between">
+                    <span className="text-[10px] font-mono text-muted-foreground tracking-wider">BUNK CHAT</span>
+                    <button onClick={() => setChattingWith(null)} className="p-0.5 text-muted-foreground hover:text-foreground"><X className="h-3 w-3" /></button>
+                  </div>
+                  <div className="max-h-40 overflow-y-auto px-3 py-2 space-y-1.5">
+                    {chatMessages.length === 0 && (
+                      <p className="text-[10px] text-muted-foreground/50 italic text-center py-2">No messages yet</p>
+                    )}
+                    {chatMessages.map((msg) => (
+                      <div key={msg.id} className={`flex ${msg.sender_id === user?.id ? "justify-end" : "justify-start"}`}>
+                        <div className={`max-w-[85%] px-2.5 py-1.5 rounded-lg text-xs ${
+                          msg.sender_id === user?.id
+                            ? "bg-primary/15 text-foreground"
+                            : "bg-muted text-foreground"
+                        }`}>
+                          {msg.message_text}
+                        </div>
+                      </div>
+                    ))}
+                    <div ref={chatEndRef} />
+                  </div>
+                  <div className="flex items-center gap-1.5 px-2 py-1.5 border-t border-border">
+                    <input
+                      value={chatInput}
+                      onChange={(e) => setChatInput(e.target.value)}
+                      onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMessage(c); } }}
+                      placeholder="Message..."
+                      className="flex-1 bg-transparent text-xs outline-none placeholder:text-muted-foreground/40"
+                      autoFocus
+                    />
+                    <button
+                      onClick={() => sendMessage(c)}
+                      disabled={!chatInput.trim() || sending}
+                      className="p-1 text-primary hover:text-primary/80 disabled:opacity-30 transition-colors"
+                    >
+                      <Send className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
                 </div>
               )}
             </div>

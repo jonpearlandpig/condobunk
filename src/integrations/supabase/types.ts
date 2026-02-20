@@ -113,6 +113,44 @@ export type Database = {
           },
         ]
       }
+      direct_messages: {
+        Row: {
+          created_at: string
+          id: string
+          message_text: string
+          read_at: string | null
+          recipient_id: string
+          sender_id: string
+          tour_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          message_text: string
+          read_at?: string | null
+          recipient_id: string
+          sender_id: string
+          tour_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          message_text?: string
+          read_at?: string | null
+          recipient_id?: string
+          sender_id?: string
+          tour_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "direct_messages_tour_id_fkey"
+            columns: ["tour_id"]
+            isOneToOne: false
+            referencedRelation: "tours"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       documents: {
         Row: {
           archived_at: string | null
@@ -602,6 +640,24 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      user_presence: {
+        Row: {
+          is_online: boolean
+          last_active_at: string
+          user_id: string
+        }
+        Insert: {
+          is_online?: boolean
+          last_active_at?: string
+          user_id: string
+        }
+        Update: {
+          is_online?: boolean
+          last_active_at?: string
+          user_id?: string
+        }
+        Relationships: []
       }
       venue_risk_flags: {
         Row: {

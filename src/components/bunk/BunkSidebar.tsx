@@ -24,6 +24,7 @@ import {
 } from "@/components/ui/sidebar";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { useSidebarContacts } from "@/hooks/useSidebarContacts";
+import { usePresence } from "@/hooks/usePresence";
 import SidebarContactList from "@/components/bunk/SidebarContactList";
 import { Separator } from "@/components/ui/separator";
 
@@ -40,8 +41,8 @@ const BunkSidebar = () => {
   const { setOpenMobile, setOpen } = useSidebar();
   const isMobile = useIsMobile();
   const { tourContacts, venueContacts, venueLabel, loading, updateContact, deleteContact } = useSidebarContacts();
+  const { onlineUsers } = usePresence();
 
-  // Listen for hover-open event from layout edge zone
   useEffect(() => {
     if (isMobile) return;
     const handler = () => setOpen(true);
@@ -63,7 +64,6 @@ const BunkSidebar = () => {
       onMouseLeave={() => { if (!isMobile) setOpen(false); }}
     >
       <SidebarContent className="pt-4">
-        {/* Navigation */}
         <SidebarGroup>
           <SidebarGroupLabel className="font-mono text-[10px] tracking-[0.2em] text-muted-foreground/60 uppercase px-4">
             Operations
@@ -92,7 +92,6 @@ const BunkSidebar = () => {
 
         <Separator className="mx-4 w-auto" />
 
-        {/* Tour Team Contacts */}
         <SidebarGroup>
           <SidebarGroupLabel className="font-mono text-[10px] tracking-[0.2em] text-muted-foreground/60 uppercase px-4 flex items-center gap-2">
             <Users className="h-3 w-3" />
@@ -104,12 +103,11 @@ const BunkSidebar = () => {
                 <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground/40" />
               </div>
             ) : (
-              <SidebarContactList contacts={tourContacts} onNavigate={handleNavClick} onUpdate={updateContact} onDelete={deleteContact} />
+              <SidebarContactList contacts={tourContacts} onNavigate={handleNavClick} onUpdate={updateContact} onDelete={deleteContact} onlineUserIds={onlineUsers} />
             )}
           </SidebarGroupContent>
         </SidebarGroup>
 
-        {/* Venue Contacts (rolling weekly) */}
         <SidebarGroup>
           <SidebarGroupLabel className="font-mono text-[10px] tracking-[0.2em] text-muted-foreground/60 uppercase px-4 flex items-center gap-2">
             <Building2 className="h-3 w-3" />
@@ -121,7 +119,7 @@ const BunkSidebar = () => {
                 <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground/40" />
               </div>
             ) : (
-              <SidebarContactList contacts={venueContacts} onNavigate={handleNavClick} onUpdate={updateContact} onDelete={deleteContact} />
+              <SidebarContactList contacts={venueContacts} onNavigate={handleNavClick} onUpdate={updateContact} onDelete={deleteContact} onlineUserIds={onlineUsers} />
             )}
           </SidebarGroupContent>
         </SidebarGroup>
