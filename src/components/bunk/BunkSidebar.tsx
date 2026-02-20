@@ -119,7 +119,7 @@ const BunkSidebar = () => {
                 <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground/40" />
               </div>
             ) : (
-              <SidebarContactList contacts={venueContacts} onNavigate={handleNavClick} onUpdate={updateContact} onDelete={deleteContact} onlineUserIds={onlineUsers} />
+              <SidebarContactList contacts={venueContacts} onNavigate={handleNavClick} onUpdate={updateContact} onDelete={deleteContact} onlineUserIds={onlineUsers} grouped />
             )}
           </SidebarGroupContent>
         </SidebarGroup>
