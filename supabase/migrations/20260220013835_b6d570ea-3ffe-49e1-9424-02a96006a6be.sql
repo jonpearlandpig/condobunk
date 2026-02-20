@@ -1,0 +1,2 @@
+ALTER PUBLICATION supabase_realtime ADD TABLE public.schedule_events;
+ALTER PUBLICATION supabase_realtime ADD TABLE public.knowledge_gaps;
