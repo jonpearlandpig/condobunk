@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useState, useEffect } from "react";
 import {
   LayoutDashboard,
   CalendarDays,
@@ -9,6 +9,7 @@ import {
   Users,
   Building2,
   Loader2,
+  ChevronRight,
 } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
 import {
@@ -42,6 +43,8 @@ const BunkSidebar = () => {
   const isMobile = useIsMobile();
   const { tourContacts, venueContacts, venueGroups, venueLabel, loading, updateContact, deleteContact } = useSidebarContacts();
   const { onlineUsers } = usePresence();
+  const [tourTeamOpen, setTourTeamOpen] = useState(true);
+  const [venuePartnersOpen, setVenuePartnersOpen] = useState(true);
 
   useEffect(() => {
     if (isMobile) return;
@@ -93,35 +96,49 @@ const BunkSidebar = () => {
         <Separator className="mx-4 w-auto" />
 
         <SidebarGroup>
-          <SidebarGroupLabel className="font-mono text-[10px] tracking-[0.2em] text-muted-foreground/60 uppercase px-4 flex items-center gap-2">
+          <button
+            onClick={() => setTourTeamOpen(!tourTeamOpen)}
+            className="w-full font-mono text-[10px] tracking-[0.2em] text-muted-foreground/60 uppercase px-4 py-1.5 flex items-center gap-2 hover:text-muted-foreground transition-colors"
+          >
+            <ChevronRight className={`h-3 w-3 transition-transform ${tourTeamOpen ? "rotate-90" : ""}`} />
             <Users className="h-3 w-3" />
             Tour Team
-          </SidebarGroupLabel>
-          <SidebarGroupContent>
-            {loading ? (
-              <div className="px-4 py-2">
-                <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground/40" />
-              </div>
-            ) : (
-              <SidebarContactList contacts={tourContacts} onNavigate={handleNavClick} onUpdate={updateContact} onDelete={deleteContact} onlineUserIds={onlineUsers} />
-            )}
-          </SidebarGroupContent>
+            <span className="ml-auto text-muted-foreground/40 normal-case tracking-normal">{tourContacts.length}</span>
+          </button>
+          {tourTeamOpen && (
+            <SidebarGroupContent>
+              {loading ? (
+                <div className="px-4 py-2">
+                  <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground/40" />
+                </div>
+              ) : (
+                <SidebarContactList contacts={tourContacts} onNavigate={handleNavClick} onUpdate={updateContact} onDelete={deleteContact} onlineUserIds={onlineUsers} />
+              )}
+            </SidebarGroupContent>
+          )}
         </SidebarGroup>
 
         <SidebarGroup>
-          <SidebarGroupLabel className="font-mono text-[10px] tracking-[0.2em] text-muted-foreground/60 uppercase px-4 flex items-center gap-2">
+          <button
+            onClick={() => setVenuePartnersOpen(!venuePartnersOpen)}
+            className="w-full font-mono text-[10px] tracking-[0.2em] text-muted-foreground/60 uppercase px-4 py-1.5 flex items-center gap-2 hover:text-muted-foreground transition-colors"
+          >
+            <ChevronRight className={`h-3 w-3 transition-transform ${venuePartnersOpen ? "rotate-90" : ""}`} />
             <Building2 className="h-3 w-3" />
             Venue Partners
-          </SidebarGroupLabel>
-          <SidebarGroupContent>
-            {loading ? (
-              <div className="px-4 py-2">
-                <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground/40" />
-              </div>
-            ) : (
-              <SidebarContactList contacts={venueContacts} onNavigate={handleNavClick} onUpdate={updateContact} onDelete={deleteContact} onlineUserIds={onlineUsers} grouped venueGroups={venueGroups} />
-            )}
-          </SidebarGroupContent>
+            <span className="ml-auto text-muted-foreground/40 normal-case tracking-normal">{venueGroups.length}</span>
+          </button>
+          {venuePartnersOpen && (
+            <SidebarGroupContent>
+              {loading ? (
+                <div className="px-4 py-2">
+                  <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground/40" />
+                </div>
+              ) : (
+                <SidebarContactList contacts={venueContacts} onNavigate={handleNavClick} onUpdate={updateContact} onDelete={deleteContact} onlineUserIds={onlineUsers} grouped venueGroups={venueGroups} />
+              )}
+            </SidebarGroupContent>
+          )}
         </SidebarGroup>
       </SidebarContent>
     </Sidebar>
