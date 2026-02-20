@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import ExtractionReviewDialog from "@/components/bunk/ExtractionReviewDialog";
 import TechPackReviewDialog from "@/components/bunk/TechPackReviewDialog";
+import TechPackInlineSummary from "@/components/bunk/TechPackInlineSummary";
 import { Button } from "@/components/ui/button";
 import {
   Select,
@@ -397,18 +398,24 @@ const BunkDocuments = () => {
                       </div>
                       <CollapsibleContent>
                         <div className="border-t border-border px-5 py-4">
-                          <div className="flex items-center gap-2 mb-2">
-                            <Eye className="h-3 w-3 text-muted-foreground" />
-                            <span className="font-mono text-[10px] text-muted-foreground tracking-wider">
-                              RAW TEXT PREVIEW
-                            </span>
-                          </div>
-                          <pre className="text-xs font-mono text-muted-foreground bg-muted/50 rounded p-3 max-h-48 overflow-auto whitespace-pre-wrap">
-                            {doc.raw_text
-                              ? doc.raw_text.slice(0, 2000) +
-                                (doc.raw_text.length > 2000 ? "\n..." : "")
-                              : "No text content"}
-                          </pre>
+                          {doc.doc_type === "TECH" ? (
+                            <TechPackInlineSummary docId={doc.id} />
+                          ) : (
+                            <>
+                              <div className="flex items-center gap-2 mb-2">
+                                <Eye className="h-3 w-3 text-muted-foreground" />
+                                <span className="font-mono text-[10px] text-muted-foreground tracking-wider">
+                                  RAW TEXT PREVIEW
+                                </span>
+                              </div>
+                              <pre className="text-xs font-mono text-muted-foreground bg-muted/50 rounded p-3 max-h-48 overflow-auto whitespace-pre-wrap">
+                                {doc.raw_text
+                                  ? doc.raw_text.slice(0, 2000) +
+                                    (doc.raw_text.length > 2000 ? "\n..." : "")
+                                  : "No text content"}
+                              </pre>
+                            </>
+                          )}
                         </div>
                       </CollapsibleContent>
                     </div>
