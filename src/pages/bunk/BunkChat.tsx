@@ -222,8 +222,16 @@ const BunkChat = () => {
                     const { cleanText, actions } = parseTelaActions(msg.content);
                     return (
                       <>
-                        <div className="prose prose-sm prose-invert max-w-none text-[14px] leading-relaxed [&_p]:mb-2 [&_li]:mb-1 [&_strong]:text-foreground">
-                          <ReactMarkdown>{cleanText}</ReactMarkdown>
+                        <div className="prose prose-sm prose-invert max-w-none text-[14px] leading-relaxed [&_p]:mb-2 [&_li]:mb-1 [&_strong]:text-foreground [&_a]:text-primary [&_a]:underline">
+                          <ReactMarkdown
+                            components={{
+                              a: ({ href, children }) => (
+                                <a href={href} target="_blank" rel="noopener noreferrer">
+                                  {children}
+                                </a>
+                              ),
+                            }}
+                          >{cleanText}</ReactMarkdown>
                         </div>
                         {actions.map((action, ai) => (
                           <TelaActionCard key={ai} action={action} />
