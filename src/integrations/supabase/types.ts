@@ -387,6 +387,125 @@ export type Database = {
           },
         ]
       }
+      sync_logs: {
+        Row: {
+          conflicts_created: number | null
+          contacts_upserted: number | null
+          error_message: string | null
+          events_upserted: number | null
+          finance_upserted: number | null
+          finished_at: string | null
+          gaps_created: number | null
+          id: string
+          integration_id: string
+          raw_payload: Json | null
+          started_at: string
+          status: Database["public"]["Enums"]["sync_status"]
+          tour_id: string
+        }
+        Insert: {
+          conflicts_created?: number | null
+          contacts_upserted?: number | null
+          error_message?: string | null
+          events_upserted?: number | null
+          finance_upserted?: number | null
+          finished_at?: string | null
+          gaps_created?: number | null
+          id?: string
+          integration_id: string
+          raw_payload?: Json | null
+          started_at?: string
+          status?: Database["public"]["Enums"]["sync_status"]
+          tour_id: string
+        }
+        Update: {
+          conflicts_created?: number | null
+          contacts_upserted?: number | null
+          error_message?: string | null
+          events_upserted?: number | null
+          finance_upserted?: number | null
+          finished_at?: string | null
+          gaps_created?: number | null
+          id?: string
+          integration_id?: string
+          raw_payload?: Json | null
+          started_at?: string
+          status?: Database["public"]["Enums"]["sync_status"]
+          tour_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sync_logs_integration_id_fkey"
+            columns: ["integration_id"]
+            isOneToOne: false
+            referencedRelation: "tour_integrations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sync_logs_tour_id_fkey"
+            columns: ["tour_id"]
+            isOneToOne: false
+            referencedRelation: "tours"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      tour_integrations: {
+        Row: {
+          api_key_encrypted: string | null
+          api_secret_encrypted: string | null
+          config: Json | null
+          created_at: string
+          id: string
+          is_active: boolean
+          label: string | null
+          last_sync_at: string | null
+          last_sync_status: Database["public"]["Enums"]["sync_status"]
+          provider: Database["public"]["Enums"]["integration_provider"]
+          tour_id: string
+          updated_at: string
+          webhook_secret: string | null
+        }
+        Insert: {
+          api_key_encrypted?: string | null
+          api_secret_encrypted?: string | null
+          config?: Json | null
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          label?: string | null
+          last_sync_at?: string | null
+          last_sync_status?: Database["public"]["Enums"]["sync_status"]
+          provider: Database["public"]["Enums"]["integration_provider"]
+          tour_id: string
+          updated_at?: string
+          webhook_secret?: string | null
+        }
+        Update: {
+          api_key_encrypted?: string | null
+          api_secret_encrypted?: string | null
+          config?: Json | null
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          label?: string | null
+          last_sync_at?: string | null
+          last_sync_status?: Database["public"]["Enums"]["sync_status"]
+          provider?: Database["public"]["Enums"]["integration_provider"]
+          tour_id?: string
+          updated_at?: string
+          webhook_secret?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tour_integrations_tour_id_fkey"
+            columns: ["tour_id"]
+            isOneToOne: false
+            referencedRelation: "tours"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       tour_members: {
         Row: {
           created_at: string
@@ -513,7 +632,9 @@ export type Database = {
         | "CAST"
         | "VENUE"
         | "UNKNOWN"
+      integration_provider: "MASTER_TOUR" | "GENERIC_WEBHOOK" | "CSV_IMPORT"
       sms_status: "queued" | "sent" | "failed"
+      sync_status: "IDLE" | "SYNCING" | "SUCCESS" | "FAILED"
       tour_role: "TA" | "MGMT" | "CREW"
       tour_status: "ACTIVE" | "ARCHIVED"
     }
@@ -668,7 +789,9 @@ export const Constants = {
         "VENUE",
         "UNKNOWN",
       ],
+      integration_provider: ["MASTER_TOUR", "GENERIC_WEBHOOK", "CSV_IMPORT"],
       sms_status: ["queued", "sent", "failed"],
+      sync_status: ["IDLE", "SYNCING", "SUCCESS", "FAILED"],
       tour_role: ["TA", "MGMT", "CREW"],
       tour_status: ["ACTIVE", "ARCHIVED"],
     },
