@@ -869,9 +869,9 @@ interface TechPackResult {
 }
 
 // Single AI call: extract structured data directly from PDF or text
-async function aiExtractFromPdf(base64: string, apiKey: string, prompt: string): Promise<unknown | null> {
+async function aiExtractFromPdf(base64: string, apiKey: string, prompt: string, mimeType = "application/pdf"): Promise<unknown | null> {
   try {
-    console.log("[extract] Single-pass PDF structured extraction...");
+    console.log("[extract] Single-pass binary structured extraction... mimeType:", mimeType);
     const resp = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
       headers: {
@@ -887,7 +887,7 @@ async function aiExtractFromPdf(base64: string, apiKey: string, prompt: string):
               { type: "text", text: prompt },
               {
                 type: "image_url",
-                image_url: { url: `data:application/pdf;base64,${base64}` },
+                image_url: { url: `data:${mimeType};base64,${base64}` },
               },
             ],
           },
@@ -1075,7 +1075,9 @@ Deno.serve(async (req) => {
     let rawText = doc.raw_text || "";
     const filename = doc.filename || "";
     let base64Data: string | null = null;
+    let base64MimeType = "application/pdf";
     const isPdf = filename.toLowerCase().endsWith(".pdf");
+    const isExcel = /\.xlsx?$/i.test(filename.toLowerCase());
 
     // ── Download binary if needed ──
     if (!rawText && doc.file_path) {
@@ -1084,7 +1086,7 @@ Deno.serve(async (req) => {
         .download(doc.file_path);
 
       if (!dlErr && fileData) {
-        if (isPdf) {
+        if (isPdf || isExcel) {
           const arrayBuf = await fileData.arrayBuffer();
           const bytes = new Uint8Array(arrayBuf);
           let binary = "";
@@ -1093,7 +1095,10 @@ Deno.serve(async (req) => {
             binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize));
           }
           base64Data = btoa(binary);
-          console.log("[extract] PDF size:", bytes.length, "bytes, base64 length:", base64Data.length);
+          base64MimeType = isExcel
+            ? "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            : "application/pdf";
+          console.log("[extract] Binary file size:", bytes.length, "bytes, type:", base64MimeType);
         } else {
           rawText = await fileData.text();
         }
@@ -1120,7 +1125,7 @@ Deno.serve(async (req) => {
       const extractPrompt = isAdvanceMaster ? ADVANCE_MASTER_VAN_PROMPT : MULTI_VENUE_PROMPT;
 
       if (base64Data) {
-        multiResult = await aiExtractFromPdf(base64Data, apiKey, extractPrompt) as typeof multiResult;
+        multiResult = await aiExtractFromPdf(base64Data, apiKey, extractPrompt, base64MimeType) as typeof multiResult;
       } else if (rawText) {
         multiResult = await aiExtractFromText(rawText, apiKey, extractPrompt, extractModel, maxChars) as typeof multiResult;
       }
@@ -1454,7 +1459,7 @@ Deno.serve(async (req) => {
       let techResult: TechPackResult | null = null;
 
       if (base64Data) {
-        techResult = await aiExtractFromPdf(base64Data, apiKey, TECH_PACK_PROMPT) as TechPackResult | null;
+        techResult = await aiExtractFromPdf(base64Data, apiKey, TECH_PACK_PROMPT, base64MimeType) as TechPackResult | null;
       } else if (rawText) {
         techResult = await aiExtractFromText(rawText, apiKey, TECH_PACK_PROMPT) as TechPackResult | null;
       }
@@ -1642,7 +1647,7 @@ Deno.serve(async (req) => {
     let aiResult: AIExtractionResult | null = null;
 
     if (base64Data && apiKey) {
-      aiResult = await aiExtractFromPdf(base64Data, apiKey, EXTRACTION_PROMPT) as AIExtractionResult | null;
+      aiResult = await aiExtractFromPdf(base64Data, apiKey, EXTRACTION_PROMPT, base64MimeType) as AIExtractionResult | null;
       if (aiResult) {
         console.log("[extract] Single-pass extraction keys:", Object.keys(aiResult));
       }
