@@ -1,10 +1,9 @@
 import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { useTour } from "@/hooks/useTour";
 import { useToast } from "@/hooks/use-toast";
-import { useSearchParams } from "react-router-dom";
 import { motion } from "framer-motion";
 import {
   Activity,
@@ -43,12 +42,24 @@ const BunkOverview = () => {
   const { tours, setSelectedTourId, reload } = useTour();
   const navigate = useNavigate();
   const { toast } = useToast();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const isWelcome = searchParams.get("welcome") === "1";
   const [tourEventCounts, setTourEventCounts] = useState<Record<string, number>>({});
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState("");
   const [deletingTour, setDeletingTour] = useState<{ id: string; name: string } | null>(null);
   const [tldr, setTldr] = useState<Array<{ text: string; actionable: boolean }>>([]);
   const [tldrLoading, setTldrLoading] = useState(false);
+
+  // Clear welcome param after initial render so it doesn't persist on refresh
+  useEffect(() => {
+    if (isWelcome) {
+      const timeout = setTimeout(() => {
+        setSearchParams({}, { replace: true });
+      }, 2000);
+      return () => clearTimeout(timeout);
+    }
+  }, [isWelcome]);
 
   useEffect(() => {
     if (!user || tours.length === 0) return;
@@ -306,6 +317,44 @@ const BunkOverview = () => {
           </div>
         )}
       </motion.div>
+
+      {/* Welcome Quick Actions for new invitees */}
+      {isWelcome && (
+        <motion.div
+          initial={{ opacity: 0, y: 12 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.2 }}
+          className="rounded-lg border border-primary/30 bg-primary/5 p-5"
+        >
+          <p className="font-mono text-[10px] tracking-[0.15em] text-primary font-semibold mb-3">
+            👋 YOU'RE IN — HERE'S WHERE TO START
+          </p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <button
+              onClick={() => navigate("/bunk/chat?scope=tour")}
+              className="flex items-center gap-3 rounded-lg border border-border bg-card px-4 py-3 text-left hover:border-primary/50 transition-colors group"
+            >
+              <Zap className="h-5 w-5 text-primary shrink-0" />
+              <div>
+                <p className="text-sm font-semibold">Ask TELA anything</p>
+                <p className="text-xs text-muted-foreground mt-0.5">Get up to speed on your tour</p>
+              </div>
+              <ChevronRight className="h-4 w-4 text-muted-foreground ml-auto opacity-0 group-hover:opacity-100 transition-opacity" />
+            </button>
+            <button
+              onClick={() => navigate("/bunk/calendar")}
+              className="flex items-center gap-3 rounded-lg border border-border bg-card px-4 py-3 text-left hover:border-primary/50 transition-colors group"
+            >
+              <BarChart3 className="h-5 w-5 text-info shrink-0" />
+              <div>
+                <p className="text-sm font-semibold">View the schedule</p>
+                <p className="text-xs text-muted-foreground mt-0.5">See what's coming up</p>
+              </div>
+              <ChevronRight className="h-4 w-4 text-muted-foreground ml-auto opacity-0 group-hover:opacity-100 transition-opacity" />
+            </button>
+          </div>
+        </motion.div>
+      )}
 
       {/* Stat Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
