@@ -20,13 +20,15 @@ interface SidebarContactListProps {
   onUpdate?: (id: string, updates: Partial<Pick<SidebarContact, "name" | "role" | "phone" | "email">>) => Promise<void>;
   onDelete?: (id: string) => Promise<void>;
   onlineUserIds?: Set<string>;
+  /** Returns unread DM count from a given appUserId */
+  unreadFrom?: (userId: string | undefined) => number;
   /** When true, contacts are grouped by venue name with quick-access actions always visible */
   grouped?: boolean;
   /** Pre-built venue groups with calendar ordering + city info */
   venueGroups?: VenueGroup[];
 }
 
-const SidebarContactList = ({ contacts, onNavigate, onUpdate, onDelete, onlineUserIds, grouped, venueGroups }: SidebarContactListProps) => {
+const SidebarContactList = ({ contacts, onNavigate, onUpdate, onDelete, onlineUserIds, unreadFrom, grouped, venueGroups }: SidebarContactListProps) => {
   const navigate = useNavigate();
   const isMobile = useIsMobile();
   const { user } = useAuth();
@@ -57,6 +59,16 @@ const SidebarContactList = ({ contacts, onNavigate, onUpdate, onDelete, onlineUs
       // Open inline bunk chat
       setChattingWith(prev => prev === c.id ? null : c.id);
       setExpandedId(null);
+      // Mark messages as read
+      if (c.appUserId && user) {
+        supabase
+          .from("direct_messages")
+          .update({ read_at: new Date().toISOString() })
+          .eq("sender_id", c.appUserId)
+          .eq("recipient_id", user.id)
+          .is("read_at", null)
+          .then(() => {});
+      }
     } else if (c.phone) {
       // Fall back to native SMS
       window.open(`sms:${c.phone}`, "_self");
@@ -210,7 +222,18 @@ const SidebarContactList = ({ contacts, onNavigate, onUpdate, onDelete, onlineUs
               <span className={`h-2 w-2 rounded-full shrink-0 ${isContactOnline(c) ? "bg-success" : "bg-muted-foreground/30"}`} />
             )}
             <div className="min-w-0 flex-1">
-              <p className="text-sm text-sidebar-foreground truncate leading-tight">{c.name}</p>
+              <div className="flex items-center gap-1.5">
+                <p className="text-sm text-sidebar-foreground truncate leading-tight">{c.name}</p>
+                {(() => {
+                  const count = unreadFrom?.(c.appUserId) || 0;
+                  if (count === 0) return null;
+                  return (
+                    <span className="h-4 min-w-4 px-1 flex items-center justify-center rounded-full bg-primary text-primary-foreground text-[9px] font-bold leading-none shrink-0 animate-in fade-in">
+                      {count > 9 ? "9+" : count}
+                    </span>
+                  );
+                })()}
+              </div>
               {c.role && <p className="text-[10px] font-mono text-muted-foreground/60 truncate leading-tight">{c.role}</p>}
             </div>
           </div>
