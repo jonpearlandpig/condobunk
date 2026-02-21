@@ -551,8 +551,10 @@ Return a JSON object:
       "event_date": "YYYY-MM-DD" or null,
       "doors_time": "HH:MM" (24h) or null,
       "show_time": "HH:MM" (24h) or null,
+      "chair_set_time": "HH:MM" (24h) or null,
+      "bus_arrival_time": "description" or null,
       "capacity": "capacity description" or null,
-      "bus_arrival": "time description" or null,
+      "production_rider_sent": true/false/null,
 
       "production_contact": {"name": "", "phone": "", "email": ""},
       "house_rigger": {"name": "", "phone": "", "email": ""},
@@ -788,9 +790,9 @@ async function aiExtractFromPdf(base64: string, apiKey: string, prompt: string):
   }
 }
 
-async function aiExtractFromText(text: string, apiKey: string, prompt: string): Promise<unknown | null> {
+async function aiExtractFromText(text: string, apiKey: string, prompt: string, model = "google/gemini-2.5-flash", maxChars = 60000): Promise<unknown | null> {
   try {
-    console.log("[extract] Text structured extraction...");
+    console.log("[extract] Text structured extraction... model:", model, "chars:", Math.min(text.length, maxChars));
     const resp = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
       headers: {
@@ -798,10 +800,10 @@ async function aiExtractFromText(text: string, apiKey: string, prompt: string): 
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "google/gemini-2.5-flash",
+        model,
         messages: [
           { role: "system", content: prompt },
-          { role: "user", content: text.substring(0, 60000) },
+          { role: "user", content: text.substring(0, maxChars) },
         ],
       }),
     });
@@ -821,11 +823,19 @@ async function aiExtractFromText(text: string, apiKey: string, prompt: string): 
   }
 }
 
+// Determine if a document is an Advance Master (highest authority)
+function isAdvanceMasterDocument(filename: string, rawText: string): boolean {
+  const fn = filename.toLowerCase();
+  if (fn.includes("advance") && fn.includes("master")) return true;
+  if (fn.includes("advance_master") || fn.includes("advance master")) return true;
+  return false;
+}
+
 // Determine if a document is a multi-venue master (production confirmation grid)
 function isMultiVenueDocument(filename: string, rawText: string): boolean {
   const fn = filename.toLowerCase();
   const multiHints = ["master", "production confirmation", "venue confirmation", "prod confirm",
-    "venue_production_confirmation", "venue production confirmation"];
+    "venue_production_confirmation", "venue production confirmation", "advance"];
   for (const hint of multiHints) {
     if (fn.includes(hint)) return true;
   }
@@ -969,18 +979,26 @@ Deno.serve(async (req) => {
     }
 
     // ── Determine document type ──
+    const isAdvanceMaster = isAdvanceMasterDocument(filename, rawText || "");
     const isMultiVenue = isMultiVenueDocument(filename, rawText || "");
     const isTechPack = !isMultiVenue && isTechPackDocument(filename, rawText || "");
-    console.log("[extract] isMultiVenue:", isMultiVenue, "isTechPack:", isTechPack, "filename:", filename);
+    console.log("[extract] isAdvanceMaster:", isAdvanceMaster, "isMultiVenue:", isMultiVenue, "isTechPack:", isTechPack, "filename:", filename);
+
+    // Advance Master doc_type = SCHEDULE (for TELA authority hierarchy)
+    const multiVenueDocType = isAdvanceMaster ? "SCHEDULE" : "TECH";
 
     // ═══ MULTI-VENUE MASTER EXTRACTION PATH ═══
     if (isMultiVenue && apiKey) {
       let multiResult: { venues: Array<Record<string, unknown>> } | null = null;
 
+      // Use stronger model and more text for advance master documents
+      const extractModel = isAdvanceMaster ? "google/gemini-2.5-pro" : "google/gemini-2.5-flash";
+      const maxChars = isAdvanceMaster ? 120000 : 60000;
+
       if (base64Data) {
         multiResult = await aiExtractFromPdf(base64Data, apiKey, MULTI_VENUE_PROMPT) as typeof multiResult;
       } else if (rawText) {
-        multiResult = await aiExtractFromText(rawText, apiKey, MULTI_VENUE_PROMPT) as typeof multiResult;
+        multiResult = await aiExtractFromText(rawText, apiKey, MULTI_VENUE_PROMPT, extractModel, maxChars) as typeof multiResult;
       }
 
       if (multiResult && multiResult.venues && multiResult.venues.length > 0) {
@@ -990,7 +1008,7 @@ Deno.serve(async (req) => {
         if (rawText && !doc.raw_text) {
           await adminClient.from("documents").update({ raw_text: rawText }).eq("id", document_id);
         }
-        await adminClient.from("documents").update({ doc_type: "TECH" }).eq("id", document_id);
+        await adminClient.from("documents").update({ doc_type: multiVenueDocType }).eq("id", document_id);
 
         // Delete old data from this document
         await adminClient.from("contacts").delete().eq("source_doc_id", document_id);
@@ -1103,10 +1121,14 @@ Deno.serve(async (req) => {
           if (eventDate) {
             const toTs = (d: string, t: string | undefined | null): string | null => {
               if (!t) return null;
-              return `${d}T${t}:00`;
+              // Handle "HH:MM" format
+              if (/^\d{1,2}:\d{2}$/.test(t)) return `${d}T${t}:00`;
+              return null;
             };
             const showTime = v.show_time as string | undefined;
             const doorsTime = v.doors_time as string | undefined;
+            const chairSetTime = v.chair_set_time as string | undefined;
+            const busArrival = v.bus_arrival_time as string | undefined;
             const city = v.city as string | undefined;
 
             // Dedup by date + tour
@@ -1115,24 +1137,34 @@ Deno.serve(async (req) => {
               .eq("event_date", eventDate)
               .eq("venue", venueName);
 
+            // Build comprehensive notes
+            const notesParts: string[] = [];
+            if (busArrival) notesParts.push(`Bus Arrival: ${busArrival}`);
+            if (chairSetTime) notesParts.push(`Chair Set: ${chairSetTime}`);
+            if (doorsTime) notesParts.push(`Doors: ${doorsTime}`);
+            if (showTime) notesParts.push(`Show: ${showTime}`);
+            if (v.capacity) notesParts.push(`Capacity: ${v.capacity}`);
+            if (v.production_rider_sent) notesParts.push(`Production Rider Sent: Yes`);
+
             const { error: evtErr } = await adminClient.from("schedule_events").insert({
               tour_id: doc.tour_id,
               event_date: eventDate,
               city: city || null,
               venue: venueName,
               show_time: toTs(eventDate, showTime),
-              load_in: toTs(eventDate, doorsTime),
+              load_in: toTs(eventDate, chairSetTime || doorsTime),
               source_doc_id: document_id,
-              confidence_score: 0.9,
-              notes: `Doors: ${doorsTime || "TBC"} | Show: ${showTime || "TBC"} | Capacity: ${v.capacity || "N/A"}`,
+              confidence_score: 0.95,
+              notes: notesParts.join(" | ") || null,
             });
             if (!evtErr) totalEvents++;
           }
         }
 
         const result = {
-          doc_type: "TECH",
-          is_tech_pack: true,
+          doc_type: multiVenueDocType,
+          is_tech_pack: !isAdvanceMaster,
+          is_advance_master: isAdvanceMaster,
           is_multi_venue: true,
           venue_count: multiResult.venues.length,
           extracted_count: totalSpecs + totalContacts + totalEvents + totalRisks,

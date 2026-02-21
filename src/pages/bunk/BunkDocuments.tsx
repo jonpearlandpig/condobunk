@@ -216,7 +216,14 @@ const BunkDocuments = () => {
       );
       if (error) throw error;
 
-      if (data.is_tech_pack) {
+      if (data.is_advance_master) {
+        toast({
+          title: "★ Advance Master extracted",
+          description: `${data.venue_count || 0} venues, ${data.extracted_count} items. This is your canonical document. Review before approving.`,
+        });
+        setReviewSummary(data);
+        setReviewDocId(docId);
+      } else if (data.is_tech_pack) {
         toast({
           title: "Tech pack extracted",
           description: `${data.venue_name} — ${data.summary?.risk_flags || 0} risks identified. Review before approving.`,
