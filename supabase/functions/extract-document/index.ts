@@ -1113,9 +1113,9 @@ Deno.serve(async (req) => {
     if (isMultiVenue && apiKey) {
       let multiResult: { venues: Array<Record<string, unknown>> } | null = null;
 
-      // Use stronger model and more text for advance master documents
-      const extractModel = isAdvanceMaster ? "google/gemini-2.5-pro" : "google/gemini-2.5-flash";
-      const maxChars = isAdvanceMaster ? 120000 : 60000;
+      // Use flash model for speed (avoids timeout) — still high quality for structured extraction
+      const extractModel = "google/gemini-2.5-flash";
+      const maxChars = isAdvanceMaster ? 80000 : 60000;
       // Use dedicated VAN prompt for advance masters
       const extractPrompt = isAdvanceMaster ? ADVANCE_MASTER_VAN_PROMPT : MULTI_VENUE_PROMPT;
 
