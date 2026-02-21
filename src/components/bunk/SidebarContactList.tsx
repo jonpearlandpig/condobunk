@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { Phone, Mail, MessageSquare, Pencil, Check, X, Trash2, MessageCircle, Send, ChevronRight } from "lucide-react";
+import { Phone, Mail, MessageSquare, Pencil, Check, X, Trash2, MessageCircle, Send, ChevronRight, UserPlus } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import type { SidebarContact, VenueGroup } from "@/hooks/useSidebarContacts";
 import { useIsMobile } from "@/hooks/use-mobile";
@@ -13,6 +13,12 @@ import {
   TooltipProvider,
 } from "@/components/ui/tooltip";
 import { toast } from "sonner";
+import { Badge } from "@/components/ui/badge";
+
+export interface ActiveInvite {
+  email: string;
+  token: string;
+}
 
 interface SidebarContactListProps {
   contacts: SidebarContact[];
@@ -26,9 +32,13 @@ interface SidebarContactListProps {
   grouped?: boolean;
   /** Pre-built venue groups with calendar ordering + city info */
   venueGroups?: VenueGroup[];
+  /** Active invites for this tour (to check for existing ones) */
+  activeInvites?: ActiveInvite[];
+  /** Callback after an invite is created */
+  onInviteCreated?: () => void;
 }
 
-const SidebarContactList = ({ contacts, onNavigate, onUpdate, onDelete, onlineUserIds, unreadFrom, grouped, venueGroups }: SidebarContactListProps) => {
+const SidebarContactList = ({ contacts, onNavigate, onUpdate, onDelete, onlineUserIds, unreadFrom, grouped, venueGroups, activeInvites, onInviteCreated }: SidebarContactListProps) => {
   const navigate = useNavigate();
   const isMobile = useIsMobile();
   const { user } = useAuth();
@@ -166,6 +176,52 @@ const SidebarContactList = ({ contacts, onNavigate, onUpdate, onDelete, onlineUs
     setSending(false);
   };
 
+  const handleInviteContact = async (c: SidebarContact) => {
+    if (!c.email || !tourId || !user) return;
+    const existingInvite = activeInvites?.find(i => i.email.toLowerCase() === c.email!.toLowerCase());
+    if (existingInvite) {
+      const url = `${window.location.origin}/invite/${existingInvite.token}`;
+      await navigator.clipboard.writeText(url);
+      toast.success("Invite link copied!", { description: `${c.name} already has a pending invite` });
+      return;
+    }
+    try {
+      const tourName = tours.find(t => t.id === tourId)?.name || "";
+      const mappedRole = (c.role?.toUpperCase()?.includes("TA") || c.role?.toUpperCase()?.includes("TOUR ACCOUNT"))
+        ? "TA" as const
+        : (c.role?.toUpperCase()?.includes("MGMT") || c.role?.toUpperCase()?.includes("MANAGER"))
+        ? "MGMT" as const
+        : "CREW" as const;
+      const { data, error } = await supabase
+        .from("tour_invites")
+        .insert({
+          tour_id: tourId,
+          email: c.email,
+          role: mappedRole,
+          created_by: user.id,
+          tour_name: tourName,
+        })
+        .select("token")
+        .single();
+      if (error) throw error;
+      const inviteUrl = `${window.location.origin}/invite/${data.token}`;
+      await navigator.clipboard.writeText(inviteUrl);
+      const subject = encodeURIComponent(`You're invited to ${tourName} on Condo Bunk`);
+      const body = encodeURIComponent(`Hey ${c.name},\n\nYou've been invited to join ${tourName} on Condo Bunk.\n\nClick here to accept: ${inviteUrl}\n\nThis link expires in 7 days.`);
+      window.open(`mailto:${c.email}?subject=${subject}&body=${body}`, "_self");
+      toast.success("Invite sent — link copied!", { description: c.email });
+      onInviteCreated?.();
+      window.dispatchEvent(new Event("contacts-changed"));
+    } catch (err: any) {
+      toast.error("Failed to create invite", { description: err.message });
+    }
+  };
+
+  const getExistingInvite = (c: SidebarContact) => {
+    if (!c.email || !activeInvites) return null;
+    return activeInvites.find(i => i.email.toLowerCase() === c.email!.toLowerCase()) || null;
+  };
+
   const startEdit = (c: SidebarContact) => {
     setEditingId(c.id);
     setExpandedId(null);
@@ -252,18 +308,23 @@ const SidebarContactList = ({ contacts, onNavigate, onUpdate, onDelete, onlineUs
               <span className={`h-2 w-2 rounded-full shrink-0 ${isContactOnline(c) ? "bg-success" : "bg-muted-foreground/30"}`} />
             )}
             <div className="min-w-0 flex-1">
-              <div className="flex items-center gap-1.5">
-                <p className="text-sm text-sidebar-foreground truncate leading-tight">{c.name}</p>
-                {(() => {
-                  const count = unreadFrom?.(c.appUserId) || 0;
-                  if (count === 0) return null;
-                  return (
-                    <span className="h-4 min-w-4 px-1 flex items-center justify-center rounded-full bg-primary text-primary-foreground text-[9px] font-bold leading-none shrink-0 animate-in fade-in">
-                      {count > 9 ? "9+" : count}
-                    </span>
-                  );
-                })()}
-              </div>
+                <div className="flex items-center gap-1.5">
+                  <p className="text-sm text-sidebar-foreground truncate leading-tight">{c.name}</p>
+                  {(() => {
+                    const count = unreadFrom?.(c.appUserId) || 0;
+                    if (count === 0) return null;
+                    return (
+                      <span className="h-4 min-w-4 px-1 flex items-center justify-center rounded-full bg-primary text-primary-foreground text-[9px] font-bold leading-none shrink-0 animate-in fade-in">
+                        {count > 9 ? "9+" : count}
+                      </span>
+                    );
+                  })()}
+                  {!c.appUserId && c.email && getExistingInvite(c) && (
+                    <Badge variant="outline" className="h-4 px-1.5 text-[8px] font-mono tracking-wider border-primary/30 text-primary/70 shrink-0">
+                      INVITED
+                    </Badge>
+                  )}
+                </div>
               {c.role && <p className="text-[10px] font-mono text-muted-foreground/60 truncate leading-tight">{c.role}</p>}
               {isMissingContact && (
                 <button
@@ -347,6 +408,23 @@ const SidebarContactList = ({ contacts, onNavigate, onUpdate, onDelete, onlineUs
                     <button onClick={() => startEdit(c)} className={`p-1 rounded text-muted-foreground hover:text-primary transition-colors ${showQuickActions ? "opacity-0 group-hover:opacity-100" : ""}`} aria-label="Edit"><Pencil className="h-3.5 w-3.5" /></button>
                   </TooltipTrigger>
                   <TooltipContent side="top" className="text-xs">Edit</TooltipContent>
+                </Tooltip>
+              )}
+              {/* Invite button for non-user contacts with email */}
+              {!showQuickActions && !c.appUserId && c.email && (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); handleInviteContact(c); }}
+                      className="p-1 rounded text-muted-foreground hover:text-primary transition-colors"
+                      aria-label="Invite to Condo Bunk"
+                    >
+                      <UserPlus className="h-3.5 w-3.5" />
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent side="top" className="text-xs">
+                    {getExistingInvite(c) ? "Re-copy invite link" : "Invite to Condo Bunk"}
+                  </TooltipContent>
                 </Tooltip>
               )}
               {!showQuickActions && (

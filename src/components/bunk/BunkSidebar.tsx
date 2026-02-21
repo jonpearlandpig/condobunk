@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import {
   LayoutDashboard,
   CalendarDays,
@@ -12,6 +12,7 @@ import {
   ChevronRight,
   StickyNote,
   Bell,
+  UserPlus,
 } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
 import {
@@ -29,8 +30,18 @@ import { useIsMobile } from "@/hooks/use-mobile";
 import { useSidebarContacts } from "@/hooks/useSidebarContacts";
 import { usePresence } from "@/hooks/usePresence";
 import { useUnreadDMs } from "@/hooks/useUnreadDMs";
-import SidebarContactList from "@/components/bunk/SidebarContactList";
+import { useAuth } from "@/hooks/useAuth";
+import { useTour } from "@/hooks/useTour";
+import { supabase } from "@/integrations/supabase/client";
+import SidebarContactList, { type ActiveInvite } from "@/components/bunk/SidebarContactList";
 import { Separator } from "@/components/ui/separator";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+  TooltipProvider,
+} from "@/components/ui/tooltip";
+import { toast } from "sonner";
 
 const navItems = [
   { title: "TL;DR", url: "/bunk", icon: LayoutDashboard },
@@ -46,12 +57,72 @@ const navItems = [
 const BunkSidebar = () => {
   const { setOpenMobile, setOpen } = useSidebar();
   const isMobile = useIsMobile();
+  const { user } = useAuth();
+  const { tours } = useTour();
+  const tourId = tours[0]?.id;
   const { tourContacts, tourTeamGroups, venueContacts, venueGroups, venueLabel, loading, updateContact, deleteContact } = useSidebarContacts();
   const { onlineUsers } = usePresence();
   const { totalUnread, unreadFrom } = useUnreadDMs();
   const [tourTeamOpen, setTourTeamOpen] = useState(true);
   const [venuePartnersOpen, setVenuePartnersOpen] = useState(true);
   const [expandedTours, setExpandedTours] = useState<Set<string>>(new Set());
+  const [activeInvites, setActiveInvites] = useState<ActiveInvite[]>([]);
+  const [bulkInviting, setBulkInviting] = useState(false);
+
+  const fetchInvites = useCallback(async () => {
+    if (!tourId) return;
+    const { data } = await supabase
+      .from("tour_invites")
+      .select("email, token")
+      .eq("tour_id", tourId)
+      .is("used_at", null)
+      .gt("expires_at", new Date().toISOString());
+    setActiveInvites((data || []).map(d => ({ email: d.email, token: d.token })));
+  }, [tourId]);
+
+  useEffect(() => {
+    fetchInvites();
+  }, [fetchInvites]);
+
+  // Get all uninvited contacts with emails across all tour groups
+  const getUninvitedContacts = () => {
+    const allContacts = tourTeamGroups.flatMap(g => g.contacts);
+    return allContacts.filter(c =>
+      !c.appUserId && c.email &&
+      !activeInvites.some(i => i.email.toLowerCase() === c.email!.toLowerCase())
+    );
+  };
+
+  const handleBulkInvite = async () => {
+    if (!tourId || !user) return;
+    const eligible = getUninvitedContacts();
+    if (eligible.length === 0) return;
+    setBulkInviting(true);
+    const tourName = tours.find(t => t.id === tourId)?.name || "";
+    let created = 0;
+    for (const c of eligible) {
+      try {
+        const mappedRole = (c.role?.toUpperCase()?.includes("TA") || c.role?.toUpperCase()?.includes("TOUR ACCOUNT"))
+          ? "TA" as const
+          : (c.role?.toUpperCase()?.includes("MGMT") || c.role?.toUpperCase()?.includes("MANAGER"))
+          ? "MGMT" as const
+          : "CREW" as const;
+        await supabase.from("tour_invites").insert({
+          tour_id: tourId,
+          email: c.email!,
+          role: mappedRole,
+          created_by: user.id,
+          tour_name: tourName,
+        });
+        created++;
+      } catch { /* skip failures */ }
+    }
+    await fetchInvites();
+    setBulkInviting(false);
+    toast.success(`${created} invite${created !== 1 ? "s" : ""} created`, {
+      description: "Links will be included when you email each contact",
+    });
+  };
 
   useEffect(() => {
     if (isMobile) return;
@@ -119,12 +190,32 @@ const BunkSidebar = () => {
           </button>
           {tourTeamOpen && (
             <SidebarGroupContent>
+              {/* Bulk invite button */}
+              {!loading && getUninvitedContacts().length > 0 && (
+                <TooltipProvider delayDuration={300}>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <button
+                        onClick={handleBulkInvite}
+                        disabled={bulkInviting}
+                        className="mx-4 mb-1.5 flex items-center gap-1.5 px-2 py-1 rounded-md text-[10px] font-mono tracking-wider text-primary hover:bg-primary/10 transition-colors disabled:opacity-50"
+                      >
+                        <UserPlus className="h-3 w-3" />
+                        {bulkInviting ? "INVITING..." : `INVITE ALL (${getUninvitedContacts().length})`}
+                      </button>
+                    </TooltipTrigger>
+                    <TooltipContent side="right" className="text-xs">
+                      Create invites for all team members not yet on Condo Bunk
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              )}
               {loading ? (
                 <div className="px-4 py-2">
                   <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground/40" />
                 </div>
               ) : tourTeamGroups.length <= 1 ? (
-                <SidebarContactList contacts={tourTeamGroups[0]?.contacts || []} onNavigate={handleNavClick} onUpdate={updateContact} onDelete={deleteContact} onlineUserIds={onlineUsers} unreadFrom={unreadFrom} />
+                <SidebarContactList contacts={tourTeamGroups[0]?.contacts || []} onNavigate={handleNavClick} onUpdate={updateContact} onDelete={deleteContact} onlineUserIds={onlineUsers} unreadFrom={unreadFrom} activeInvites={activeInvites} onInviteCreated={fetchInvites} />
               ) : (
                 <div className="space-y-0.5">
                   {tourTeamGroups.map((group) => {
@@ -149,7 +240,7 @@ const BunkSidebar = () => {
                         </button>
                         {isExpanded && (
                           <div className="ml-2 border-l border-border/30 pl-1">
-                            <SidebarContactList contacts={group.contacts} onNavigate={handleNavClick} onUpdate={updateContact} onDelete={deleteContact} onlineUserIds={onlineUsers} unreadFrom={unreadFrom} />
+                            <SidebarContactList contacts={group.contacts} onNavigate={handleNavClick} onUpdate={updateContact} onDelete={deleteContact} onlineUserIds={onlineUsers} unreadFrom={unreadFrom} activeInvites={activeInvites} onInviteCreated={fetchInvites} />
                           </div>
                         )}
                       </div>
