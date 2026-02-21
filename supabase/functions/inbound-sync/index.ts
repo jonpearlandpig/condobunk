@@ -36,9 +36,9 @@ const financeLineSchema = z.object({
 });
 
 const inboundPayloadSchema = z.object({
-  schedule_events: z.array(scheduleEventSchema).optional().default([]),
-  contacts: z.array(contactSchema).optional().default([]),
-  finance_lines: z.array(financeLineSchema).optional().default([]),
+  schedule_events: z.array(scheduleEventSchema).max(200, "Max 200 schedule events").optional().default([]),
+  contacts: z.array(contactSchema).max(500, "Max 500 contacts").optional().default([]),
+  finance_lines: z.array(financeLineSchema).max(500, "Max 500 finance lines").optional().default([]),
   source_label: z.string().max(200).optional(), // e.g. "Master Tour", "Band Manager"
 });
 

@@ -15,6 +15,7 @@ Deno.serve(async (req) => {
     const apiKey = Deno.env.get("LOVABLE_API_KEY");
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    const anonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
     if (!apiKey) {
       return new Response(JSON.stringify({ error: "No API key" }), {
         status: 500,
@@ -22,7 +23,43 @@ Deno.serve(async (req) => {
       });
     }
 
-    const { messages, tour_id, tour_ids } = await req.json();
+    // --- Auth: validate JWT and get user ---
+    const authHeader = req.headers.get("authorization") || "";
+    const userClient = createClient(supabaseUrl, anonKey, {
+      global: { headers: { Authorization: authHeader } },
+    });
+    const { data: { user }, error: authError } = await userClient.auth.getUser();
+    if (authError || !user) {
+      return new Response(JSON.stringify({ error: "Unauthorized" }), {
+        status: 401,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    const body = await req.json();
+    const { messages, tour_id, tour_ids } = body;
+
+    // --- Input validation ---
+    if (!Array.isArray(messages) || messages.length === 0 || messages.length > 50) {
+      return new Response(JSON.stringify({ error: "messages must be an array of 1-50 items" }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    for (const m of messages) {
+      if (typeof m.role !== "string" || typeof m.content !== "string" || m.content.length > 10000) {
+        return new Response(JSON.stringify({ error: "Invalid message format or content too long (max 10000 chars)" }), {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+    }
+    if (tour_ids && (!Array.isArray(tour_ids) || tour_ids.length > 20)) {
+      return new Response(JSON.stringify({ error: "tour_ids must be an array of max 20" }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
 
     const admin = createClient(supabaseUrl, serviceKey);
 
@@ -38,6 +75,21 @@ Deno.serve(async (req) => {
     } else {
       return new Response(JSON.stringify({ error: "No tour_id or tour_ids provided" }), {
         status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    // --- Validate user is a member of all requested tours ---
+    const { data: memberRows } = await admin
+      .from("tour_members")
+      .select("tour_id")
+      .eq("user_id", user.id)
+      .in("tour_id", targetTourIds);
+    const memberTourIds = new Set((memberRows || []).map((r: any) => r.tour_id));
+    const unauthorized = targetTourIds.filter((id) => !memberTourIds.has(id));
+    if (unauthorized.length > 0) {
+      return new Response(JSON.stringify({ error: "Not a member of one or more requested tours" }), {
+        status: 403,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
