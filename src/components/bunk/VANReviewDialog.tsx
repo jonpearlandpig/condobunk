@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
@@ -158,7 +158,7 @@ const VANReviewDialog = ({
   const [approving, setApproving] = useState(false);
   const [selectedVenueIdx, setSelectedVenueIdx] = useState(0);
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set(["event_details"]));
-
+  const venueBarRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (open && documentId) {
       loadVANs();
@@ -172,10 +172,27 @@ const VANReviewDialog = ({
       .select("id, venue_name, city, event_date, van_data")
       .eq("source_doc_id", documentId)
       .order("event_date");
-    setVans((data as VanRow[]) || []);
-    setSelectedVenueIdx(0);
+    const rows = (data as VanRow[]) || [];
+    setVans(rows);
+
+    // Auto-select first venue from today forward
+    const today = new Date().toISOString().slice(0, 10);
+    const todayIdx = rows.findIndex(v => v.event_date && v.event_date >= today);
+    const startIdx = todayIdx >= 0 ? todayIdx : 0;
+    setSelectedVenueIdx(startIdx);
     setExpandedCategories(new Set(["event_details"]));
     setLoading(false);
+
+    // Scroll bar to the selected venue
+    requestAnimationFrame(() => {
+      const bar = venueBarRef.current;
+      if (bar && startIdx > 0) {
+        const btn = bar.children[startIdx] as HTMLElement | undefined;
+        if (btn) {
+          btn.scrollIntoView({ behavior: "smooth", inline: "start", block: "nearest" });
+        }
+      }
+    });
   };
 
   const toggleCategory = (key: string) => {
@@ -263,7 +280,7 @@ const VANReviewDialog = ({
             {/* Venue selector - horizontal scroll */}
             <div className="shrink-0 px-4 pt-3 pb-2">
               <ScrollArea className="w-full">
-                <div className="flex gap-2 pb-1">
+                <div className="flex gap-2 pb-1" ref={venueBarRef}>
                   {vans.map((van, idx) => {
                     const coverage = venueCoverage(van);
                     const riskFlags = Array.isArray(van.van_data?.risk_flags) ? van.van_data.risk_flags : [];
