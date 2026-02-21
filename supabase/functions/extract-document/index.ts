@@ -537,6 +537,116 @@ CRITICAL RULES:
 - Return ONLY valid JSON, no markdown formatting, no code blocks.
 - ZERO DATA LOSS. If you can read it, it must appear in the output.`;
 
+// ─── Multi-Venue Master Document Prompt ───
+
+const MULTI_VENUE_PROMPT = `You are a multi-venue production confirmation extraction engine for the live touring industry. This document contains a GRID or TABLE with one column per venue/city. Your job is to extract ALL data for EVERY venue into separate objects.
+
+Return a JSON object:
+{
+  "venues": [
+    {
+      "venue_name": "Official Venue Name",
+      "normalized_venue_name": "lowercase-hyphenated-venue-name",
+      "city": "City, ST",
+      "event_date": "YYYY-MM-DD" or null,
+      "doors_time": "HH:MM" (24h) or null,
+      "show_time": "HH:MM" (24h) or null,
+      "capacity": "capacity description" or null,
+      "bus_arrival": "time description" or null,
+
+      "production_contact": {"name": "", "phone": "", "email": ""},
+      "house_rigger": {"name": "", "phone": "", "email": ""},
+      "additional_contacts": [{"name": "", "role": "", "phone": "", "email": ""}],
+
+      "dock_load_in": {
+        "num_docks": number or null,
+        "dock_description": "description",
+        "push_distance_ft": number or null,
+        "push_notes": "description",
+        "truck_parking": "description",
+        "vom_entry": "description",
+        "height_to_seating": "description"
+      },
+
+      "rigging_system": {
+        "distance_to_low_steel": "measurement",
+        "cad_received": true/false/null,
+        "rigging_overlay_done": true/false/null,
+        "notes": "additional rigging notes"
+      },
+
+      "power": {
+        "power_available": "full power description with amps, phases, locations",
+        "catering_power": "description or null"
+      },
+
+      "labor_union": {
+        "union_status": "Union/Non-union description",
+        "labor_notes": "full labor rules, minimums, meal penalties, overtime rules",
+        "labor_estimate_received": true/false/null,
+        "labor_call": "description",
+        "feed_count": "number to feed description"
+      },
+
+      "staging": {
+        "vip_risers": "description",
+        "vip_riser_height": "measurement",
+        "handrails": "description",
+        "foh_riser": "description",
+        "camera_risers": "description",
+        "preset": "description",
+        "end_stage_curtain": "description",
+        "bike_rack": "description"
+      },
+
+      "plant_equipment": {
+        "forklifts": "forklift description",
+        "co2": "CO2 status"
+      },
+
+      "lighting_audio": {
+        "house_lights": "dimmable, control method, comms",
+        "follow_spots": "description",
+        "haze_restrictions": "description",
+        "spl_restrictions": "description"
+      },
+
+      "video": {
+        "flypack_location": "description",
+        "hardline_internet": "description",
+        "house_tv_patch": "description and resolution",
+        "led_ribbon": "description"
+      },
+
+      "misc": {
+        "curfew": "description",
+        "dead_case_storage": "description",
+        "notes": "any other notes"
+      },
+
+      "risk_flags": [
+        {
+          "category": "DOCK" | "RIGGING" | "POWER" | "LABOR" | "STAGING" | "LOGISTICS" | "SAFETY",
+          "severity": "LOW" | "MEDIUM" | "HIGH" | "CRITICAL",
+          "title": "Short risk title",
+          "detail": "Specific detail about the risk"
+        }
+      ]
+    }
+  ]
+}
+
+CRITICAL RULES:
+- Extract EVERY venue column. Do NOT skip any venue.
+- Each venue gets its own object in the "venues" array.
+- If a venue column has blank/empty cells, set those fields to null.
+- For dates, use YYYY-MM-DD. For times, use 24h HH:MM.
+- For contacts, extract the production contact AND house rigger separately.
+- Flag risks: no docks, long push distance, tight dock doors, restricted haze, union overtime complexity, limited power.
+- Return ONLY valid JSON, no markdown, no code blocks.
+- ZERO DATA LOSS. Every cell of data in every venue column must appear.`;
+
+
 interface AIExtractionResult {
   tour_name?: string | null;
   doc_type?: string;
@@ -711,6 +821,30 @@ async function aiExtractFromText(text: string, apiKey: string, prompt: string): 
   }
 }
 
+// Determine if a document is a multi-venue master (production confirmation grid)
+function isMultiVenueDocument(filename: string, rawText: string): boolean {
+  const fn = filename.toLowerCase();
+  const multiHints = ["master", "production confirmation", "venue confirmation", "prod confirm",
+    "venue_production_confirmation", "venue production confirmation"];
+  for (const hint of multiHints) {
+    if (fn.includes(hint)) return true;
+  }
+  // Content check: multiple venue names in a tabular pattern
+  if (rawText) {
+    const lower = rawText.toLowerCase();
+    const venueSignals = ["arena", "center", "coliseum", "garden", "theatre", "theater", "stadium", "amphitheatre"];
+    let venueHits = 0;
+    for (const sig of venueSignals) {
+      const count = (lower.match(new RegExp(sig, "g")) || []).length;
+      if (count >= 2) venueHits++;
+    }
+    // Also check for grid-like signals
+    const hasGrid = lower.includes("production contact") && lower.includes("venue") && (lower.includes("loading dock") || lower.includes("power available"));
+    if (venueHits >= 2 && hasGrid) return true;
+  }
+  return false;
+}
+
 // Determine if a document is likely a tech pack based on filename + content hints
 function isTechPackDocument(filename: string, rawText: string): boolean {
   const fn = filename.toLowerCase();
@@ -834,9 +968,196 @@ Deno.serve(async (req) => {
       }
     }
 
-    // ── Determine if this is a tech pack ──
-    const isTechPack = isTechPackDocument(filename, rawText || "");
-    console.log("[extract] isTechPack:", isTechPack, "filename:", filename);
+    // ── Determine document type ──
+    const isMultiVenue = isMultiVenueDocument(filename, rawText || "");
+    const isTechPack = !isMultiVenue && isTechPackDocument(filename, rawText || "");
+    console.log("[extract] isMultiVenue:", isMultiVenue, "isTechPack:", isTechPack, "filename:", filename);
+
+    // ═══ MULTI-VENUE MASTER EXTRACTION PATH ═══
+    if (isMultiVenue && apiKey) {
+      let multiResult: { venues: Array<Record<string, unknown>> } | null = null;
+
+      if (base64Data) {
+        multiResult = await aiExtractFromPdf(base64Data, apiKey, MULTI_VENUE_PROMPT) as typeof multiResult;
+      } else if (rawText) {
+        multiResult = await aiExtractFromText(rawText, apiKey, MULTI_VENUE_PROMPT) as typeof multiResult;
+      }
+
+      if (multiResult && multiResult.venues && multiResult.venues.length > 0) {
+        console.log("[extract] Multi-venue extraction found", multiResult.venues.length, "venues");
+
+        // Save raw text
+        if (rawText && !doc.raw_text) {
+          await adminClient.from("documents").update({ raw_text: rawText }).eq("id", document_id);
+        }
+        await adminClient.from("documents").update({ doc_type: "TECH" }).eq("id", document_id);
+
+        // Delete old data from this document
+        await adminClient.from("contacts").delete().eq("source_doc_id", document_id);
+
+        let totalSpecs = 0;
+        let totalContacts = 0;
+        let totalEvents = 0;
+        let totalRisks = 0;
+        const allRiskFlags: Array<Record<string, string>> = [];
+
+        for (const v of multiResult.venues) {
+          const venueName = (v.venue_name as string) || "Unknown Venue";
+          const normalizedName = (v.normalized_venue_name as string) || venueName.toLowerCase().replace(/[^a-z0-9]+/g, "-");
+
+          // Dedup existing tech specs for same venue
+          const { data: existingSpecs } = await adminClient
+            .from("venue_tech_specs")
+            .select("id")
+            .eq("tour_id", doc.tour_id)
+            .eq("normalized_venue_name", normalizedName);
+
+          if (existingSpecs && existingSpecs.length > 0) {
+            const oldIds = existingSpecs.map(s => s.id);
+            await adminClient.from("venue_risk_flags").delete().in("tech_spec_id", oldIds);
+            await adminClient.from("venue_scores").delete().in("tech_spec_id", oldIds);
+            await adminClient.from("venue_tech_specs").delete().in("id", oldIds);
+          }
+
+          // Build tech spec row from multi-venue data
+          const { data: specRow, error: specErr } = await adminClient
+            .from("venue_tech_specs")
+            .insert({
+              tour_id: doc.tour_id,
+              source_doc_id: document_id,
+              venue_name: venueName,
+              normalized_venue_name: normalizedName,
+              venue_identity: { official_name: venueName, capacity: v.capacity || null, bus_arrival: v.bus_arrival || null },
+              dock_load_in: v.dock_load_in || {},
+              rigging_system: v.rigging_system || {},
+              power: v.power || {},
+              labor_union: v.labor_union || {},
+              stage_specs: v.staging || {},
+              lighting_audio: v.lighting_audio || {},
+              production_compatibility: v.plant_equipment || {},
+              transportation_logistics: v.misc || {},
+              contact_chain_of_command: {
+                production_manager: v.production_contact || {},
+                head_rigger: v.house_rigger || {},
+              },
+              comms_infrastructure: v.video || {},
+            })
+            .select("id")
+            .single();
+
+          if (specErr) {
+            console.error("[extract] multi-venue tech spec insert error for", venueName, specErr);
+            continue;
+          }
+          totalSpecs++;
+
+          // Insert risk flags
+          const risks = (v.risk_flags as Array<Record<string, string>>) || [];
+          if (specRow && risks.length > 0) {
+            const flagRows = risks.map(f => ({
+              tour_id: doc.tour_id,
+              tech_spec_id: specRow.id,
+              venue_name: venueName,
+              category: f.category || "LOGISTICS",
+              risk_title: f.title || "Unknown Risk",
+              risk_detail: f.detail || null,
+              severity: (f.severity || "MEDIUM") as "LOW" | "MEDIUM" | "HIGH" | "CRITICAL",
+            }));
+            const { error: flagErr } = await adminClient.from("venue_risk_flags").insert(flagRows);
+            if (!flagErr) totalRisks += risks.length;
+            allRiskFlags.push(...risks);
+          }
+
+          // Insert contacts (production contact + house rigger + additional)
+          const venueContacts: Array<Record<string, string | null>> = [];
+          const prodContact = v.production_contact as Record<string, string> | undefined;
+          if (prodContact?.name) {
+            venueContacts.push({ name: prodContact.name, role: "Production Contact", phone: prodContact.phone || null, email: prodContact.email || null });
+          }
+          const rigger = v.house_rigger as Record<string, string> | undefined;
+          if (rigger?.name) {
+            venueContacts.push({ name: rigger.name, role: "House Rigger", phone: rigger.phone || null, email: rigger.email || null });
+          }
+          const additional = (v.additional_contacts as Array<Record<string, string>>) || [];
+          for (const ac of additional) {
+            if (ac.name) venueContacts.push({ name: ac.name, role: ac.role || null, phone: ac.phone || null, email: ac.email || null });
+          }
+
+          if (venueContacts.length > 0) {
+            const contactRows = venueContacts.map(c => ({
+              tour_id: doc.tour_id,
+              name: c.name!,
+              role: c.role || null,
+              phone: c.phone || null,
+              email: c.email || null,
+              source_doc_id: document_id,
+              scope: "VENUE" as const,
+              venue: venueName,
+            }));
+            const { error: cErr } = await adminClient.from("contacts").insert(contactRows);
+            if (!cErr) totalContacts += venueContacts.length;
+          }
+
+          // Insert schedule event if date exists
+          const eventDate = v.event_date as string | undefined;
+          if (eventDate) {
+            const toTs = (d: string, t: string | undefined | null): string | null => {
+              if (!t) return null;
+              return `${d}T${t}:00`;
+            };
+            const showTime = v.show_time as string | undefined;
+            const doorsTime = v.doors_time as string | undefined;
+            const city = v.city as string | undefined;
+
+            // Dedup by date + tour
+            await adminClient.from("schedule_events").delete()
+              .eq("tour_id", doc.tour_id)
+              .eq("event_date", eventDate)
+              .eq("venue", venueName);
+
+            const { error: evtErr } = await adminClient.from("schedule_events").insert({
+              tour_id: doc.tour_id,
+              event_date: eventDate,
+              city: city || null,
+              venue: venueName,
+              show_time: toTs(eventDate, showTime),
+              load_in: toTs(eventDate, doorsTime),
+              source_doc_id: document_id,
+              confidence_score: 0.9,
+              notes: `Doors: ${doorsTime || "TBC"} | Show: ${showTime || "TBC"} | Capacity: ${v.capacity || "N/A"}`,
+            });
+            if (!evtErr) totalEvents++;
+          }
+        }
+
+        const result = {
+          doc_type: "TECH",
+          is_tech_pack: true,
+          is_multi_venue: true,
+          venue_count: multiResult.venues.length,
+          extracted_count: totalSpecs + totalContacts + totalEvents + totalRisks,
+          summary: {
+            events: totalEvents,
+            contacts: totalContacts,
+            travel: 0,
+            finance: 0,
+            protocols: 0,
+            venues: totalSpecs,
+            tech_specs: totalSpecs,
+            risk_flags: totalRisks,
+          },
+          risk_flags: allRiskFlags,
+        };
+
+        console.log("[extract] Multi-venue result:", JSON.stringify(result));
+
+        return new Response(JSON.stringify(result), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      } else {
+        console.log("[extract] Multi-venue extraction returned no venues, falling through");
+      }
+    }
 
     if (isTechPack && apiKey) {
       // ═══ TECH PACK EXTRACTION PATH ═══
