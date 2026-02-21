@@ -251,7 +251,7 @@ const BunkSetup = () => {
             <div className="rounded-lg border border-dashed border-border bg-muted/30 p-6 text-center relative">
               <input
                 type="file"
-                accept=".txt,.csv,.tsv,.md,.doc,.docx,.pdf"
+                accept=".txt,.csv,.tsv,.md,.doc,.docx,.pdf,.xlsx,.xls"
                 onChange={handleFileUpload}
                 disabled={uploading}
                 className="absolute inset-0 w-full h-full opacity-0 cursor-pointer disabled:cursor-not-allowed"

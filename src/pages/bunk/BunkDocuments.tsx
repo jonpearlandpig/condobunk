@@ -387,7 +387,7 @@ const BunkDocuments = () => {
       <div className="rounded-lg border border-dashed border-border bg-card/50 p-8 text-center relative">
         <input
           type="file"
-          accept=".txt,.csv,.tsv,.md,.doc,.docx,.pdf"
+          accept=".txt,.csv,.tsv,.md,.doc,.docx,.pdf,.xlsx,.xls"
           onChange={handleFileUpload}
           disabled={uploading || !selectedTourId}
           className="absolute inset-0 w-full h-full opacity-0 cursor-pointer disabled:cursor-not-allowed"
