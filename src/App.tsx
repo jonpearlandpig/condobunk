@@ -22,6 +22,21 @@ import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
 
+const RootRedirect = () => {
+  // If there are auth params in the URL (OAuth callback), let Supabase process them
+  // before redirecting, to avoid a race condition with ProtectedRoute
+  const hasAuthParams =
+    window.location.hash?.includes("access_token") ||
+    window.location.search?.includes("code=");
+
+  if (hasAuthParams) {
+    // Render nothing; onAuthStateChange in useAuth will pick up the session
+    // and Login's useEffect will redirect to /bunk
+    return <Navigate to="/login" replace />;
+  }
+  return <Navigate to="/bunk" replace />;
+};
+
 const App = () => (
   <QueryClientProvider client={queryClient}>
     <TooltipProvider>
@@ -30,7 +45,7 @@ const App = () => (
       <BrowserRouter>
         <AuthProvider>
           <Routes>
-            <Route path="/" element={<Navigate to="/bunk" replace />} />
+            <Route path="/" element={<RootRedirect />} />
             <Route path="/login" element={<Login />} />
             <Route path="/invite/:token" element={<InviteAccept />} />
             <Route
