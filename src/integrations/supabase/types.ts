@@ -14,6 +14,68 @@ export type Database = {
   }
   public: {
     Tables: {
+      akb_change_log: {
+        Row: {
+          action: string
+          affects_money: boolean
+          affects_safety: boolean
+          affects_time: boolean
+          change_detail: Json | null
+          change_summary: string | null
+          created_at: string
+          entity_id: string
+          entity_type: string
+          event_date: string | null
+          id: string
+          notified: boolean
+          severity: string
+          tour_id: string
+          user_id: string
+        }
+        Insert: {
+          action: string
+          affects_money?: boolean
+          affects_safety?: boolean
+          affects_time?: boolean
+          change_detail?: Json | null
+          change_summary?: string | null
+          created_at?: string
+          entity_id: string
+          entity_type: string
+          event_date?: string | null
+          id?: string
+          notified?: boolean
+          severity?: string
+          tour_id: string
+          user_id: string
+        }
+        Update: {
+          action?: string
+          affects_money?: boolean
+          affects_safety?: boolean
+          affects_time?: boolean
+          change_detail?: Json | null
+          change_summary?: string | null
+          created_at?: string
+          entity_id?: string
+          entity_type?: string
+          event_date?: string | null
+          id?: string
+          notified?: boolean
+          severity?: string
+          tour_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "akb_change_log_tour_id_fkey"
+            columns: ["tour_id"]
+            isOneToOne: false
+            referencedRelation: "tours"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       calendar_conflicts: {
         Row: {
           conflict_type: Database["public"]["Enums"]["conflict_type"]
@@ -274,6 +336,65 @@ export type Database = {
           },
         ]
       }
+      notification_preferences: {
+        Row: {
+          created_at: string
+          day_window: number
+          id: string
+          min_severity: string
+          money_always: boolean
+          notify_contact_changes: boolean
+          notify_finance_changes: boolean
+          notify_schedule_changes: boolean
+          notify_venue_changes: boolean
+          safety_always: boolean
+          time_always: boolean
+          tour_id: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          day_window?: number
+          id?: string
+          min_severity?: string
+          money_always?: boolean
+          notify_contact_changes?: boolean
+          notify_finance_changes?: boolean
+          notify_schedule_changes?: boolean
+          notify_venue_changes?: boolean
+          safety_always?: boolean
+          time_always?: boolean
+          tour_id: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          day_window?: number
+          id?: string
+          min_severity?: string
+          money_always?: boolean
+          notify_contact_changes?: boolean
+          notify_finance_changes?: boolean
+          notify_schedule_changes?: boolean
+          notify_venue_changes?: boolean
+          safety_always?: boolean
+          time_always?: boolean
+          tour_id?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "notification_preferences_tour_id_fkey"
+            columns: ["tour_id"]
+            isOneToOne: false
+            referencedRelation: "tours"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       profiles: {
         Row: {
           created_at: string
@@ -303,6 +424,7 @@ export type Database = {
           city: string | null
           confidence_score: number | null
           created_at: string
+          created_by: string | null
           end_time: string | null
           event_date: string | null
           id: string
@@ -311,12 +433,15 @@ export type Database = {
           show_time: string | null
           source_doc_id: string | null
           tour_id: string
+          updated_at: string
+          updated_by: string | null
           venue: string | null
         }
         Insert: {
           city?: string | null
           confidence_score?: number | null
           created_at?: string
+          created_by?: string | null
           end_time?: string | null
           event_date?: string | null
           id?: string
@@ -325,12 +450,15 @@ export type Database = {
           show_time?: string | null
           source_doc_id?: string | null
           tour_id: string
+          updated_at?: string
+          updated_by?: string | null
           venue?: string | null
         }
         Update: {
           city?: string | null
           confidence_score?: number | null
           created_at?: string
+          created_by?: string | null
           end_time?: string | null
           event_date?: string | null
           id?: string
@@ -339,6 +467,8 @@ export type Database = {
           show_time?: string | null
           source_doc_id?: string | null
           tour_id?: string
+          updated_at?: string
+          updated_by?: string | null
           venue?: string | null
         }
         Relationships: [
@@ -632,6 +762,53 @@ export type Database = {
             columns: ["user_id"]
             isOneToOne: false
             referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      tour_notification_defaults: {
+        Row: {
+          created_at: string
+          day_window: number
+          id: string
+          min_severity: string
+          notify_contact_changes: boolean
+          notify_finance_changes: boolean
+          notify_schedule_changes: boolean
+          notify_venue_changes: boolean
+          tour_id: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          day_window?: number
+          id?: string
+          min_severity?: string
+          notify_contact_changes?: boolean
+          notify_finance_changes?: boolean
+          notify_schedule_changes?: boolean
+          notify_venue_changes?: boolean
+          tour_id: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          day_window?: number
+          id?: string
+          min_severity?: string
+          notify_contact_changes?: boolean
+          notify_finance_changes?: boolean
+          notify_schedule_changes?: boolean
+          notify_venue_changes?: boolean
+          tour_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tour_notification_defaults_tour_id_fkey"
+            columns: ["tour_id"]
+            isOneToOne: true
+            referencedRelation: "tours"
             referencedColumns: ["id"]
           },
         ]

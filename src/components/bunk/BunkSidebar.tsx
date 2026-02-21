@@ -11,6 +11,7 @@ import {
   Loader2,
   ChevronRight,
   StickyNote,
+  Bell,
 } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
 import {
@@ -38,6 +39,7 @@ const navItems = [
   { title: "AKB Builder", url: "/bunk/documents", icon: FileText },
   { title: "My Artifacts", url: "/bunk/artifacts", icon: StickyNote },
   { title: "Coverage", url: "/bunk/coverage", icon: BarChart3 },
+  { title: "Notifications", url: "/bunk/notifications", icon: Bell },
   { title: "Admin", url: "/bunk/admin", icon: Settings },
 ];
 
