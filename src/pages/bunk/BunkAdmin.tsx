@@ -217,7 +217,10 @@ const BunkAdmin = () => {
     } else {
       const inviteUrl = `${window.location.origin}/invite/${data.token}`;
       await navigator.clipboard.writeText(inviteUrl);
-      toast.success("Invite link copied to clipboard! Send it to " + inviteEmail);
+      const subject = encodeURIComponent(`You're invited to ${selectedTour?.name || "the tour"}`);
+      const body = encodeURIComponent(`Hey — here's your invite link to join the tour:\n\n${inviteUrl}\n\nIt expires ${new Date(data.expires_at).toLocaleDateString()}.`);
+      window.open(`mailto:${inviteEmail}?subject=${subject}&body=${body}`, "_blank");
+      toast.success("Invite created — email composer opened & link copied!");
       setInviteOpen(false);
       setInviteEmail("");
       setInviteSearch("");
@@ -566,9 +569,24 @@ const BunkAdmin = () => {
                 </div>
                 <div className="flex items-center gap-1 shrink-0">
                   {!isExpired(inv.expires_at) && (
-                    <Button size="sm" variant="ghost" onClick={() => copyInviteLink(inv.token)}>
-                      <Copy className="h-4 w-4" />
-                    </Button>
+                    <>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => {
+                          const inviteUrl = `${window.location.origin}/invite/${inv.token}`;
+                          const subject = encodeURIComponent(`You're invited to ${selectedTour?.name || "the tour"}`);
+                          const body = encodeURIComponent(`Hey — here's your invite link to join the tour:\n\n${inviteUrl}\n\nIt expires ${new Date(inv.expires_at).toLocaleDateString()}.`);
+                          window.open(`mailto:${inv.email}?subject=${subject}&body=${body}`, "_blank");
+                        }}
+                        title="Send via email"
+                      >
+                        <Send className="h-4 w-4" />
+                      </Button>
+                      <Button size="sm" variant="ghost" onClick={() => copyInviteLink(inv.token)} title="Copy link">
+                        <Copy className="h-4 w-4" />
+                      </Button>
+                    </>
                   )}
                   <Button size="sm" variant="ghost" onClick={() => handleRevokeInvite(inv.id)}>
                     <Trash2 className="h-4 w-4 text-destructive" />
