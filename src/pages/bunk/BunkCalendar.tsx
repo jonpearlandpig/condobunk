@@ -118,6 +118,7 @@ const BunkCalendar = () => {
   const [loading, setLoading] = useState(true);
   const [viewMode, setViewMode] = useState<ViewMode>("week");
   const [currentDate, setCurrentDate] = useState(() => new Date());
+  const [hasAutoNavigated, setHasAutoNavigated] = useState(false);
   const [selectedEntry, setSelectedEntry] = useState<CalendarEntry | null>(null);
   const [tourFilter, setTourFilter] = useState<string>("all");
   const [copied, setCopied] = useState(false);
@@ -318,6 +319,19 @@ const BunkCalendar = () => {
 
     merged.sort((a, b) => a.date.localeCompare(b.date));
     setEntries(merged);
+
+    // Auto-navigate to the first upcoming event (only once)
+    if (!hasAutoNavigated && merged.length > 0) {
+      const today = format(new Date(), "yyyy-MM-dd");
+      const firstUpcoming = merged.find(e => e.date >= today);
+      if (firstUpcoming && firstUpcoming.date !== "9999-12-31") {
+        try {
+          setCurrentDate(parseISO(firstUpcoming.date));
+        } catch {}
+      }
+      setHasAutoNavigated(true);
+    }
+
     setLoading(false);
   };
 
@@ -503,7 +517,39 @@ const BunkCalendar = () => {
         </div>
       )}
 
-      {/* Event Detail Dialog */}
+      {/* Upcoming Events List */}
+      {!loading && entries.length > 0 && (() => {
+        const today = format(new Date(), "yyyy-MM-dd");
+        const upcoming = entries.filter(e => e.date >= today && e.date !== "9999-12-31").slice(0, 20);
+        if (upcoming.length === 0) return null;
+        return (
+          <div className="space-y-2">
+            <h2 className="text-xs font-mono tracking-wider text-muted-foreground uppercase">Upcoming Shows ({upcoming.length})</h2>
+            <div className="rounded-lg border border-border bg-card divide-y divide-border overflow-hidden">
+              {upcoming.map((entry) => {
+                const colorIdx = tourColorMap[entry.tourId] ?? 0;
+                const colors = TOUR_COLORS[colorIdx];
+                let dateLabel = "TBD";
+                try { dateLabel = format(parseISO(entry.date), "EEE, MMM d"); } catch {}
+                return (
+                  <button
+                    key={entry.id}
+                    onClick={() => setSelectedEntry(entry)}
+                    className="w-full flex items-center gap-3 px-3 py-2 text-left hover:bg-muted/50 transition-colors"
+                  >
+                    <span className={`h-2 w-2 rounded-full shrink-0 ${colors.dot}`} />
+                    <span className="text-xs font-mono text-muted-foreground w-24 shrink-0">{dateLabel}</span>
+                    <span className="text-sm font-semibold truncate flex-1">{entry.title}</span>
+                    <span className="text-xs text-muted-foreground truncate max-w-[120px]">{entry.subtitle}</span>
+                    {entry.hasVan && <ClipboardList className="h-3 w-3 text-primary/60 shrink-0" />}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })()}
+
       <Dialog open={!!selectedEntry} onOpenChange={(open) => { if (!open) { setSelectedEntry(null); setCopied(false); setSelectedVanData(null); } }}>
         <DialogContent className="sm:max-w-md">
           {selectedEntry && (() => {
