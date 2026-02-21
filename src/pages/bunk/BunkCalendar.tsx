@@ -461,7 +461,8 @@ const BunkCalendar = () => {
       ) : entries.length === 0 ? (
         <div className="rounded-lg border border-border border-dashed bg-card/50 p-12 text-center">
           <CalendarIcon className="h-8 w-8 text-muted-foreground/40 mx-auto mb-3" />
-          <p className="text-sm text-muted-foreground font-mono">No events yet. Upload documents to auto-populate the calendar.</p>
+          <p className="text-sm text-muted-foreground font-mono">No events yet.</p>
+          <p className="text-xs text-muted-foreground/70 font-mono mt-1">Upload your schedule and Advance Master documents to build the calendar.</p>
         </div>
       ) : (
         isMobile ? (
