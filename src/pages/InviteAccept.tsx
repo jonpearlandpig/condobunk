@@ -261,8 +261,10 @@ const InviteAccept = () => {
             onClick={async () => {
               setAuthSubmitting(true);
               try {
+                // Persist invite token so it survives the OAuth redirect
+                if (token) localStorage.setItem("pending_invite_token", token);
                 const { error } = await lovable.auth.signInWithOAuth("google", {
-                  redirect_uri: window.location.href,
+                  redirect_uri: `${window.location.origin}/login`,
                 });
                 if (error) throw error;
               } catch (err: any) {

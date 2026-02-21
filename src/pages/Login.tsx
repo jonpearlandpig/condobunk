@@ -22,7 +22,14 @@ const Login = () => {
   // Redirect authenticated users away from login
   useEffect(() => {
     if (!authLoading && user) {
-      navigate("/bunk", { replace: true });
+      // Check for pending invite token from OAuth flow
+      const pendingToken = localStorage.getItem("pending_invite_token");
+      if (pendingToken) {
+        localStorage.removeItem("pending_invite_token");
+        navigate(`/invite/${pendingToken}`, { replace: true });
+      } else {
+        navigate("/bunk", { replace: true });
+      }
     }
   }, [authLoading, user, navigate]);
 
