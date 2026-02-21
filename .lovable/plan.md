@@ -1,50 +1,91 @@
 
 
-# Full AKB Data Wipe -- Execution Plan
+# Three-Tier Artifact System: TourText / CondoBunk / Bunk Stash
 
-## What This Does
-Runs a single database migration that deletes all tour-related data across 22 tables, in foreign-key-safe order. **Zero code changes.**
+## The Three Levels
 
-## What Gets Deleted
-All rows from: venue_risk_flags, venue_scores, venue_tech_specs, venue_advance_notes, knowledge_gaps, calendar_conflicts, finance_lines, schedule_events, contacts, akb_change_log, direct_messages, sync_logs, travel_windows, notification_preferences, tour_notification_defaults, tour_invites, tour_integrations, sms_inbound, sms_outbound, documents, tour_members, tours.
+| Tier | Who Sees It | Use Case |
+|------|------------|----------|
+| **TourText** | All tour members + public-facing | Catering, parking, load-in times, ticket counts, wifi passwords, daily logistics |
+| **CondoBunk** | All tour team members only | Internal team info, schedules, operational notes -- shared but not public |
+| **Bunk Stash** | Only you (or people you explicitly share with) | Financials, HR, settlements, contracts, NDAs, artist-sensitive info |
 
-## What Stays Untouched
-- **profiles** -- all user accounts remain
-- **user_artifacts** -- all personal artifacts remain
-- **user_presence** -- online status remains
-- **All code, UI, and functionality** -- completely unchanged
+## How It Works for the User
 
-## How
-A single SQL migration with DELETE statements in dependency order (children first, parents last). After approval, I will also note that you should empty the `document-files` storage bucket manually from the backend view to remove uploaded PDF files.
+- The "My Artifacts" page becomes a three-tab view: **TourText** / **CondoBunk** / **Bunk Stash**
+- When creating a new artifact, a simple selector lets you pick the tier (defaults to CondoBunk for general items)
+- **Smart detection**: If the title or content contains sensitive keywords (settlement, HR, finance, salary, NDA, per diem, guarantee, contract, insurance, rider, W-9, payroll, tax, severance, confidential), the system auto-switches to Bunk Stash with a subtle toast: "This looks sensitive -- saving to Bunk Stash"
+- The user can always override the suggestion with one click
+- Bunk Stash items show a lock icon; TourText items show a globe icon; CondoBunk items show a users icon
+- TourText and CondoBunk tabs show the creator's name on each item (pulled from profiles)
+
+## Database Changes
+
+### 1. Add `visibility` column to `user_artifacts`
+
+```text
+ALTER TABLE user_artifacts
+ADD COLUMN visibility text NOT NULL DEFAULT 'condobunk'
+CHECK (visibility IN ('tourtext', 'condobunk', 'bunk_stash'));
+```
+
+### 2. New RLS policy -- Tour members can READ tourtext and condobunk items
+
+```text
+CREATE POLICY "Tour members can view shared artifacts"
+ON user_artifacts FOR SELECT
+USING (
+  visibility IN ('tourtext', 'condobunk')
+  AND tour_id IS NOT NULL
+  AND is_tour_member(tour_id)
+);
+```
+
+This sits alongside the existing "Users can view own artifacts" policy (which covers bunk_stash since only the owner can see those). INSERT/UPDATE/DELETE remain owner-only via existing policies -- nobody else can edit your stuff regardless of visibility.
+
+### 3. PostgREST cache reload
+
+```text
+NOTIFY pgrst, 'reload schema';
+```
+
+## UI Changes (BunkArtifacts.tsx)
+
+- Import `Tabs, TabsList, TabsTrigger, TabsContent` from the existing tabs component
+- Three tabs with distinct styling:
+  - **TourText** (globe icon) -- shows all tour-scoped artifacts with `visibility = 'tourtext'` for the selected tour
+  - **CondoBunk** (users icon) -- shows all tour-scoped artifacts with `visibility = 'condobunk'` for the selected tour
+  - **Bunk Stash** (lock icon) -- shows only your own artifacts with `visibility = 'bunk_stash'`
+- The create form adds a visibility selector (three chips/buttons instead of a dropdown)
+- Keyword detection runs on the title field with a debounce -- if a sensitive keyword is detected and visibility is not already bunk_stash, auto-switch and show a toast
+- Shared items (tourtext/condobunk) display the creator's display name fetched via a join or separate profiles query
+- The Artifact type now includes `visibility` in the type definition
+
+## What Does NOT Change
+
+- Sidebar nav item stays "My Artifacts" at `/bunk/artifacts`
+- Routing, layout, auth, edge functions -- all untouched
+- Existing artifacts default to `condobunk` via the migration default
+- No new tables, no new pages, no new routes
 
 ## Technical Detail
 
-One migration file with this SQL:
+### Files Modified
+- `supabase/migrations/` -- new migration for visibility column + RLS policy
+- `src/pages/bunk/BunkArtifacts.tsx` -- three-tab UI, visibility selector, keyword detection, shared item display with creator names
+- `src/integrations/supabase/types.ts` -- auto-updated after migration
 
+### Sensitive Keyword List (client-side detection)
 ```text
-DELETE FROM venue_risk_flags;
-DELETE FROM venue_scores;
-DELETE FROM venue_tech_specs;
-DELETE FROM venue_advance_notes;
-DELETE FROM knowledge_gaps;
-DELETE FROM calendar_conflicts;
-DELETE FROM finance_lines;
-DELETE FROM schedule_events;
-DELETE FROM contacts;
-DELETE FROM akb_change_log;
-DELETE FROM direct_messages;
-DELETE FROM sync_logs;
-DELETE FROM travel_windows;
-DELETE FROM notification_preferences;
-DELETE FROM tour_notification_defaults;
-DELETE FROM tour_invites;
-DELETE FROM tour_integrations;
-DELETE FROM sms_inbound;
-DELETE FROM sms_outbound;
-DELETE FROM documents;
-DELETE FROM tour_members;
-DELETE FROM tours;
+settlement, finance, salary, hr, nda, per diem, guarantee,
+gross, net, contract, insurance, confidential, internal,
+legal, compensation, payroll, tax, w-9, w9, severance,
+termination, rider, commission, bonus, deduction
 ```
 
-No schema changes. No column drops. No code edits. Just row deletions.
+### Query Strategy
+- TourText tab: `SELECT * FROM user_artifacts WHERE tour_id = X AND visibility = 'tourtext'` (RLS handles membership check)
+- CondoBunk tab: `SELECT * FROM user_artifacts WHERE tour_id = X AND visibility = 'condobunk'` (RLS handles membership check)
+- Bunk Stash tab: `SELECT * FROM user_artifacts WHERE user_id = me AND visibility = 'bunk_stash'` (existing owner-only policy)
+- For shared tabs, fetch creator profiles separately to show display names
 
