@@ -1,4 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.97.0";
+import * as XLSX from "npm:xlsx@0.18.5/xlsx.mjs";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -1086,7 +1087,19 @@ Deno.serve(async (req) => {
         .download(doc.file_path);
 
       if (!dlErr && fileData) {
-        if (isPdf || isExcel) {
+        if (isExcel) {
+          // Parse Excel to CSV text using SheetJS — Gemini doesn't support xlsx MIME type
+          const arrayBuf = await fileData.arrayBuffer();
+          const wb = XLSX.read(new Uint8Array(arrayBuf), { type: "array", dense: true });
+          const csvParts: string[] = [];
+          for (const sheetName of wb.SheetNames) {
+            const ws = wb.Sheets[sheetName];
+            csvParts.push(`--- Sheet: ${sheetName} ---`);
+            csvParts.push(XLSX.utils.sheet_to_csv(ws));
+          }
+          rawText = csvParts.join("\n\n");
+          console.log("[extract] Excel parsed to CSV text, length:", rawText.length);
+        } else if (isPdf) {
           const arrayBuf = await fileData.arrayBuffer();
           const bytes = new Uint8Array(arrayBuf);
           let binary = "";
@@ -1095,10 +1108,8 @@ Deno.serve(async (req) => {
             binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize));
           }
           base64Data = btoa(binary);
-          base64MimeType = isExcel
-            ? "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-            : "application/pdf";
-          console.log("[extract] Binary file size:", bytes.length, "bytes, type:", base64MimeType);
+          base64MimeType = "application/pdf";
+          console.log("[extract] PDF binary file size:", bytes.length, "bytes");
         } else {
           rawText = await fileData.text();
         }
