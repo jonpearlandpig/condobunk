@@ -757,6 +757,60 @@ export type Database = {
         }
         Relationships: []
       }
+      venue_advance_notes: {
+        Row: {
+          city: string | null
+          created_at: string
+          event_date: string | null
+          id: string
+          normalized_venue_name: string
+          source_doc_id: string | null
+          tour_id: string
+          updated_at: string
+          van_data: Json
+          venue_name: string
+        }
+        Insert: {
+          city?: string | null
+          created_at?: string
+          event_date?: string | null
+          id?: string
+          normalized_venue_name: string
+          source_doc_id?: string | null
+          tour_id: string
+          updated_at?: string
+          van_data?: Json
+          venue_name: string
+        }
+        Update: {
+          city?: string | null
+          created_at?: string
+          event_date?: string | null
+          id?: string
+          normalized_venue_name?: string
+          source_doc_id?: string | null
+          tour_id?: string
+          updated_at?: string
+          van_data?: Json
+          venue_name?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "venue_advance_notes_source_doc_id_fkey"
+            columns: ["source_doc_id"]
+            isOneToOne: false
+            referencedRelation: "documents"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "venue_advance_notes_tour_id_fkey"
+            columns: ["tour_id"]
+            isOneToOne: false
+            referencedRelation: "tours"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       venue_risk_flags: {
         Row: {
           category: string

@@ -54,12 +54,13 @@ Deno.serve(async (req) => {
     // Query all tours in parallel
     const allTourData = await Promise.all(
       targetTourIds.map(async (tid) => {
-        const [eventsRes, contactsRes, gapsRes, conflictsRes, docsRes] = await Promise.all([
+        const [eventsRes, contactsRes, gapsRes, conflictsRes, docsRes, vansRes] = await Promise.all([
           admin.from("schedule_events").select("id, event_date, venue, city, load_in, show_time, notes").eq("tour_id", tid).order("event_date").limit(50),
           admin.from("contacts").select("id, name, role, email, phone, scope, venue").eq("tour_id", tid).limit(50),
           admin.from("knowledge_gaps").select("id, question, domain, resolved").eq("tour_id", tid).limit(20),
           admin.from("calendar_conflicts").select("id, conflict_type, severity, resolved, event_id").eq("tour_id", tid).limit(20),
           admin.from("documents").select("id, filename, doc_type, raw_text, file_path").eq("tour_id", tid).eq("is_active", true).limit(10),
+          admin.from("venue_advance_notes").select("id, venue_name, city, event_date, van_data").eq("tour_id", tid).order("event_date").limit(30),
         ]);
 
         const docsWithUrls = await Promise.all(
@@ -91,6 +92,7 @@ Deno.serve(async (req) => {
           knowledge_gaps: gapsRes.data || [],
           conflicts: conflictsRes.data || [],
           documents: docsWithUrls,
+          vans: vansRes.data || [],
         };
       })
     );
@@ -113,6 +115,9 @@ ${JSON.stringify(tourContacts.filter((c: any) => c.scope !== "VENUE"), null, 1)}
 
 ### Venue Contacts (scope=VENUE):
 ${JSON.stringify(tourContacts.filter((c: any) => c.scope === "VENUE"), null, 1)}
+
+### Venue Advance Notes (VANs) — PRIMARY SOURCE for venue-specific advance data:
+${td.vans.length > 0 ? td.vans.map((van: any) => `#### ${van.venue_name} (${van.city || "no city"}, ${van.event_date || "no date"}):\n${JSON.stringify(van.van_data, null, 1)}`).join("\n\n") : "(No VANs extracted yet)"}
 
 ### Knowledge Gaps:
 ${JSON.stringify(td.knowledge_gaps, null, 1)}
@@ -137,6 +142,9 @@ ${JSON.stringify(tourContacts.filter((c: any) => c.scope !== "VENUE"), null, 1)}
 
 ### Venue Contacts (scope=VENUE — these are venue-specific staff, NOT your touring team):
 ${JSON.stringify(tourContacts.filter((c: any) => c.scope === "VENUE"), null, 1)}
+
+### Venue Advance Notes (VANs) — PRIMARY SOURCE for venue-specific advance data:
+${td.vans.length > 0 ? td.vans.map((van: any) => `#### ${van.venue_name} (${van.city || "no city"}, ${van.event_date || "no date"}):\n${JSON.stringify(van.van_data, null, 1)}`).join("\n\n") : "(No VANs extracted yet — upload an Advance Master to populate)"}
 
 ### Knowledge Gaps (with IDs):
 ${JSON.stringify(td.knowledge_gaps, null, 1)}
@@ -228,13 +236,29 @@ ${isGlobalMode ? "- In global mode, ALWAYS include the tour name in citations: [
 
 ## DOCUMENT AUTHORITY HIERARCHY (CRITICAL)
 
-The **Tour Advance Master** document is the HIGHEST AUTHORITY source for contacts, show details, and venue information. When resolving conflicting data:
+The **Tour Advance Master** is the HIGHEST AUTHORITY source. Its extracted data is stored as **Venue Advance Notes (VANs)** — structured per-venue records containing production contacts, rigging, power, labor, staging, video, logistics, and all advance call details.
 
-1. **FIRST** check the Advance Master document (doc_type "SCHEDULE" or filename containing "advance", "master", or "production confirmation") for the answer.
-2. **ONLY IF** the Advance Master does not contain the information, search the rest of the AKB (tech packs, other documents, contacts table).
-3. **CONFLICT RESOLUTION:** If a venue tech pack lists Contact A for a role (e.g., Production Manager) but the Advance Master for the SAME city/date lists Contact B for that role, the **Advance Master wins**. The match criteria are: same city, same date, same show. Tech pack data is supplementary — it fills gaps but NEVER overrides the Advance Master.
-4. When citing data that came from the Advance Master, use: [Source: Advance Master — <identifier>]
-5. If you detect a conflict between Advance Master and another source, briefly note it: "Note: Tech pack lists [X] but Advance Master shows [Y] — using Advance Master as authoritative source."
+**DATA RESOLUTION ORDER:**
+1. **FIRST** check the Venue Advance Notes (VANs) for the venue/city/date in question. VANs contain the most current advance data from the Advance Master and are the PRIMARY source.
+2. **SECOND** check the Advance Master document text (doc_type "SCHEDULE" or filename containing "advance", "master") for any details not captured in VANs.
+3. **THIRD** search other AKB sources (tech packs, contacts table, other documents).
+4. **CONFLICT RESOLUTION:** If a venue tech pack lists Contact A but the VAN (Advance Master) lists Contact B for the SAME city/date, the **VAN wins**. VANs are authoritative. Tech pack data is supplementary.
+5. When citing VAN data, use: [Source: VAN — Venue Name — field]
+6. If you detect a conflict between VAN and another source, briefly note it.
+
+**VAN FIELD CATEGORIES** — when a user asks about any of these topics for a venue, check the VAN first:
+- Event Details (date, capacity, bus arrival, rider sent)
+- Production Contact & House Rigger Contact
+- Summary (CAD, rigging overlay, low steel distance)
+- Venue Schedule (chair set, show times)
+- Plant Equipment (forklifts, CO2)
+- Labour (union status, labor notes, labor call, feed count, house electrician, follow spots)
+- Dock & Logistics (loading dock, push distance, truck parking, vom entry, seating height)
+- Power (available power, catering power)
+- Staging (VIP risers, handrails, FOH riser, camera risers, preset, end stage curtain, bike rack)
+- Misc (curfew, dead case storage, haze restrictions, SPL restrictions)
+- Lighting (houselight control)
+- Video (flypack location, hardline internet, house TV patch, LED ribbon)
 
 ## Rules:
 - ONLY answer from the tour data above. NEVER fabricate, assume, or guess ANY information.

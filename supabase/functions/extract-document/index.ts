@@ -537,7 +537,129 @@ CRITICAL RULES:
 - Return ONLY valid JSON, no markdown formatting, no code blocks.
 - ZERO DATA LOSS. If you can read it, it must appear in the output.`;
 
-// ─── Multi-Venue Master Document Prompt ───
+// ─── Advance Master VAN Extraction Prompt ───
+
+const ADVANCE_MASTER_VAN_PROMPT = `You are the Advance Master extraction engine for the live touring industry. This document is a columnar spreadsheet where CITIES are across the header row and CATEGORIES run down the left column. Your job is to extract ALL advance notes for EVERY venue/city into structured Venue Advance Notes (VANs).
+
+Return a JSON object:
+{
+  "venues": [
+    {
+      "venue_name": "Official Venue Name",
+      "normalized_venue_name": "lowercase-hyphenated-venue-name",
+      "city": "City, ST",
+      "event_date": "YYYY-MM-DD" or null,
+
+      "event_details": {
+        "day_and_date": "full day and date string",
+        "venue": "venue name",
+        "onsale_capacity": "capacity and sales info verbatim",
+        "production_rider_sent": "Yes/No/description",
+        "bus_arrival_time": "time or description"
+      },
+
+      "production_contact": {"name": "", "phone": "", "email": "", "notes": ""},
+      "house_rigger_contact": {"name": "", "phone": "", "email": "", "notes": ""},
+
+      "summary": {
+        "cad_received": "verbatim response",
+        "rigging_overlay_done": "verbatim response",
+        "distance_to_low_steel": "verbatim measurement and notes"
+      },
+
+      "venue_schedule": {
+        "chair_set": "time",
+        "show_times": "doors and show times verbatim"
+      },
+
+      "plant_equipment": {
+        "forklifts": "verbatim forklift description",
+        "co2_confirmed": "verbatim CO2 status"
+      },
+
+      "labour": {
+        "union_venue": "verbatim union status",
+        "labor_notes": "FULL verbatim labor rules, minimums, meal penalties, overtime rules — capture EVERYTHING",
+        "labor_estimate_received": "verbatim response",
+        "labor_call": "verbatim description",
+        "number_to_feed": "verbatim feed count",
+        "house_electrician_catering": "verbatim",
+        "follow_spots": "verbatim description"
+      },
+
+      "dock_and_logistics": {
+        "loading_dock": "verbatim dock description with count and type",
+        "distance_dock_to_stage": "verbatim distance",
+        "trucks_parked": "verbatim parking rules",
+        "bus_trailer_unload": "verbatim",
+        "parking_situation": "verbatim parking description",
+        "catering_truck": "verbatim",
+        "merch_truck": "verbatim",
+        "vom_entry": "verbatim vom/entry description",
+        "height_to_seating": "verbatim measurement"
+      },
+
+      "power": {
+        "power_available": "FULL verbatim power description with amps, phases, locations",
+        "catering_power": "verbatim"
+      },
+
+      "staging": {
+        "foh_vip_risers": "verbatim",
+        "vip_riser_height": "verbatim measurement",
+        "handrails": "verbatim",
+        "foh_lighting_riser": "verbatim",
+        "camera_risers": "verbatim",
+        "preset_in_place": "verbatim",
+        "end_stage_curtain": "verbatim",
+        "bike_rack": "verbatim"
+      },
+
+      "misc": {
+        "curfew": "verbatim",
+        "dead_case_storage": "verbatim description",
+        "haze_restrictions": "verbatim",
+        "audio_spl_restrictions": "verbatim"
+      },
+
+      "lighting": {
+        "houselight_control": "verbatim dimmable/control/comms description"
+      },
+
+      "video": {
+        "flypack_location": "verbatim",
+        "hardline_internet": "verbatim",
+        "house_tv_patch": "verbatim with resolution",
+        "led_ribbon": "verbatim"
+      },
+
+      "notes": "any additional notes from the NOTES row for this venue",
+
+      "risk_flags": [
+        {
+          "category": "DOCK" | "RIGGING" | "POWER" | "LABOR" | "STAGING" | "LOGISTICS" | "SAFETY",
+          "severity": "LOW" | "MEDIUM" | "HIGH" | "CRITICAL",
+          "title": "Short risk title",
+          "detail": "Specific detail about the risk"
+        }
+      ]
+    }
+  ]
+}
+
+CRITICAL RULES:
+- Extract EVERY venue/city column. Do NOT skip any venue.
+- Each venue gets its own object in the "venues" array.
+- CAPTURE VERBATIM: Copy the exact text from each cell. Do NOT summarize, paraphrase, or truncate. The touring production team needs the EXACT words from the advance.
+- If a venue column has blank/empty cells, set those fields to null.
+- For dates, use YYYY-MM-DD format.
+- For times in event_details and venue_schedule, keep the original format (e.g., "5:30pm doors 7pm show").
+- The labour.labor_notes field is CRITICAL — capture the COMPLETE labor rules including minimums, meal penalties, overtime, department rules, etc. This is often the longest field. Do NOT truncate.
+- Flag risks: no docks, long push distance (>200ft), restricted haze, complex union rules, limited power, no CO2, street load.
+- Return ONLY valid JSON, no markdown, no code blocks.
+- ZERO DATA LOSS. Every cell of data in every venue column must appear.`;
+
+// ─── Multi-Venue Master Document Prompt (legacy non-advance-master) ───
 
 const MULTI_VENUE_PROMPT = `You are a multi-venue production confirmation extraction engine for the live touring industry. This document contains a GRID or TABLE with one column per venue/city. Your job is to extract ALL data for EVERY venue into separate objects.
 
@@ -994,15 +1116,17 @@ Deno.serve(async (req) => {
       // Use stronger model and more text for advance master documents
       const extractModel = isAdvanceMaster ? "google/gemini-2.5-pro" : "google/gemini-2.5-flash";
       const maxChars = isAdvanceMaster ? 120000 : 60000;
+      // Use dedicated VAN prompt for advance masters
+      const extractPrompt = isAdvanceMaster ? ADVANCE_MASTER_VAN_PROMPT : MULTI_VENUE_PROMPT;
 
       if (base64Data) {
-        multiResult = await aiExtractFromPdf(base64Data, apiKey, MULTI_VENUE_PROMPT) as typeof multiResult;
+        multiResult = await aiExtractFromPdf(base64Data, apiKey, extractPrompt) as typeof multiResult;
       } else if (rawText) {
-        multiResult = await aiExtractFromText(rawText, apiKey, MULTI_VENUE_PROMPT, extractModel, maxChars) as typeof multiResult;
+        multiResult = await aiExtractFromText(rawText, apiKey, extractPrompt, extractModel, maxChars) as typeof multiResult;
       }
 
       if (multiResult && multiResult.venues && multiResult.venues.length > 0) {
-        console.log("[extract] Multi-venue extraction found", multiResult.venues.length, "venues");
+        console.log("[extract] Multi-venue extraction found", multiResult.venues.length, "venues, isAdvanceMaster:", isAdvanceMaster);
 
         // Save raw text
         if (rawText && !doc.raw_text) {
@@ -1017,147 +1141,280 @@ Deno.serve(async (req) => {
         let totalContacts = 0;
         let totalEvents = 0;
         let totalRisks = 0;
+        let totalVans = 0;
         const allRiskFlags: Array<Record<string, string>> = [];
 
-        for (const v of multiResult.venues) {
-          const venueName = (v.venue_name as string) || "Unknown Venue";
-          const normalizedName = (v.normalized_venue_name as string) || venueName.toLowerCase().replace(/[^a-z0-9]+/g, "-");
+        // ── If advance master, store VANs ──
+        if (isAdvanceMaster) {
+          // Delete old VANs from same document
+          await adminClient.from("venue_advance_notes").delete().eq("source_doc_id", document_id);
 
-          // Dedup existing tech specs for same venue
-          const { data: existingSpecs } = await adminClient
-            .from("venue_tech_specs")
-            .select("id")
-            .eq("tour_id", doc.tour_id)
-            .eq("normalized_venue_name", normalizedName);
+          for (const v of multiResult.venues) {
+            const venueName = (v.venue_name as string) || "Unknown Venue";
+            const normalizedName = (v.normalized_venue_name as string) || venueName.toLowerCase().replace(/[^a-z0-9]+/g, "-");
+            const city = (v.city as string) || null;
+            const eventDate = (v.event_date as string) || null;
 
-          if (existingSpecs && existingSpecs.length > 0) {
-            const oldIds = existingSpecs.map(s => s.id);
-            await adminClient.from("venue_risk_flags").delete().in("tech_spec_id", oldIds);
-            await adminClient.from("venue_scores").delete().in("tech_spec_id", oldIds);
-            await adminClient.from("venue_tech_specs").delete().in("id", oldIds);
-          }
+            // Dedup existing VANs for same venue+tour
+            await adminClient.from("venue_advance_notes").delete()
+              .eq("tour_id", doc.tour_id)
+              .eq("normalized_venue_name", normalizedName);
 
-          // Build tech spec row from multi-venue data
-          const { data: specRow, error: specErr } = await adminClient
-            .from("venue_tech_specs")
-            .insert({
+            // Build the full VAN data object — store EVERYTHING
+            const vanData: Record<string, unknown> = {};
+            const vanFields = [
+              "event_details", "production_contact", "house_rigger_contact",
+              "summary", "venue_schedule", "plant_equipment", "labour",
+              "dock_and_logistics", "power", "staging", "misc",
+              "lighting", "video", "notes", "risk_flags"
+            ];
+            for (const field of vanFields) {
+              if (v[field] !== undefined && v[field] !== null) {
+                vanData[field] = v[field];
+              }
+            }
+            // Also store legacy fields if present
+            for (const field of ["dock_load_in", "rigging_system", "labor_union", "lighting_audio", "plant_equipment"]) {
+              if (v[field] !== undefined && v[field] !== null && !vanData[field]) {
+                vanData[field] = v[field];
+              }
+            }
+
+            const { error: vanErr } = await adminClient.from("venue_advance_notes").insert({
               tour_id: doc.tour_id,
               source_doc_id: document_id,
               venue_name: venueName,
               normalized_venue_name: normalizedName,
-              venue_identity: { official_name: venueName, capacity: v.capacity || null, bus_arrival: v.bus_arrival || null },
-              dock_load_in: v.dock_load_in || {},
-              rigging_system: v.rigging_system || {},
-              power: v.power || {},
-              labor_union: v.labor_union || {},
-              stage_specs: v.staging || {},
-              lighting_audio: v.lighting_audio || {},
-              production_compatibility: v.plant_equipment || {},
-              transportation_logistics: v.misc || {},
-              contact_chain_of_command: {
-                production_manager: v.production_contact || {},
-                head_rigger: v.house_rigger || {},
-              },
-              comms_infrastructure: v.video || {},
-            })
-            .select("id")
-            .single();
-
-          if (specErr) {
-            console.error("[extract] multi-venue tech spec insert error for", venueName, specErr);
-            continue;
-          }
-          totalSpecs++;
-
-          // Insert risk flags
-          const risks = (v.risk_flags as Array<Record<string, string>>) || [];
-          if (specRow && risks.length > 0) {
-            const flagRows = risks.map(f => ({
-              tour_id: doc.tour_id,
-              tech_spec_id: specRow.id,
-              venue_name: venueName,
-              category: f.category || "LOGISTICS",
-              risk_title: f.title || "Unknown Risk",
-              risk_detail: f.detail || null,
-              severity: (f.severity || "MEDIUM") as "LOW" | "MEDIUM" | "HIGH" | "CRITICAL",
-            }));
-            const { error: flagErr } = await adminClient.from("venue_risk_flags").insert(flagRows);
-            if (!flagErr) totalRisks += risks.length;
-            allRiskFlags.push(...risks);
-          }
-
-          // Insert contacts (production contact + house rigger + additional)
-          const venueContacts: Array<Record<string, string | null>> = [];
-          const prodContact = v.production_contact as Record<string, string> | undefined;
-          if (prodContact?.name) {
-            venueContacts.push({ name: prodContact.name, role: "Production Contact", phone: prodContact.phone || null, email: prodContact.email || null });
-          }
-          const rigger = v.house_rigger as Record<string, string> | undefined;
-          if (rigger?.name) {
-            venueContacts.push({ name: rigger.name, role: "House Rigger", phone: rigger.phone || null, email: rigger.email || null });
-          }
-          const additional = (v.additional_contacts as Array<Record<string, string>>) || [];
-          for (const ac of additional) {
-            if (ac.name) venueContacts.push({ name: ac.name, role: ac.role || null, phone: ac.phone || null, email: ac.email || null });
-          }
-
-          if (venueContacts.length > 0) {
-            const contactRows = venueContacts.map(c => ({
-              tour_id: doc.tour_id,
-              name: c.name!,
-              role: c.role || null,
-              phone: c.phone || null,
-              email: c.email || null,
-              source_doc_id: document_id,
-              scope: "VENUE" as const,
-              venue: venueName,
-            }));
-            const { error: cErr } = await adminClient.from("contacts").insert(contactRows);
-            if (!cErr) totalContacts += venueContacts.length;
-          }
-
-          // Insert schedule event if date exists
-          const eventDate = v.event_date as string | undefined;
-          if (eventDate) {
-            const toTs = (d: string, t: string | undefined | null): string | null => {
-              if (!t) return null;
-              // Handle "HH:MM" format
-              if (/^\d{1,2}:\d{2}$/.test(t)) return `${d}T${t}:00`;
-              return null;
-            };
-            const showTime = v.show_time as string | undefined;
-            const doorsTime = v.doors_time as string | undefined;
-            const chairSetTime = v.chair_set_time as string | undefined;
-            const busArrival = v.bus_arrival_time as string | undefined;
-            const city = v.city as string | undefined;
-
-            // Dedup by date + tour
-            await adminClient.from("schedule_events").delete()
-              .eq("tour_id", doc.tour_id)
-              .eq("event_date", eventDate)
-              .eq("venue", venueName);
-
-            // Build comprehensive notes
-            const notesParts: string[] = [];
-            if (busArrival) notesParts.push(`Bus Arrival: ${busArrival}`);
-            if (chairSetTime) notesParts.push(`Chair Set: ${chairSetTime}`);
-            if (doorsTime) notesParts.push(`Doors: ${doorsTime}`);
-            if (showTime) notesParts.push(`Show: ${showTime}`);
-            if (v.capacity) notesParts.push(`Capacity: ${v.capacity}`);
-            if (v.production_rider_sent) notesParts.push(`Production Rider Sent: Yes`);
-
-            const { error: evtErr } = await adminClient.from("schedule_events").insert({
-              tour_id: doc.tour_id,
+              city,
               event_date: eventDate,
-              city: city || null,
-              venue: venueName,
-              show_time: toTs(eventDate, showTime),
-              load_in: toTs(eventDate, chairSetTime || doorsTime),
-              source_doc_id: document_id,
-              confidence_score: 0.95,
-              notes: notesParts.join(" | ") || null,
+              van_data: vanData,
             });
-            if (!evtErr) totalEvents++;
+
+            if (vanErr) {
+              console.error("[extract] VAN insert error for", venueName, vanErr);
+            } else {
+              totalVans++;
+            }
+
+            // Insert contacts
+            const venueContacts: Array<Record<string, string | null>> = [];
+            const prodContact = (v.production_contact || v.event_details && (v.event_details as Record<string, unknown>)) as Record<string, string> | undefined;
+            const pc = v.production_contact as Record<string, string> | undefined;
+            if (pc?.name) {
+              venueContacts.push({ name: pc.name, role: "Production Contact", phone: pc.phone || null, email: pc.email || null });
+            }
+            const rigger = v.house_rigger_contact as Record<string, string> | undefined;
+            if (rigger?.name) {
+              venueContacts.push({ name: rigger.name, role: "House Rigger", phone: rigger.phone || null, email: rigger.email || null });
+            }
+
+            if (venueContacts.length > 0) {
+              const contactRows = venueContacts.map(c => ({
+                tour_id: doc.tour_id,
+                name: c.name!,
+                role: c.role || null,
+                phone: c.phone || null,
+                email: c.email || null,
+                source_doc_id: document_id,
+                scope: "VENUE" as const,
+                venue: venueName,
+              }));
+              const { error: cErr } = await adminClient.from("contacts").insert(contactRows);
+              if (!cErr) totalContacts += venueContacts.length;
+            }
+
+            // Insert/update schedule event
+            if (eventDate) {
+              const showTimes = ((v.venue_schedule as Record<string, string>)?.show_times) || null;
+              const chairSet = ((v.venue_schedule as Record<string, string>)?.chair_set) || null;
+              const busArrival = ((v.event_details as Record<string, string>)?.bus_arrival_time) || null;
+              const capacity = ((v.event_details as Record<string, string>)?.onsale_capacity) || null;
+
+              // Dedup by date + venue + tour
+              await adminClient.from("schedule_events").delete()
+                .eq("tour_id", doc.tour_id)
+                .eq("event_date", eventDate);
+
+              const notesParts: string[] = [];
+              if (busArrival) notesParts.push(`Bus Arrival: ${busArrival}`);
+              if (chairSet) notesParts.push(`Chair Set: ${chairSet}`);
+              if (showTimes) notesParts.push(`Show: ${showTimes}`);
+              if (capacity) notesParts.push(`Capacity: ${capacity}`);
+
+              // Try to parse show time for the show_time column
+              let showTimeTs: string | null = null;
+              if (showTimes) {
+                const showMatch = showTimes.match(/(?:show\s*(?:at\s*)?|start\s*)(\d{1,2}(?::?\d{2})?\s*(?:am|pm))/i);
+                if (showMatch) {
+                  const t = showMatch[1].replace(/\s+/g, "").toLowerCase();
+                  const isPM = t.includes("pm");
+                  const nums = t.replace(/[apm]/g, "");
+                  let [h, m] = nums.includes(":") ? nums.split(":").map(Number) : [Number(nums), 0];
+                  if (isPM && h < 12) h += 12;
+                  if (!isPM && h === 12) h = 0;
+                  showTimeTs = `${eventDate}T${String(h).padStart(2, "0")}:${String(m || 0).padStart(2, "0")}:00`;
+                }
+              }
+
+              const { error: evtErr } = await adminClient.from("schedule_events").insert({
+                tour_id: doc.tour_id,
+                event_date: eventDate,
+                city: city || null,
+                venue: venueName,
+                show_time: showTimeTs,
+                source_doc_id: document_id,
+                confidence_score: 0.95,
+                notes: notesParts.join(" | ") || null,
+              });
+              if (!evtErr) totalEvents++;
+            }
+
+            // Risk flags — store in venue_risk_flags too
+            const risks = (v.risk_flags as Array<Record<string, string>>) || [];
+            if (risks.length > 0) {
+              allRiskFlags.push(...risks);
+              totalRisks += risks.length;
+            }
+          }
+        } else {
+          // ── Non-advance-master multi-venue (legacy path) ──
+          for (const v of multiResult.venues) {
+            const venueName = (v.venue_name as string) || "Unknown Venue";
+            const normalizedName = (v.normalized_venue_name as string) || venueName.toLowerCase().replace(/[^a-z0-9]+/g, "-");
+
+            // Dedup existing tech specs for same venue
+            const { data: existingSpecs } = await adminClient
+              .from("venue_tech_specs")
+              .select("id")
+              .eq("tour_id", doc.tour_id)
+              .eq("normalized_venue_name", normalizedName);
+
+            if (existingSpecs && existingSpecs.length > 0) {
+              const oldIds = existingSpecs.map(s => s.id);
+              await adminClient.from("venue_risk_flags").delete().in("tech_spec_id", oldIds);
+              await adminClient.from("venue_scores").delete().in("tech_spec_id", oldIds);
+              await adminClient.from("venue_tech_specs").delete().in("id", oldIds);
+            }
+
+            // Build tech spec row from multi-venue data
+            const { data: specRow, error: specErr } = await adminClient
+              .from("venue_tech_specs")
+              .insert({
+                tour_id: doc.tour_id,
+                source_doc_id: document_id,
+                venue_name: venueName,
+                normalized_venue_name: normalizedName,
+                venue_identity: { official_name: venueName, capacity: v.capacity || null, bus_arrival: v.bus_arrival || null },
+                dock_load_in: v.dock_load_in || {},
+                rigging_system: v.rigging_system || {},
+                power: v.power || {},
+                labor_union: v.labor_union || {},
+                stage_specs: v.staging || {},
+                lighting_audio: v.lighting_audio || {},
+                production_compatibility: v.plant_equipment || {},
+                transportation_logistics: v.misc || {},
+                contact_chain_of_command: {
+                  production_manager: v.production_contact || {},
+                  head_rigger: v.house_rigger || {},
+                },
+                comms_infrastructure: v.video || {},
+              })
+              .select("id")
+              .single();
+
+            if (specErr) {
+              console.error("[extract] multi-venue tech spec insert error for", venueName, specErr);
+              continue;
+            }
+            totalSpecs++;
+
+            // Insert risk flags
+            const risks = (v.risk_flags as Array<Record<string, string>>) || [];
+            if (specRow && risks.length > 0) {
+              const flagRows = risks.map(f => ({
+                tour_id: doc.tour_id,
+                tech_spec_id: specRow.id,
+                venue_name: venueName,
+                category: f.category || "LOGISTICS",
+                risk_title: f.title || "Unknown Risk",
+                risk_detail: f.detail || null,
+                severity: (f.severity || "MEDIUM") as "LOW" | "MEDIUM" | "HIGH" | "CRITICAL",
+              }));
+              const { error: flagErr } = await adminClient.from("venue_risk_flags").insert(flagRows);
+              if (!flagErr) totalRisks += risks.length;
+              allRiskFlags.push(...risks);
+            }
+
+            // Insert contacts (production contact + house rigger + additional)
+            const venueContacts: Array<Record<string, string | null>> = [];
+            const prodContact = v.production_contact as Record<string, string> | undefined;
+            if (prodContact?.name) {
+              venueContacts.push({ name: prodContact.name, role: "Production Contact", phone: prodContact.phone || null, email: prodContact.email || null });
+            }
+            const rigger = v.house_rigger as Record<string, string> | undefined;
+            if (rigger?.name) {
+              venueContacts.push({ name: rigger.name, role: "House Rigger", phone: rigger.phone || null, email: rigger.email || null });
+            }
+            const additional = (v.additional_contacts as Array<Record<string, string>>) || [];
+            for (const ac of additional) {
+              if (ac.name) venueContacts.push({ name: ac.name, role: ac.role || null, phone: ac.phone || null, email: ac.email || null });
+            }
+
+            if (venueContacts.length > 0) {
+              const contactRows = venueContacts.map(c => ({
+                tour_id: doc.tour_id,
+                name: c.name!,
+                role: c.role || null,
+                phone: c.phone || null,
+                email: c.email || null,
+                source_doc_id: document_id,
+                scope: "VENUE" as const,
+                venue: venueName,
+              }));
+              const { error: cErr } = await adminClient.from("contacts").insert(contactRows);
+              if (!cErr) totalContacts += venueContacts.length;
+            }
+
+            // Insert schedule event if date exists
+            const eventDate = v.event_date as string | undefined;
+            if (eventDate) {
+              const toTs = (d: string, t: string | undefined | null): string | null => {
+                if (!t) return null;
+                if (/^\d{1,2}:\d{2}$/.test(t)) return `${d}T${t}:00`;
+                return null;
+              };
+              const showTime = v.show_time as string | undefined;
+              const doorsTime = v.doors_time as string | undefined;
+              const chairSetTime = v.chair_set_time as string | undefined;
+              const busArrival = v.bus_arrival_time as string | undefined;
+              const city = v.city as string | undefined;
+
+              await adminClient.from("schedule_events").delete()
+                .eq("tour_id", doc.tour_id)
+                .eq("event_date", eventDate)
+                .eq("venue", venueName);
+
+              const notesParts: string[] = [];
+              if (busArrival) notesParts.push(`Bus Arrival: ${busArrival}`);
+              if (chairSetTime) notesParts.push(`Chair Set: ${chairSetTime}`);
+              if (doorsTime) notesParts.push(`Doors: ${doorsTime}`);
+              if (showTime) notesParts.push(`Show: ${showTime}`);
+              if (v.capacity) notesParts.push(`Capacity: ${v.capacity}`);
+              if (v.production_rider_sent) notesParts.push(`Production Rider Sent: Yes`);
+
+              const { error: evtErr } = await adminClient.from("schedule_events").insert({
+                tour_id: doc.tour_id,
+                event_date: eventDate,
+                city: city || null,
+                venue: venueName,
+                show_time: toTs(eventDate, showTime),
+                load_in: toTs(eventDate, chairSetTime || doorsTime),
+                source_doc_id: document_id,
+                confidence_score: 0.95,
+                notes: notesParts.join(" | ") || null,
+              });
+              if (!evtErr) totalEvents++;
+            }
           }
         }
 
@@ -1167,15 +1424,16 @@ Deno.serve(async (req) => {
           is_advance_master: isAdvanceMaster,
           is_multi_venue: true,
           venue_count: multiResult.venues.length,
-          extracted_count: totalSpecs + totalContacts + totalEvents + totalRisks,
+          extracted_count: totalSpecs + totalContacts + totalEvents + totalRisks + totalVans,
           summary: {
             events: totalEvents,
             contacts: totalContacts,
             travel: 0,
             finance: 0,
             protocols: 0,
-            venues: totalSpecs,
+            venues: totalSpecs || totalVans,
             tech_specs: totalSpecs,
+            vans: totalVans,
             risk_flags: totalRisks,
           },
           risk_flags: allRiskFlags,
