@@ -906,7 +906,26 @@ async function aiExtractFromPdf(base64: string, apiKey: string, prompt: string, 
     const data = await resp.json();
     let content = data.choices?.[0]?.message?.content || "";
     content = content.replace(/^```(?:json)?\s*\n?/i, "").replace(/\n?```\s*$/i, "").trim();
-    return JSON.parse(content);
+
+    if (!content.startsWith("{") && !content.startsWith("[")) {
+      console.error("[extract] PDF AI returned non-JSON response:", content.slice(0, 200));
+      return null;
+    }
+
+    content = content.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '');
+
+    try {
+      return JSON.parse(content);
+    } catch (firstErr) {
+      console.log("[extract] PDF JSON.parse failed, attempting string-interior fix...");
+      const fixed = content.replace(/"(?:[^"\\]|\\.)*"/g, (match) => {
+        return match
+          .replace(/\n/g, '\\n')
+          .replace(/\r/g, '\\r')
+          .replace(/\t/g, '\\t');
+      });
+      return JSON.parse(fixed);
+    }
   } catch (err) {
     console.error("[extract] PDF structured extraction failed:", err);
     return null;
