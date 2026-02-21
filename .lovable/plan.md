@@ -1,84 +1,76 @@
 
-
-# Empty AKB State + Smart Contact Routing from Documents
+# "ASK TELA" for Incomplete Contacts -- Always Offer Solutions
 
 ## Problem
-1. When all tour AKBs are empty, the UI still shows stale data or confusing states. Users should see a clean slate: no tour team, no venue partners, blank calendar, empty archives -- only My Artifacts persist.
-2. When a Contacts PDF is uploaded and extracted, the system creates TOUR-scoped contacts but doesn't distinguish "Tour Team" (management/production) from "Tour Crew" or "Venue Staff". All contacts from a Contacts PDF get dumped into Tour Team.
-3. Venue partner contacts should only come from Advance Master documents, which already works correctly (scope: VENUE).
-4. There's no auto-creation of Bunk Chat availability -- contacts extracted from a Contacts PDF should automatically be flagged as available for bunk/text/email/phone based on what info was extracted.
+Contacts like "Steve Meadows -- Production Contact" get extracted with a name and role but no phone or email. They just sit there, useless. TELA should never present a dead end -- it should always offer to find the missing info and fix it.
 
-## What Changes
+## Changes
 
-### 1. Empty AKB State (UI Polish)
-Update the following screens to show proper empty states when the AKB has no data:
+### File: `src/components/bunk/SidebarContactList.tsx`
 
-**Calendar (BunkCalendar.tsx):**
-- When no events exist, show a centered empty state: "No events yet. Upload documents to build your tour schedule."
+**1. Detect incomplete contacts**
+Add `const isMissingContact = !c.phone && !c.email` inside `renderContact()`.
 
-**Sidebar (useSidebarContacts.ts):**
-- Already shows "None available" when contacts are empty -- no change needed.
+**2. Inline "ASK TELA" link for incomplete contacts**
+- **Venue contacts (grouped mode, desktop + mobile):** Below the role line, render a small orange "ASK TELA" link when `isMissingContact`. The link navigates to chat with a solution-oriented, pre-filled query:
+  `"Find contact details for [Name] ([Role]) at [Venue]. Check tech packs and advance documents for phone and email. If you find them, update the contact."`
+- **Tour team contacts (flat mode, desktop):** When `isMissingContact`, make the TELA icon always visible (not hover-gated) so the solution is obvious. The pre-filled query:
+  `"Find contact details for [Name] ([Role]). Check all tour documents for phone and email. If you find them, update the contact."`
 
-**Overview (BunkOverview.tsx):**
-- Already shows "Begin Tour Build" when AKB is empty -- just tighten the messaging to be clearer: "Ready to build a new tour. Upload your contacts and Advance Master documents to get started."
+**3. Mobile expanded action bar adjustment**
+When `isMissingContact` and the contact is tapped on mobile, the action bar shows only:
+- **TELA** button (pre-filled solution query)
+- **Edit** button
+Skip TEXT / CALL / EMAIL buttons since there's nothing to act on -- no dead-end buttons.
 
-### 2. Smart Contact Scope Routing in Extraction Engine
-Update `supabase/functions/extract-document/index.ts` to filter contacts from CONTACTS-type documents:
+**4. Desktop hover actions adjustment**
+For incomplete contacts, skip rendering MessageCircle/Phone/Mail icons (nothing to link to). Instead, the ASK TELA button (MessageSquare) is always visible outside the hover gate so users immediately see the path forward.
 
-**Current behavior:** All contacts from a Contacts PDF go into `scope: "TOUR"`.
-
-**New behavior:** During general extraction, when `doc_type === "CONTACTS"`, apply role-based filtering:
-- **Tour Team (scope: TOUR):** Contacts with management/production roles -- Tour Manager, Production Manager, Tour Accountant, Business Manager, Agent, Promoter Rep, Management, etc. These are the people who manage the tour.
-- **Skip (do not insert):** Contacts identified as "Tour Crew" (stagehands, riggers, drivers, techs) or "Venue Staff" (house manager, box office, security) -- these come from other document types or are added manually.
-
-Add a role classification step in the AI extraction prompt to tag each contact with a `category` field: `"TOUR_TEAM"`, `"TOUR_CREW"`, or `"VENUE_STAFF"`. Only insert contacts where `category === "TOUR_TEAM"` from CONTACTS documents.
-
-### 3. Advance Master Venue Contacts (Already Working)
-The current extraction already inserts contacts from Advance Masters with `scope: "VENUE"` and associates them with the venue name. No changes needed here -- just confirming the existing behavior matches the requirement.
-
-### 4. Contact Communication Availability
-Contacts extracted from documents already have phone/email stored. The sidebar already renders:
-- Bunk Chat button (if contact matches an app user who is online)
-- TEXT/SMS button (if phone number exists)
-- EMAIL button (if email exists)
-- CALL button (if phone exists)
-
-No additional changes needed -- the communication channels are already driven by what data exists on the contact record.
+**5. Pre-filled TELA query design**
+The queries are solution-oriented so TELA actively searches uploaded documents (tech packs, advance masters) and returns an action card to auto-update the contact:
+- Venue: `"Find contact details for [Name] ([Role]) at [Venue]. Check tech packs and advance documents for phone and email. If you find them, update the contact."`
+- Tour: `"Find contact details for [Name] ([Role]). Check all tour documents for phone and email. If you find them, update the contact."`
 
 ---
 
 ## Technical Details
 
-### Files Modified
+### Only one file changes: `src/components/bunk/SidebarContactList.tsx`
 
-| File | Change |
-|---|---|
-| `supabase/functions/extract-document/index.ts` | Update EXTRACTION_PROMPT to add `category` field to contacts. Filter contacts from CONTACTS docs to only insert TOUR_TEAM. |
-| `src/pages/bunk/BunkOverview.tsx` | Improve empty AKB state messaging to guide users toward uploading contacts + advance masters. |
-| `src/pages/bunk/BunkCalendar.tsx` | Improve empty calendar state with clearer guidance. |
+Inside `renderContact(c, showQuickActions)`:
 
-### Extraction Prompt Change
-Add to the contacts section of EXTRACTION_PROMPT:
-```
-"contacts": [
-  {
-    "name": "Full Name",
-    "role": "ROLE TITLE",
-    "phone": "phone number",
-    "email": "email@domain.com",
-    "category": "TOUR_TEAM" | "TOUR_CREW" | "VENUE_STAFF"
-  }
-]
+1. Add at line ~237: `const isMissingContact = !c.phone && !c.email;`
+
+2. Build the TELA query string:
+```typescript
+const telaFixQuery = isMissingContact
+  ? showQuickActions
+    ? `Find contact details for ${c.name}${c.role ? ` (${c.role})` : ""}${c.venue ? ` at ${c.venue}` : ""}. Check tech packs and advance documents for phone and email. If you find them, update the contact.`
+    : `Find contact details for ${c.name}${c.role ? ` (${c.role})` : ""}. Check all tour documents for phone and email. If you find them, update the contact.`
+  : "";
 ```
 
-With guidance:
-- TOUR_TEAM = management, agents, accountants, business managers, production managers, tour managers, promoter reps -- people who run the business side of the tour
-- TOUR_CREW = stagehands, riggers, lighting techs, audio techs, carpenters, drivers, wardrobe, catering staff -- people who execute the production
-- VENUE_STAFF = house manager, box office, venue security, venue production, local crew chief -- people employed by the venue
+3. After the role line (line ~260), add an inline ASK TELA link when `isMissingContact`:
+```tsx
+{isMissingContact && (
+  <button
+    onClick={(e) => {
+      e.stopPropagation();
+      navigate(`/bunk/chat?scope=tour&q=${encodeURIComponent(telaFixQuery)}`);
+      onNavigate?.();
+    }}
+    className="inline-flex items-center gap-1 text-[10px] font-mono tracking-wider text-primary hover:text-primary/80 transition-colors mt-0.5"
+  >
+    <MessageSquare className="h-2.5 w-2.5" />
+    ASK TELA FOR DETAILS
+  </button>
+)}
+```
 
-### Insertion Filter (extract-document/index.ts, ~line 1834)
-When `finalDocType === "CONTACTS"`, filter to only insert contacts where `category === "TOUR_TEAM"` with `scope: "TOUR"`. Skip TOUR_CREW and VENUE_STAFF from contacts documents since those come from Advance Masters and Tech Packs respectively.
+4. Desktop hover actions (line ~265-343): When `isMissingContact`, skip MessageCircle/Phone/Mail icons and always show TELA icon (remove hover gate).
 
-### No database changes required.
-### No new dependencies.
+5. Mobile expanded bar (line ~375-414): When `isMissingContact`, only render TELA + Edit buttons, skip TEXT/CALL/EMAIL.
 
+6. Mobile quick-action indicators (line ~363-371): When `isMissingContact` in non-grouped mode, show a small TELA icon instead of grayed-out phone/mail icons.
+
+### No database, backend, or edge function changes required.
