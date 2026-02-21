@@ -190,10 +190,10 @@ const BunkChat = () => {
   }, [input]);
 
   return (
-    <div className="flex flex-col h-[calc(100vh-3rem)] -m-6">
+    <div className="flex flex-col h-[calc(100dvh-2.5rem)] md:h-[calc(100vh-3rem)] -m-3 sm:-m-6">
       {/* Top bar */}
-      <div className="flex items-center justify-between px-4 h-11 border-b border-border bg-background/80 backdrop-blur-sm shrink-0">
-        <div className="flex items-center gap-3">
+      <div className="flex items-center justify-between px-3 md:px-4 h-10 md:h-11 border-b border-border bg-background/80 backdrop-blur-sm shrink-0">
+        <div className="flex items-center gap-2 md:gap-3">
           <button
             onClick={() => navigate("/bunk")}
             className="text-muted-foreground hover:text-foreground transition-colors"
@@ -202,13 +202,13 @@ const BunkChat = () => {
           </button>
           <div className="flex items-center gap-2">
             <Zap className="h-4 w-4 text-primary" />
-            <span className="text-base font-semibold text-foreground tracking-tight">
+            <span className="text-sm md:text-base font-semibold text-foreground tracking-tight">
               TELA
             </span>
           </div>
           {/* Scope badge */}
           {hasTours && (
-            <div className={`flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-mono tracking-wider uppercase ${
+            <div className={`flex items-center gap-1 md:gap-1.5 px-2 md:px-2.5 py-0.5 rounded-full text-[10px] font-mono tracking-wider uppercase ${
               isScoped
                 ? "bg-primary/10 text-primary border border-primary/20"
                 : "bg-muted text-muted-foreground border border-border"
@@ -216,12 +216,12 @@ const BunkChat = () => {
               {isScoped ? (
                 <>
                   <Target className="h-3 w-3" />
-                  {scopedTourName || "Tour"}
+                  <span className="hidden sm:inline">{scopedTourName || "Tour"}</span>
                 </>
               ) : (
                 <>
                   <Globe className="h-3 w-3" />
-                  All Tours
+                  <span className="hidden sm:inline">All Tours</span>
                 </>
               )}
             </div>
@@ -311,7 +311,7 @@ const BunkChat = () => {
       </div>
 
       {/* Input bar */}
-      <div className="shrink-0 border-t border-border bg-background px-4 py-3">
+      <div className="shrink-0 border-t border-border bg-background px-3 md:px-4 py-2 md:py-3 pb-safe">
         <div className="max-w-2xl md:max-w-3xl mx-auto">
           <div className="flex items-end gap-2 bg-card rounded-2xl border border-border px-3 py-2 md:px-4 md:py-3">
             <textarea
@@ -328,7 +328,7 @@ const BunkChat = () => {
             <button
               onClick={handleSubmit}
               disabled={!input.trim() || !hasTours || isStreaming}
-              className={`shrink-0 h-8 w-8 flex items-center justify-center rounded-full transition-colors ${
+              className={`shrink-0 h-9 w-9 md:h-8 md:w-8 flex items-center justify-center rounded-full transition-colors ${
                 input.trim() && hasTours && !isStreaming
                   ? "bg-foreground text-background hover:bg-foreground/90"
                   : "bg-muted text-muted-foreground"

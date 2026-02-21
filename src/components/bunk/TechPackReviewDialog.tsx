@@ -2,13 +2,13 @@ import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-  DialogFooter,
-} from "@/components/ui/dialog";
+  ResponsiveDialog,
+  ResponsiveDialogContent,
+  ResponsiveDialogHeader,
+  ResponsiveDialogTitle,
+  ResponsiveDialogDescription,
+  ResponsiveDialogFooter,
+} from "@/components/ui/responsive-dialog";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -330,17 +330,17 @@ const TechPackReviewDialog = ({
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-3xl h-[95dvh] sm:max-h-[90vh] sm:h-auto flex flex-col p-4 sm:p-6">
-        <DialogHeader>
-          <DialogTitle className="font-mono tracking-tight flex items-center gap-2">
+    <ResponsiveDialog open={open} onOpenChange={onOpenChange}>
+      <ResponsiveDialogContent className="max-w-3xl h-[95dvh] sm:max-h-[90vh] sm:h-auto flex flex-col p-4 sm:p-6">
+        <ResponsiveDialogHeader>
+          <ResponsiveDialogTitle className="font-mono tracking-tight flex items-center gap-2">
             <Building2 className="h-5 w-5 text-primary" />
             Tech Pack Review — {venueName}
-          </DialogTitle>
-          <DialogDescription className="font-mono text-xs">
+          </ResponsiveDialogTitle>
+          <ResponsiveDialogDescription className="font-mono text-xs">
             Review extracted venue specifications across 25 categories and operational
             risk flags before approving into the AKB.
-          </DialogDescription>
+          </ResponsiveDialogDescription>
           <div className="flex gap-2 flex-wrap pt-2">
             <Badge variant="outline" className="font-mono text-[10px]">
               TECH PACK
@@ -367,7 +367,7 @@ const TechPackReviewDialog = ({
               </Badge>
             )}
           </div>
-        </DialogHeader>
+        </ResponsiveDialogHeader>
 
         {loading ? (
           <div className="flex items-center justify-center py-12">
@@ -575,7 +575,7 @@ const TechPackReviewDialog = ({
           </ScrollArea>
         )}
 
-        <DialogFooter className="pt-3 border-t border-border flex-col sm:flex-row gap-2">
+        <ResponsiveDialogFooter className="pt-3 border-t border-border flex-col sm:flex-row gap-2">
           <Button
             variant="outline"
             onClick={() => onOpenChange(false)}
@@ -595,9 +595,9 @@ const TechPackReviewDialog = ({
             )}
             Approve into AKB
           </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+        </ResponsiveDialogFooter>
+      </ResponsiveDialogContent>
+    </ResponsiveDialog>
   );
 };
 

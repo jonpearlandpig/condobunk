@@ -4,12 +4,12 @@ import { useAuth } from "@/hooks/useAuth";
 import { useTour } from "@/hooks/useTour";
 import { format } from "date-fns";
 import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
-} from "@/components/ui/dialog";
+  ResponsiveDialog,
+  ResponsiveDialogContent,
+  ResponsiveDialogHeader,
+  ResponsiveDialogTitle,
+  ResponsiveDialogFooter,
+} from "@/components/ui/responsive-dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -125,11 +125,11 @@ const AddEventDialog = ({ open, onOpenChange, defaultDate, onCreated }: AddEvent
   };
 
   return (
-    <Dialog open={open} onOpenChange={(o) => { if (!o) reset(); onOpenChange(o); }}>
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle className="text-base">Add Event</DialogTitle>
-        </DialogHeader>
+    <ResponsiveDialog open={open} onOpenChange={(o) => { if (!o) reset(); onOpenChange(o); }}>
+      <ResponsiveDialogContent className="sm:max-w-md">
+        <ResponsiveDialogHeader>
+          <ResponsiveDialogTitle className="text-base">Add Event</ResponsiveDialogTitle>
+        </ResponsiveDialogHeader>
 
         <div className="space-y-3">
           {tours.length > 1 && (
@@ -198,15 +198,15 @@ const AddEventDialog = ({ open, onOpenChange, defaultDate, onCreated }: AddEvent
           </div>
         </div>
 
-        <DialogFooter>
+        <ResponsiveDialogFooter>
           <Button variant="ghost" size="sm" onClick={() => onOpenChange(false)}>Cancel</Button>
           <Button size="sm" onClick={handleSave} disabled={saving}>
             {saving && <Loader2 className="h-3 w-3 animate-spin mr-1" />}
             Add Event
           </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+        </ResponsiveDialogFooter>
+      </ResponsiveDialogContent>
+    </ResponsiveDialog>
   );
 };
 

@@ -261,17 +261,18 @@ const BunkOverview = () => {
   ];
 
   return (
-    <div className="space-y-8 max-w-5xl">
+    <div className="space-y-5 sm:space-y-8 max-w-5xl">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">TELA TL;DR</h1>
-          <p className="text-sm text-muted-foreground font-mono mt-1">
+          <h1 className="text-xl sm:text-2xl font-bold tracking-tight">TELA TL;DR</h1>
+          <p className="text-xs sm:text-sm text-muted-foreground font-mono mt-0.5 sm:mt-1">
             Real-time tour intelligence
           </p>
         </div>
         <Button size="sm" className="font-mono text-xs tracking-wider" onClick={() => navigate("/bunk/setup")}>
-          <Plus className="mr-2 h-3 w-3" />
-          NEW TOUR
+          <Plus className="mr-1 sm:mr-2 h-3 w-3" />
+          <span className="hidden sm:inline">NEW TOUR</span>
+          <span className="sm:hidden">NEW</span>
         </Button>
       </div>
 
@@ -280,7 +281,7 @@ const BunkOverview = () => {
         initial={{ opacity: 0, y: 12 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.1 }}
-        className="rounded-lg border border-primary/20 bg-primary/5 p-5"
+        className="rounded-lg border border-primary/20 bg-primary/5 p-3 sm:p-5"
       >
         <div className="flex items-center gap-2 mb-3">
           <Zap className="h-4 w-4 text-primary" />
@@ -303,9 +304,9 @@ const BunkOverview = () => {
                     {item.text}
                   </p>
                   {item.actionable && (
-                    <button
+                     <button
                       onClick={() => navigate(`/bunk/chat?q=${encodeURIComponent(item.text)}`)}
-                      className="mt-1 inline-flex items-center gap-1.5 text-[11px] font-mono tracking-wider text-primary hover:text-primary/80 transition-colors"
+                      className="mt-1 inline-flex items-center gap-1.5 text-[11px] font-mono tracking-wider text-primary hover:text-primary/80 transition-colors min-h-[44px] sm:min-h-0 px-2 -mx-2 sm:px-0 sm:mx-0"
                     >
                       <ChevronRight className="h-3 w-3" />
                       ASK TELA
