@@ -125,6 +125,7 @@ const BunkAdmin = () => {
         .from("contacts")
         .select("name, email, role")
         .eq("tour_id", selectedTourId)
+        .eq("scope", "TOUR")
         .not("email", "is", null),
     ]);
     if (intRes.data) setIntegrations(intRes.data as unknown as Integration[]);
