@@ -245,7 +245,7 @@ const BunkChat = () => {
               <p className="text-xs text-muted-foreground/60 mt-2 font-mono">
                 {isScoped
                   ? `Locked to: ${scopedTourName || "selected tour"}`
-                  : `Searching across ${tours.length} active tour${tours.length !== 1 ? "s" : ""}`}
+                  : `Searching across ${tours.length} Tour AKB${tours.length !== 1 ? "s" : ""}`}
               </p>
               {!hasTours && (
                 <p className="text-sm text-destructive mt-3 font-mono">
