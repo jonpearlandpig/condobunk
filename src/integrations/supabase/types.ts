@@ -627,6 +627,13 @@ export type Database = {
             referencedRelation: "tours"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "tour_members_user_id_profiles_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
         ]
       }
       tours: {
