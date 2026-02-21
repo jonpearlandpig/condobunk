@@ -885,6 +885,7 @@ export type Database = {
           tour_id: string | null
           updated_at: string
           user_id: string
+          visibility: string
         }
         Insert: {
           artifact_type?: string
@@ -895,6 +896,7 @@ export type Database = {
           tour_id?: string | null
           updated_at?: string
           user_id: string
+          visibility?: string
         }
         Update: {
           artifact_type?: string
@@ -905,6 +907,7 @@ export type Database = {
           tour_id?: string | null
           updated_at?: string
           user_id?: string
+          visibility?: string
         }
         Relationships: [
           {
