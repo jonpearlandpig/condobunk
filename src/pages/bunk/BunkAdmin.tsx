@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-import { Settings, RefreshCw, Plus, Trash2, Copy, CheckCircle, XCircle, Clock, Loader2, Users, Mail, Link, UserPlus } from "lucide-react";
+import { Settings, RefreshCw, Plus, Trash2, Copy, CheckCircle, XCircle, Clock, Loader2, Users, Mail, Link, UserPlus, Send } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Separator } from "@/components/ui/separator";
+import { Checkbox } from "@/components/ui/checkbox";
 import { useTour } from "@/hooks/useTour";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
@@ -89,6 +90,8 @@ const BunkAdmin = () => {
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteRole, setInviteRole] = useState<string>("CREW");
   const [invitingLoading, setInvitingLoading] = useState(false);
+  const [bulkInviting, setBulkInviting] = useState(false);
+  const [selectedMemberIds, setSelectedMemberIds] = useState<Set<string>>(new Set());
 
   const load = useCallback(async () => {
     if (!selectedTourId) return;
@@ -238,6 +241,74 @@ const BunkAdmin = () => {
 
   const isExpired = (expires_at: string) => new Date(expires_at) < new Date();
 
+  // Determine which members already have a pending (non-expired, unused) invite
+  const pendingInviteEmails = new Set(
+    invites
+      .filter(i => !i.used_at && !isExpired(i.expires_at))
+      .map(i => i.email.toLowerCase())
+  );
+
+  const invitableMembers = members.filter(
+    m => m.profiles?.email && !pendingInviteEmails.has(m.profiles.email.toLowerCase()) && m.user_id !== user?.id
+  );
+
+  const toggleMemberSelection = (memberId: string) => {
+    setSelectedMemberIds(prev => {
+      const next = new Set(prev);
+      if (next.has(memberId)) next.delete(memberId);
+      else next.add(memberId);
+      return next;
+    });
+  };
+
+  const toggleSelectAll = () => {
+    if (selectedMemberIds.size === invitableMembers.length) {
+      setSelectedMemberIds(new Set());
+    } else {
+      setSelectedMemberIds(new Set(invitableMembers.map(m => m.id)));
+    }
+  };
+
+  const handleQuickInvite = async (email: string, role: string) => {
+    if (!selectedTourId || !user) return;
+    const { data, error } = await supabase
+      .from("tour_invites")
+      .insert({ tour_id: selectedTourId, email, role: role as "TA" | "MGMT" | "CREW", created_by: user.id, tour_name: selectedTour?.name || null } as any)
+      .select()
+      .single();
+    if (error) {
+      toast.error(error.message);
+      return null;
+    }
+    return data;
+  };
+
+  const handleBulkInvite = async () => {
+    if (!selectedTourId || !user || selectedMemberIds.size === 0) return;
+    setBulkInviting(true);
+    const targets = members.filter(m => selectedMemberIds.has(m.id) && m.profiles?.email);
+    let successCount = 0;
+    for (const m of targets) {
+      const result = await handleQuickInvite(m.profiles!.email!, m.role);
+      if (result) successCount++;
+    }
+    toast.success(`Sent ${successCount} invite${successCount !== 1 ? "s" : ""}`);
+    setSelectedMemberIds(new Set());
+    setBulkInviting(false);
+    load();
+  };
+
+  const handleSendSingleInvite = async (member: TourMember) => {
+    if (!member.profiles?.email) return;
+    const data = await handleQuickInvite(member.profiles.email, member.role);
+    if (data) {
+      const inviteUrl = `${window.location.origin}/invite/${data.token}`;
+      await navigator.clipboard.writeText(inviteUrl);
+      toast.success(`Invite link for ${member.profiles.email} copied!`);
+      load();
+    }
+  };
+
   if (!selectedTourId) {
     return (
       <div className="space-y-6 max-w-4xl">
@@ -264,59 +335,67 @@ const BunkAdmin = () => {
             <h2 className="text-lg font-semibold">Tour Team</h2>
             <Badge variant="secondary" className="font-mono text-xs">{members.length}</Badge>
           </div>
-          <Dialog open={inviteOpen} onOpenChange={setInviteOpen}>
-            <DialogTrigger asChild>
-              <Button size="sm" variant="outline">
-                <UserPlus className="h-4 w-4 mr-1" /> Invite Member
+          <div className="flex items-center gap-2">
+            {selectedMemberIds.size > 0 && (
+              <Button size="sm" variant="default" onClick={handleBulkInvite} disabled={bulkInviting}>
+                {bulkInviting ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Send className="h-4 w-4 mr-1" />}
+                Invite {selectedMemberIds.size} Selected
               </Button>
-            </DialogTrigger>
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle className="flex items-center gap-2">
-                  <Mail className="h-4 w-4" /> Invite to Tour
-                </DialogTitle>
-              </DialogHeader>
-              <div className="space-y-4">
-                <p className="text-sm text-muted-foreground">
-                  Enter their email and role. An invite link will be generated — copy it and send it to them directly (SMS, email, etc.).
-                </p>
-                <div>
-                  <Label>Email address</Label>
-                  <Input
-                    value={inviteEmail}
-                    onChange={(e) => setInviteEmail(e.target.value)}
-                    type="email"
-                    placeholder="caleb@tourcompany.com"
-                    className="font-mono text-sm"
-                  />
-                </div>
-                <div>
-                  <Label>Role</Label>
-                  <Select value={inviteRole} onValueChange={setInviteRole}>
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="MGMT">MGMT — Management (can edit tour data)</SelectItem>
-                      <SelectItem value="CREW">CREW — Crew (read access)</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <Button
-                  onClick={handleCreateInvite}
-                  disabled={!inviteEmail || invitingLoading}
-                  className="w-full"
-                >
-                  {invitingLoading ? (
-                    <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                  ) : (
-                    <Link className="h-4 w-4 mr-2" />
-                  )}
-                  Generate & Copy Invite Link
+            )}
+            <Dialog open={inviteOpen} onOpenChange={setInviteOpen}>
+              <DialogTrigger asChild>
+                <Button size="sm" variant="outline">
+                  <UserPlus className="h-4 w-4 mr-1" /> Invite New
                 </Button>
-              </div>
-            </DialogContent>
-          </Dialog>
+              </DialogTrigger>
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle className="flex items-center gap-2">
+                    <Mail className="h-4 w-4" /> Invite to Tour
+                  </DialogTitle>
+                </DialogHeader>
+                <div className="space-y-4">
+                  <p className="text-sm text-muted-foreground">
+                    Enter their email and role. An invite link will be generated — copy it and send it to them directly (SMS, email, etc.).
+                  </p>
+                  <div>
+                    <Label>Email address</Label>
+                    <Input
+                      value={inviteEmail}
+                      onChange={(e) => setInviteEmail(e.target.value)}
+                      type="email"
+                      placeholder="caleb@tourcompany.com"
+                      className="font-mono text-sm"
+                    />
+                  </div>
+                  <div>
+                    <Label>Role</Label>
+                    <Select value={inviteRole} onValueChange={setInviteRole}>
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="MGMT">MGMT — Management (can edit tour data)</SelectItem>
+                        <SelectItem value="CREW">CREW — Crew (read access)</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <Button
+                    onClick={handleCreateInvite}
+                    disabled={!inviteEmail || invitingLoading}
+                    className="w-full"
+                  >
+                    {invitingLoading ? (
+                      <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                    ) : (
+                      <Link className="h-4 w-4 mr-2" />
+                    )}
+                    Generate & Copy Invite Link
+                  </Button>
+                </div>
+              </DialogContent>
+            </Dialog>
+          </div>
         </div>
 
         {loading ? (
@@ -328,53 +407,83 @@ const BunkAdmin = () => {
           </Card>
         ) : (
           <div className="space-y-2">
-            {members.map((m) => (
-              <Card key={m.id} className="p-3 flex items-center justify-between gap-3">
-                <div className="flex items-center gap-3 min-w-0">
-                  <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
-                    <span className="text-xs font-mono font-bold text-primary">
-                      {(m.profiles?.display_name || m.profiles?.email || "?")[0].toUpperCase()}
-                    </span>
-                  </div>
-                  <div className="min-w-0">
-                    <p className="text-sm font-medium truncate">
-                      {m.profiles?.display_name || m.profiles?.email || "Unknown user"}
-                      {m.user_id === user?.id && (
-                        <span className="ml-1.5 text-xs text-muted-foreground font-mono">(you)</span>
+            {invitableMembers.length > 1 && (
+              <div className="flex items-center gap-2 px-1">
+                <Checkbox
+                  checked={selectedMemberIds.size === invitableMembers.length && invitableMembers.length > 0}
+                  onCheckedChange={toggleSelectAll}
+                  id="select-all"
+                />
+                <label htmlFor="select-all" className="text-xs font-mono text-muted-foreground cursor-pointer">
+                  Select all for bulk invite
+                </label>
+              </div>
+            )}
+            {members.map((m) => {
+              const hasPending = m.profiles?.email && pendingInviteEmails.has(m.profiles.email.toLowerCase());
+              const isInvitable = invitableMembers.some(im => im.id === m.id);
+              return (
+                <Card key={m.id} className="p-3 flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-3 min-w-0">
+                    {isInvitable && (
+                      <Checkbox
+                        checked={selectedMemberIds.has(m.id)}
+                        onCheckedChange={() => toggleMemberSelection(m.id)}
+                      />
+                    )}
+                    <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
+                      <span className="text-xs font-mono font-bold text-primary">
+                        {(m.profiles?.display_name || m.profiles?.email || "?")[0].toUpperCase()}
+                      </span>
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium truncate">
+                        {m.profiles?.display_name || m.profiles?.email || "Unknown user"}
+                        {m.user_id === user?.id && (
+                          <span className="ml-1.5 text-xs text-muted-foreground font-mono">(you)</span>
+                        )}
+                      </p>
+                      {m.profiles?.display_name && m.profiles?.email && (
+                        <p className="text-xs text-muted-foreground truncate font-mono">{m.profiles.email}</p>
                       )}
-                    </p>
-                    {m.profiles?.display_name && m.profiles?.email && (
-                      <p className="text-xs text-muted-foreground truncate font-mono">{m.profiles.email}</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    {hasPending && (
+                      <Badge variant="outline" className="text-xs font-mono text-muted-foreground">Invited</Badge>
+                    )}
+                    {isInvitable && (
+                      <Button size="sm" variant="ghost" onClick={() => handleSendSingleInvite(m)} title="Generate invite link">
+                        <Send className="h-4 w-4" />
+                      </Button>
+                    )}
+                    <Select
+                      value={m.role}
+                      onValueChange={(v) => handleUpdateRole(m.id, v)}
+                      disabled={m.user_id === user?.id}
+                    >
+                      <SelectTrigger className="h-7 text-xs w-24">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="TA">TA</SelectItem>
+                        <SelectItem value="MGMT">MGMT</SelectItem>
+                        <SelectItem value="CREW">CREW</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    {m.user_id !== user?.id && (
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => handleRemoveMember(m.id, m.user_id)}
+                      >
+                        <Trash2 className="h-4 w-4 text-destructive" />
+                      </Button>
                     )}
                   </div>
-                </div>
-                <div className="flex items-center gap-2 shrink-0">
-                  <Select
-                    value={m.role}
-                    onValueChange={(v) => handleUpdateRole(m.id, v)}
-                    disabled={m.user_id === user?.id}
-                  >
-                    <SelectTrigger className="h-7 text-xs w-24">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="TA">TA</SelectItem>
-                      <SelectItem value="MGMT">MGMT</SelectItem>
-                      <SelectItem value="CREW">CREW</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  {m.user_id !== user?.id && (
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      onClick={() => handleRemoveMember(m.id, m.user_id)}
-                    >
-                      <Trash2 className="h-4 w-4 text-destructive" />
-                    </Button>
-                  )}
-                </div>
-              </Card>
-            ))}
+                </Card>
+              );
+            })}
           </div>
         )}
 
