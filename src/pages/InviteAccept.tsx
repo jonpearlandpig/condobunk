@@ -105,13 +105,15 @@ const InviteAccept = () => {
     setAuthSubmitting(true);
     try {
       if (isSignUp) {
-        const { error } = await supabase.auth.signUp({
+        const { data, error } = await supabase.auth.signUp({
           email: invite.email,
           password,
-          options: { emailRedirectTo: window.location.href },
         });
         if (error) throw error;
-        toast.success("Check your email to confirm your account, then return to this link.");
+        // With auto-confirm, user is immediately logged in — acceptInvite fires via useEffect
+        if (!data.user) {
+          toast.success("Check your email to confirm your account, then return to this link.");
+        }
       } else {
         const { error } = await supabase.auth.signInWithPassword({ email: invite.email, password });
         if (error) throw error;
