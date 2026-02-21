@@ -506,19 +506,8 @@ const BunkCalendar = () => {
                 </DialogHeader>
 
                 <div className="space-y-3 pt-1">
-                  {/* Badges */}
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <Badge variant="outline" className="font-mono text-[10px] tracking-wider">{selectedEntry.category}</Badge>
-                    {isGlobal && tours.length > 1 && (
-                      <Badge variant="outline" className={`font-mono text-[10px] tracking-wider ${colors.text}`}>{selectedEntry.tourName}</Badge>
-                    )}
-                    {selectedEntry.confidence !== undefined && (
-                      <span className="font-mono text-[10px] text-muted-foreground">{(selectedEntry.confidence * 100).toFixed(0)}% confidence</span>
-                    )}
-                  </div>
-
-                  {/* Key info card */}
-                  {(selectedEntry.address || selectedEntry.loadIn || selectedEntry.showTime || selectedEntry.endTime || selectedEntry.capacity) && (
+                  {/* Key info card — venue, address, show time only */}
+                  {(selectedEntry.address || selectedEntry.showTime) && (
                     <div className="rounded-lg border border-border bg-muted/30 divide-y divide-border">
                       {selectedEntry.address && (
                         <div className="flex items-start gap-2.5 px-3 py-2.5">
@@ -526,24 +515,6 @@ const BunkCalendar = () => {
                           <div>
                             <p className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider mb-0.5">Address</p>
                             <p className="text-sm text-foreground">{selectedEntry.address}</p>
-                          </div>
-                        </div>
-                      )}
-                      {selectedEntry.capacity && (
-                        <div className="flex items-center gap-2.5 px-3 py-2.5">
-                          <Globe className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-                          <div>
-                            <p className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider mb-0.5">Capacity</p>
-                            <p className="text-sm font-mono text-foreground">{selectedEntry.capacity}</p>
-                          </div>
-                        </div>
-                      )}
-                      {selectedEntry.loadIn && (
-                        <div className="flex items-center gap-2.5 px-3 py-2.5">
-                          <Clock className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-                          <div>
-                            <p className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider mb-0.5">Load-in</p>
-                            <p className="text-sm font-mono text-foreground">{selectedEntry.loadIn}</p>
                           </div>
                         </div>
                       )}
@@ -556,28 +527,7 @@ const BunkCalendar = () => {
                           </div>
                         </div>
                       )}
-                      {selectedEntry.endTime && (
-                        <div className="flex items-center gap-2.5 px-3 py-2.5">
-                          <Clock className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-                          <div>
-                            <p className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider mb-0.5">End</p>
-                            <p className="text-sm font-mono text-foreground">{selectedEntry.endTime}</p>
-                          </div>
-                        </div>
-                      )}
                     </div>
-                  )}
-
-                  {/* Notes */}
-                  {selectedEntry.notes && (
-                    <div className="rounded-lg bg-muted/30 border border-border px-3 py-2.5">
-                      <p className="text-[10px] font-mono tracking-wider text-muted-foreground uppercase mb-1.5">Notes</p>
-                      <p className="text-sm text-foreground whitespace-pre-line leading-relaxed">{selectedEntry.notes}</p>
-                    </div>
-                  )}
-
-                  {!selectedEntry.address && !selectedEntry.capacity && !selectedEntry.loadIn && !selectedEntry.showTime && !selectedEntry.notes && !selectedEntry.subtitle && (
-                    <p className="text-sm text-muted-foreground font-mono italic">No additional details in AKB.</p>
                   )}
 
                   {/* Share actions */}
@@ -603,15 +553,13 @@ const BunkCalendar = () => {
                     </Button>
                   </div>
 
-                  {/* Inline TELA for venue questions */}
-                  {selectedEntry.category === "SHOW" && (
-                    <VenueTelaMini
-                      tourId={selectedEntry.tourId}
-                      venueName={selectedEntry.title}
-                      eventDate={selectedEntry.date}
-                      city={selectedEntry.subtitle}
-                    />
-                  )}
+                  {/* Inline TELA — available on all event types */}
+                  <VenueTelaMini
+                    tourId={selectedEntry.tourId}
+                    venueName={selectedEntry.title}
+                    eventDate={selectedEntry.date}
+                    city={selectedEntry.subtitle}
+                  />
                 </div>
               </>
             );
