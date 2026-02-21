@@ -59,7 +59,8 @@ export function usePresence() {
       const { data } = await supabase
         .from("user_presence")
         .select("user_id")
-        .or(`is_online.eq.true,last_active_at.gte.${cutoff}`);
+        .eq("is_online", true)
+        .gte("last_active_at", cutoff);
       setOnlineUsers(new Set((data || []).map((r) => r.user_id)));
     };
 
