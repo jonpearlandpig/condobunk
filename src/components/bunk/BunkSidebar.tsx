@@ -27,6 +27,7 @@ import {
 import { useIsMobile } from "@/hooks/use-mobile";
 import { useSidebarContacts } from "@/hooks/useSidebarContacts";
 import { usePresence } from "@/hooks/usePresence";
+import { useUnreadDMs } from "@/hooks/useUnreadDMs";
 import SidebarContactList from "@/components/bunk/SidebarContactList";
 import { Separator } from "@/components/ui/separator";
 
@@ -45,6 +46,7 @@ const BunkSidebar = () => {
   const isMobile = useIsMobile();
   const { tourContacts, tourTeamGroups, venueContacts, venueGroups, venueLabel, loading, updateContact, deleteContact } = useSidebarContacts();
   const { onlineUsers } = usePresence();
+  const { totalUnread, unreadFrom } = useUnreadDMs();
   const [tourTeamOpen, setTourTeamOpen] = useState(true);
   const [venuePartnersOpen, setVenuePartnersOpen] = useState(true);
   const [expandedTours, setExpandedTours] = useState<Set<string>>(new Set());
@@ -106,6 +108,11 @@ const BunkSidebar = () => {
             <ChevronRight className={`h-3 w-3 transition-transform ${tourTeamOpen ? "rotate-90" : ""}`} />
             <Users className="h-3 w-3" />
             Tour Team
+            {totalUnread > 0 && (
+              <span className="h-4 min-w-4 px-1 flex items-center justify-center rounded-full bg-primary text-primary-foreground text-[9px] font-bold leading-none">
+                {totalUnread > 99 ? "99+" : totalUnread}
+              </span>
+            )}
             <span className="ml-auto text-muted-foreground/40 normal-case tracking-normal">{tourTeamGroups.reduce((sum, g) => sum + g.contacts.length, 0)}</span>
           </button>
           {tourTeamOpen && (
@@ -115,7 +122,7 @@ const BunkSidebar = () => {
                   <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground/40" />
                 </div>
               ) : tourTeamGroups.length <= 1 ? (
-                <SidebarContactList contacts={tourTeamGroups[0]?.contacts || []} onNavigate={handleNavClick} onUpdate={updateContact} onDelete={deleteContact} onlineUserIds={onlineUsers} />
+                <SidebarContactList contacts={tourTeamGroups[0]?.contacts || []} onNavigate={handleNavClick} onUpdate={updateContact} onDelete={deleteContact} onlineUserIds={onlineUsers} unreadFrom={unreadFrom} />
               ) : (
                 <div className="space-y-0.5">
                   {tourTeamGroups.map((group) => {
@@ -140,7 +147,7 @@ const BunkSidebar = () => {
                         </button>
                         {isExpanded && (
                           <div className="ml-2 border-l border-border/30 pl-1">
-                            <SidebarContactList contacts={group.contacts} onNavigate={handleNavClick} onUpdate={updateContact} onDelete={deleteContact} onlineUserIds={onlineUsers} />
+                            <SidebarContactList contacts={group.contacts} onNavigate={handleNavClick} onUpdate={updateContact} onDelete={deleteContact} onlineUserIds={onlineUsers} unreadFrom={unreadFrom} />
                           </div>
                         )}
                       </div>
