@@ -3,6 +3,7 @@ import { Send, Loader2, Sparkles } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import { parseTelaActions } from "@/hooks/useTelaActions";
 import TelaActionCard from "@/components/bunk/TelaActionCard";
+import { supabase } from "@/integrations/supabase/client";
 
 type Msg = { role: "user" | "assistant"; content: string };
 
@@ -46,11 +47,13 @@ const VenueTelaMini = ({ tourId, venueName, eventDate, city }: VenueTelaMiniProp
     let assistantSoFar = "";
 
     try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token || import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
       const resp = await fetch(AKB_CHAT_URL, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
+          Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({
           messages: [...messages.map((m, i) => i === messages.length ? apiMsg : m), apiMsg],
