@@ -69,8 +69,17 @@ const SidebarContactList = ({ contacts, onNavigate, onUpdate, onDelete, onlineUs
           .is("read_at", null)
           .then(() => {});
       }
+    } else if (c.appUserId) {
+      // Has an app account but is offline — block bunk chat
+      toast.info(`${c.name} isn't in their Condo Bunk right now`, {
+        description: c.phone ? "Sending via SMS instead…" : "No phone number on file to fall back to.",
+        duration: 3000,
+      });
+      if (c.phone) {
+        setTimeout(() => window.open(`sms:${c.phone}`, "_self"), 600);
+      }
     } else if (c.phone) {
-      // Fall back to native SMS
+      // No app account, fall back to native SMS
       window.open(`sms:${c.phone}`, "_self");
     } else {
       toast.info("No phone number available for this contact");
@@ -132,6 +141,15 @@ const SidebarContactList = ({ contacts, onNavigate, onUpdate, onDelete, onlineUs
 
   const sendMessage = async (contact: SidebarContact) => {
     if (!chatInput.trim() || !user || !tourId || !contact.appUserId) return;
+    // Block sending if recipient went offline while chat was open
+    if (!isContactOnline(contact)) {
+      toast.info(`${contact.name} left their Condo Bunk`, {
+        description: "Message not sent. Try SMS instead.",
+        duration: 3000,
+      });
+      setChattingWith(null);
+      return;
+    }
     setSending(true);
     try {
       const { error } = await supabase.from("direct_messages").insert({
@@ -159,6 +177,11 @@ const SidebarContactList = ({ contacts, onNavigate, onUpdate, onDelete, onlineUs
 
   const saveEdit = async () => {
     if (!editingId || !onUpdate) return;
+    // Enforce: if email is provided, name is required
+    if (editForm.email && !editForm.name.trim()) {
+      toast.error("A name is required when an email address is provided");
+      return;
+    }
     try {
       await onUpdate(editingId, {
         name: editForm.name,

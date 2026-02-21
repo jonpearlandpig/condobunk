@@ -162,6 +162,10 @@ export const useSidebarContacts = () => {
   }, [tourId, fetchContacts]);
 
   const updateContact = useCallback(async (id: string, updates: Partial<Pick<SidebarContact, "name" | "role" | "phone" | "email">>) => {
+    // Enforce: email must have a name
+    if (updates.email && !updates.name?.trim()) {
+      throw new Error("A name is required when an email address is provided");
+    }
     const { error } = await supabase
       .from("contacts")
       .update(updates)
