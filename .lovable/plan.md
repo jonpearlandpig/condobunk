@@ -1,91 +1,64 @@
 
 
-# Three-Tier Artifact System: TourText / CondoBunk / Bunk Stash
+# Sidebar "Invite to Condo Bunk" for Non-User Contacts
 
-## The Three Levels
+## What Changes
 
-| Tier | Who Sees It | Use Case |
-|------|------------|----------|
-| **TourText** | All tour members + public-facing | Catering, parking, load-in times, ticket counts, wifi passwords, daily logistics |
-| **CondoBunk** | All tour team members only | Internal team info, schedules, operational notes -- shared but not public |
-| **Bunk Stash** | Only you (or people you explicitly share with) | Financials, HR, settlements, contracts, NDAs, artist-sensitive info |
+Tour team contacts in the sidebar who have an email but are NOT yet signed up for Condo Bunk (no `appUserId`) get an **Invite** button directly on their contact row. No need to go to Admin. One click creates the invite, copies the link, and opens the email composer -- same flow as Admin but triggered right from the sidebar.
 
-## How It Works for the User
+## How It Works
 
-- The "My Artifacts" page becomes a three-tab view: **TourText** / **CondoBunk** / **Bunk Stash**
-- When creating a new artifact, a simple selector lets you pick the tier (defaults to CondoBunk for general items)
-- **Smart detection**: If the title or content contains sensitive keywords (settlement, HR, finance, salary, NDA, per diem, guarantee, contract, insurance, rider, W-9, payroll, tax, severance, confidential), the system auto-switches to Bunk Stash with a subtle toast: "This looks sensitive -- saving to Bunk Stash"
-- The user can always override the suggestion with one click
-- Bunk Stash items show a lock icon; TourText items show a globe icon; CondoBunk items show a users icon
-- TourText and CondoBunk tabs show the creator's name on each item (pulled from profiles)
+1. **Single invite**: Hover over a non-user contact in the sidebar Tour Team section. An "Invite to Condo Bunk" icon (UserPlus) appears. Click it -- an invite is created in `tour_invites`, the link is copied to clipboard, and a `mailto:` composer opens with the invite URL pre-filled.
 
-## Database Changes
+2. **Bulk invite**: A small "Invite All" button appears at the top of the Tour Team section (only visible when there are uninvited contacts with emails). Clicking it creates invites for all eligible contacts in one pass, copies all links, and shows a summary toast.
 
-### 1. Add `visibility` column to `user_artifacts`
+3. **Visual indicator**: Contacts who have a pending (unexpired, unused) invite show a small "invited" badge so you know they already got one. No duplicate invites.
 
-```text
-ALTER TABLE user_artifacts
-ADD COLUMN visibility text NOT NULL DEFAULT 'condobunk'
-CHECK (visibility IN ('tourtext', 'condobunk', 'bunk_stash'));
-```
+4. **Existing invites check**: Before creating an invite, the system checks `tour_invites` for an active (unexpired, unused) invite for that email. If one exists, it just copies the existing link instead of creating a duplicate.
 
-### 2. New RLS policy -- Tour members can READ tourtext and condobunk items
-
-```text
-CREATE POLICY "Tour members can view shared artifacts"
-ON user_artifacts FOR SELECT
-USING (
-  visibility IN ('tourtext', 'condobunk')
-  AND tour_id IS NOT NULL
-  AND is_tour_member(tour_id)
-);
-```
-
-This sits alongside the existing "Users can view own artifacts" policy (which covers bunk_stash since only the owner can see those). INSERT/UPDATE/DELETE remain owner-only via existing policies -- nobody else can edit your stuff regardless of visibility.
-
-### 3. PostgREST cache reload
-
-```text
-NOTIFY pgrst, 'reload schema';
-```
-
-## UI Changes (BunkArtifacts.tsx)
-
-- Import `Tabs, TabsList, TabsTrigger, TabsContent` from the existing tabs component
-- Three tabs with distinct styling:
-  - **TourText** (globe icon) -- shows all tour-scoped artifacts with `visibility = 'tourtext'` for the selected tour
-  - **CondoBunk** (users icon) -- shows all tour-scoped artifacts with `visibility = 'condobunk'` for the selected tour
-  - **Bunk Stash** (lock icon) -- shows only your own artifacts with `visibility = 'bunk_stash'`
-- The create form adds a visibility selector (three chips/buttons instead of a dropdown)
-- Keyword detection runs on the title field with a debounce -- if a sensitive keyword is detected and visibility is not already bunk_stash, auto-switch and show a toast
-- Shared items (tourtext/condobunk) display the creator's display name fetched via a join or separate profiles query
-- The Artifact type now includes `visibility` in the type definition
-
-## What Does NOT Change
-
-- Sidebar nav item stays "My Artifacts" at `/bunk/artifacts`
-- Routing, layout, auth, edge functions -- all untouched
-- Existing artifacts default to `condobunk` via the migration default
-- No new tables, no new pages, no new routes
-
-## Technical Detail
+## Technical Details
 
 ### Files Modified
-- `supabase/migrations/` -- new migration for visibility column + RLS policy
-- `src/pages/bunk/BunkArtifacts.tsx` -- three-tab UI, visibility selector, keyword detection, shared item display with creator names
-- `src/integrations/supabase/types.ts` -- auto-updated after migration
 
-### Sensitive Keyword List (client-side detection)
+**`src/components/bunk/SidebarContactList.tsx`**
+- Accept new props: `tourId` (already available via `useTour`), `invites` (active invite list to check for existing ones)
+- Add `UserPlus` icon import from lucide-react
+- For contacts where `!c.appUserId && c.email`:
+  - Show a `UserPlus` invite button in the hover actions
+  - On click: call a new `handleInviteContact` function that:
+    1. Checks if an active invite already exists for this email (from the passed-in invites list)
+    2. If not, inserts into `tour_invites` with the contact's email, role mapped to tour role, tour name
+    3. Copies invite URL to clipboard
+    4. Opens `mailto:` with pre-filled subject and body containing the invite link
+    5. Dispatches a `contacts-changed` event so the sidebar refreshes
+  - If an active invite already exists, show a badge/tooltip "Invited" and on click just re-copy the link
+
+**`src/components/bunk/BunkSidebar.tsx`**
+- Fetch active (unexpired, unused) `tour_invites` for the selected tour
+- Pass the invites list down to `SidebarContactList`
+- Add a "Invite All" button in the Tour Team header when uninvited contacts with emails exist
+- The bulk invite function iterates eligible contacts, creates invites, and shows a summary toast
+
+**`src/hooks/useSidebarContacts.ts`**
+- No changes needed -- contacts already have `email` and `appUserId` fields
+
+### No Database Changes
+- Uses the existing `tour_invites` table and existing RLS policies (TA/MGMT can insert invites)
+- No new migrations needed
+
+### Invite Flow (same as existing Admin flow)
 ```text
-settlement, finance, salary, hr, nda, per diem, guarantee,
-gross, net, contract, insurance, confidential, internal,
-legal, compensation, payroll, tax, w-9, w9, severance,
-termination, rider, commission, bonus, deduction
+1. Insert into tour_invites (tour_id, email, role, created_by, tour_name)
+2. Get back the token
+3. Build URL: {origin}/invite/{token}
+4. Copy to clipboard
+5. Open mailto:{email}?subject=...&body=...{inviteUrl}...
+6. Toast: "Invite sent -- link copied!"
 ```
 
-### Query Strategy
-- TourText tab: `SELECT * FROM user_artifacts WHERE tour_id = X AND visibility = 'tourtext'` (RLS handles membership check)
-- CondoBunk tab: `SELECT * FROM user_artifacts WHERE tour_id = X AND visibility = 'condobunk'` (RLS handles membership check)
-- Bunk Stash tab: `SELECT * FROM user_artifacts WHERE user_id = me AND visibility = 'bunk_stash'` (existing owner-only policy)
-- For shared tabs, fetch creator profiles separately to show display names
+### Edge Cases
+- Contact has no email: no invite button shown (falls back to existing "Ask TELA for details")
+- Contact already has appUserId: no invite button (they're already on the app)
+- Active invite already exists: show "Invited" badge, click re-copies link
+- User is not TA/MGMT: RLS will block the insert -- show appropriate error toast
 
