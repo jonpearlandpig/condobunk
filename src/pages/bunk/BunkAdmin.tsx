@@ -403,8 +403,9 @@ const BunkAdmin = () => {
                         const val = e.target.value;
                         setInviteSearch(val);
                         setShowSuggestions(val.length >= 2);
-                        // If user clears, also clear email
+                        // If user clears, also clear email; otherwise treat raw input as email
                         if (!val) setInviteEmail("");
+                        else if (val.includes("@")) setInviteEmail(val.trim());
                       }}
                       placeholder="Start typing a name or email…"
                       className="font-mono text-sm"
