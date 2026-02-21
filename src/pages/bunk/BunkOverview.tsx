@@ -1,8 +1,9 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { useTour } from "@/hooks/useTour";
+import PullToRefresh from "@/components/ui/pull-to-refresh";
 import { useToast } from "@/hooks/use-toast";
 import { motion } from "framer-motion";
 import {
@@ -260,7 +261,12 @@ const BunkOverview = () => {
     { label: "SCHEDULE EVENTS", value: totalEvents, icon: BarChart3, color: "text-info", link: "/bunk/calendar" },
   ];
 
+  const handleRefresh = useCallback(async () => {
+    await Promise.all([loadCounts(), generateTldr()]);
+  }, [tours]);
+
   return (
+    <PullToRefresh onRefresh={handleRefresh}>
     <div className="space-y-5 sm:space-y-8 max-w-5xl">
       <div className="flex items-center justify-between">
         <div>
@@ -516,6 +522,7 @@ const BunkOverview = () => {
         </AlertDialogContent>
       </AlertDialog>
     </div>
+    </PullToRefresh>
   );
 };
 
