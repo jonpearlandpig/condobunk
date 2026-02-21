@@ -43,10 +43,11 @@ const navItems = [
 const BunkSidebar = () => {
   const { setOpenMobile, setOpen } = useSidebar();
   const isMobile = useIsMobile();
-  const { tourContacts, venueContacts, venueGroups, venueLabel, loading, updateContact, deleteContact } = useSidebarContacts();
+  const { tourContacts, tourTeamGroups, venueContacts, venueGroups, venueLabel, loading, updateContact, deleteContact } = useSidebarContacts();
   const { onlineUsers } = usePresence();
   const [tourTeamOpen, setTourTeamOpen] = useState(true);
   const [venuePartnersOpen, setVenuePartnersOpen] = useState(true);
+  const [expandedTours, setExpandedTours] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     if (isMobile) return;
@@ -105,7 +106,7 @@ const BunkSidebar = () => {
             <ChevronRight className={`h-3 w-3 transition-transform ${tourTeamOpen ? "rotate-90" : ""}`} />
             <Users className="h-3 w-3" />
             Tour Team
-            <span className="ml-auto text-muted-foreground/40 normal-case tracking-normal">{tourContacts.length}</span>
+            <span className="ml-auto text-muted-foreground/40 normal-case tracking-normal">{tourTeamGroups.reduce((sum, g) => sum + g.contacts.length, 0)}</span>
           </button>
           {tourTeamOpen && (
             <SidebarGroupContent>
@@ -113,8 +114,39 @@ const BunkSidebar = () => {
                 <div className="px-4 py-2">
                   <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground/40" />
                 </div>
+              ) : tourTeamGroups.length <= 1 ? (
+                <SidebarContactList contacts={tourTeamGroups[0]?.contacts || []} onNavigate={handleNavClick} onUpdate={updateContact} onDelete={deleteContact} onlineUserIds={onlineUsers} />
               ) : (
-                <SidebarContactList contacts={tourContacts} onNavigate={handleNavClick} onUpdate={updateContact} onDelete={deleteContact} onlineUserIds={onlineUsers} />
+                <div className="space-y-0.5">
+                  {tourTeamGroups.map((group) => {
+                    const isExpanded = expandedTours.has(group.tourId);
+                    const toggleTour = () => {
+                      setExpandedTours(prev => {
+                        const next = new Set(prev);
+                        if (next.has(group.tourId)) next.delete(group.tourId);
+                        else next.add(group.tourId);
+                        return next;
+                      });
+                    };
+                    return (
+                      <div key={group.tourId}>
+                        <button
+                          onClick={toggleTour}
+                          className="w-full flex items-center gap-2 px-4 py-1.5 hover:bg-sidebar-accent/50 rounded-md transition-colors text-left"
+                        >
+                          <ChevronRight className={`h-3 w-3 text-muted-foreground/50 shrink-0 transition-transform ${isExpanded ? "rotate-90" : ""}`} />
+                          <span className="text-xs font-medium text-sidebar-foreground truncate">{group.tourName}</span>
+                          <span className="ml-auto text-[10px] font-mono text-muted-foreground/40">{group.contacts.length}</span>
+                        </button>
+                        {isExpanded && (
+                          <div className="ml-2 border-l border-border/30 pl-1">
+                            <SidebarContactList contacts={group.contacts} onNavigate={handleNavClick} onUpdate={updateContact} onDelete={deleteContact} onlineUserIds={onlineUsers} />
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
               )}
             </SidebarGroupContent>
           )}
