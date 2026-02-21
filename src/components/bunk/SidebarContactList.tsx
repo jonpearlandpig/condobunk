@@ -234,6 +234,13 @@ const SidebarContactList = ({ contacts, onNavigate, onUpdate, onDelete, onlineUs
       );
     }
 
+    const isMissingContact = !c.phone && !c.email;
+    const telaFixQuery = isMissingContact
+      ? showQuickActions
+        ? `Find contact details for ${c.name}${c.role ? ` (${c.role})` : ""}${c.venue ? ` at ${c.venue}` : ""}. Check tech packs and advance documents for phone and email. If you find them, update the contact.`
+        : `Find contact details for ${c.name}${c.role ? ` (${c.role})` : ""}. Check all tour documents for phone and email. If you find them, update the contact.`
+      : "";
+
     return (
       <div key={c.id}>
         <div
@@ -258,14 +265,27 @@ const SidebarContactList = ({ contacts, onNavigate, onUpdate, onDelete, onlineUs
                 })()}
               </div>
               {c.role && <p className="text-[10px] font-mono text-muted-foreground/60 truncate leading-tight">{c.role}</p>}
+              {isMissingContact && (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    navigate(`/bunk/chat?scope=tour&q=${encodeURIComponent(telaFixQuery)}`);
+                    onNavigate?.();
+                  }}
+                  className="inline-flex items-center gap-1 text-[10px] font-mono tracking-wider text-primary hover:text-primary/80 transition-colors mt-0.5"
+                >
+                  <MessageSquare className="h-2.5 w-2.5" />
+                  ASK TELA FOR DETAILS
+                </button>
+              )}
             </div>
           </div>
 
           {/* Quick actions: always visible for grouped/venue, hover for flat/tour */}
           {!isMobile && (
-            <div className={`flex items-center gap-0.5 shrink-0 ml-2 ${showQuickActions ? "" : "opacity-0 group-hover:opacity-100"} transition-opacity`}>
+            <div className={`flex items-center gap-0.5 shrink-0 ml-2 ${showQuickActions ? "" : isMissingContact ? "" : "opacity-0 group-hover:opacity-100"} transition-opacity`}>
               {/* Always-visible email & text for venue contacts */}
-              {showQuickActions && c.phone && (
+              {showQuickActions && !isMissingContact && c.phone && (
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <a href={`sms:${c.phone}`} className="p-1 rounded text-muted-foreground hover:text-info transition-colors" aria-label="Text">
@@ -275,7 +295,7 @@ const SidebarContactList = ({ contacts, onNavigate, onUpdate, onDelete, onlineUs
                   <TooltipContent side="top" className="text-xs">Text {c.phone}</TooltipContent>
                 </Tooltip>
               )}
-              {showQuickActions && c.email && (
+              {showQuickActions && !isMissingContact && c.email && (
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <a href={`mailto:${c.email}`} className="p-1 rounded text-muted-foreground hover:text-warning transition-colors" aria-label="Email">
@@ -285,8 +305,23 @@ const SidebarContactList = ({ contacts, onNavigate, onUpdate, onDelete, onlineUs
                   <TooltipContent side="top" className="text-xs">{c.email}</TooltipContent>
                 </Tooltip>
               )}
+              {/* Incomplete contact in venue mode: always-visible TELA */}
+              {showQuickActions && isMissingContact && (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); navigate(`/bunk/chat?scope=tour&q=${encodeURIComponent(telaFixQuery)}`); onNavigate?.(); }}
+                      className="p-1 rounded text-primary hover:text-primary/80 transition-colors"
+                      aria-label="Ask TELA for details"
+                    >
+                      <MessageSquare className="h-3.5 w-3.5" />
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent side="top" className="text-xs">Ask TELA for contact details</TooltipContent>
+                </Tooltip>
+              )}
               {/* Standard actions (hover-reveal for venue too) */}
-              {!showQuickActions && (c.appUserId || c.phone) && (
+              {!showQuickActions && !isMissingContact && (c.appUserId || c.phone) && (
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <button
@@ -316,13 +351,28 @@ const SidebarContactList = ({ contacts, onNavigate, onUpdate, onDelete, onlineUs
               )}
               {!showQuickActions && (
                 <>
+                  {/* TELA: always visible for incomplete, hover for complete */}
                   <Tooltip>
                     <TooltipTrigger asChild>
-                      <button onClick={() => handleChat(c)} className="p-1 rounded text-muted-foreground hover:text-primary transition-colors" aria-label="Ask TELA"><MessageSquare className="h-3.5 w-3.5" /></button>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (isMissingContact) {
+                            navigate(`/bunk/chat?scope=tour&q=${encodeURIComponent(telaFixQuery)}`);
+                            onNavigate?.();
+                          } else {
+                            handleChat(c);
+                          }
+                        }}
+                        className={`p-1 rounded transition-colors ${isMissingContact ? "text-primary hover:text-primary/80" : "text-muted-foreground hover:text-primary"}`}
+                        aria-label="Ask TELA"
+                      >
+                        <MessageSquare className="h-3.5 w-3.5" />
+                      </button>
                     </TooltipTrigger>
-                    <TooltipContent side="top" className="text-xs">Ask TELA</TooltipContent>
+                    <TooltipContent side="top" className="text-xs">{isMissingContact ? "Ask TELA for contact details" : "Ask TELA"}</TooltipContent>
                   </Tooltip>
-                  {c.phone && (
+                  {!isMissingContact && c.phone && (
                     <Tooltip>
                       <TooltipTrigger asChild>
                         <a href={`tel:${c.phone}`} className="p-1 rounded text-muted-foreground hover:text-primary transition-colors" aria-label="Call"><Phone className="h-3.5 w-3.5" /></a>
@@ -330,7 +380,7 @@ const SidebarContactList = ({ contacts, onNavigate, onUpdate, onDelete, onlineUs
                       <TooltipContent side="top" className="text-xs">{c.phone}</TooltipContent>
                     </Tooltip>
                   )}
-                  {c.email && (
+                  {!isMissingContact && c.email && (
                     <Tooltip>
                       <TooltipTrigger asChild>
                         <a href={`mailto:${c.email}`} className="p-1 rounded text-muted-foreground hover:text-primary transition-colors" aria-label="Email"><Mail className="h-3.5 w-3.5" /></a>
@@ -346,15 +396,27 @@ const SidebarContactList = ({ contacts, onNavigate, onUpdate, onDelete, onlineUs
           {/* Mobile: quick actions always visible for venue */}
           {isMobile && showQuickActions && (
             <div className="flex items-center gap-1 shrink-0 ml-2">
-              {c.phone && (
-                <a href={`sms:${c.phone}`} className="p-1 rounded text-info" aria-label="Text">
-                  <MessageCircle className="h-3.5 w-3.5" />
-                </a>
-              )}
-              {c.email && (
-                <a href={`mailto:${c.email}`} className="p-1 rounded text-warning" aria-label="Email">
-                  <Mail className="h-3.5 w-3.5" />
-                </a>
+              {isMissingContact ? (
+                <button
+                  onClick={(e) => { e.stopPropagation(); navigate(`/bunk/chat?scope=tour&q=${encodeURIComponent(telaFixQuery)}`); onNavigate?.(); }}
+                  className="p-1 rounded text-primary"
+                  aria-label="Ask TELA"
+                >
+                  <MessageSquare className="h-3.5 w-3.5" />
+                </button>
+              ) : (
+                <>
+                  {c.phone && (
+                    <a href={`sms:${c.phone}`} className="p-1 rounded text-info" aria-label="Text">
+                      <MessageCircle className="h-3.5 w-3.5" />
+                    </a>
+                  )}
+                  {c.email && (
+                    <a href={`mailto:${c.email}`} className="p-1 rounded text-warning" aria-label="Email">
+                      <Mail className="h-3.5 w-3.5" />
+                    </a>
+                  )}
+                </>
               )}
             </div>
           )}
@@ -362,11 +424,17 @@ const SidebarContactList = ({ contacts, onNavigate, onUpdate, onDelete, onlineUs
           {/* Mobile: indicators for non-grouped */}
           {isMobile && !showQuickActions && (
             <div className="flex items-center gap-1 shrink-0 ml-2">
-              {c.appUserId && (
-                <span className={`h-1.5 w-1.5 rounded-full ${isContactOnline(c) ? "bg-success" : "bg-muted-foreground/30"}`} />
+              {isMissingContact ? (
+                <MessageSquare className="h-3 w-3 text-primary/60" />
+              ) : (
+                <>
+                  {c.appUserId && (
+                    <span className={`h-1.5 w-1.5 rounded-full ${isContactOnline(c) ? "bg-success" : "bg-muted-foreground/30"}`} />
+                  )}
+                  {c.phone && <Phone className="h-3 w-3 text-muted-foreground/40" />}
+                  {c.email && <Mail className="h-3 w-3 text-muted-foreground/40" />}
+                </>
               )}
-              {c.phone && <Phone className="h-3 w-3 text-muted-foreground/40" />}
-              {c.email && <Mail className="h-3 w-3 text-muted-foreground/40" />}
             </div>
           )}
         </div>
@@ -374,7 +442,7 @@ const SidebarContactList = ({ contacts, onNavigate, onUpdate, onDelete, onlineUs
         {/* Mobile: expanded action bar (tour team only) */}
         {isMobile && !showQuickActions && expandedId === c.id && (
           <div className="flex items-center gap-1 px-4 py-2 bg-sidebar-accent/30 rounded-b-md mx-1 mb-0.5">
-            {(c.appUserId || c.phone) && (
+            {!isMissingContact && (c.appUserId || c.phone) && (
               <button
                 onClick={() => handleMessage(c)}
                 className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-md text-xs font-mono font-medium transition-colors ${
@@ -388,19 +456,27 @@ const SidebarContactList = ({ contacts, onNavigate, onUpdate, onDelete, onlineUs
               </button>
             )}
             <button
-              onClick={() => { handleChat(c); setExpandedId(null); }}
+              onClick={() => {
+                if (isMissingContact) {
+                  navigate(`/bunk/chat?scope=tour&q=${encodeURIComponent(telaFixQuery)}`);
+                  onNavigate?.();
+                } else {
+                  handleChat(c);
+                }
+                setExpandedId(null);
+              }}
               className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-md bg-primary/10 text-primary text-xs font-mono font-medium active:bg-primary/20 transition-colors"
             >
               <MessageSquare className="h-3.5 w-3.5" />
               TELA
             </button>
-            {c.phone && (
+            {!isMissingContact && c.phone && (
               <a href={`tel:${c.phone}`} className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-md bg-success/10 text-success text-xs font-mono font-medium active:bg-success/20 transition-colors">
                 <Phone className="h-3.5 w-3.5" />
                 CALL
               </a>
             )}
-            {c.email && (
+            {!isMissingContact && c.email && (
               <a href={`mailto:${c.email}`} className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-md bg-warning/10 text-warning text-xs font-mono font-medium active:bg-warning/20 transition-colors">
                 <Mail className="h-3.5 w-3.5" />
                 EMAIL
