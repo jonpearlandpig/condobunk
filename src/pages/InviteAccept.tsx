@@ -110,10 +110,20 @@ const InviteAccept = () => {
           password,
         });
         if (error) throw error;
-        // With auto-confirm, user is immediately logged in — acceptInvite fires via useEffect
-        if (!data.user) {
-          toast.success("Check your email to confirm your account, then return to this link.");
+        // Check for repeated signup (user already exists) — no session created
+        if (data.user && !data.session) {
+          // User already exists, try signing in instead
+          const { error: signInError } = await supabase.auth.signInWithPassword({
+            email: invite.email,
+            password,
+          });
+          if (signInError) {
+            toast.error("An account already exists for this email. Try signing in, or use Google if that's how you registered.");
+            setIsSignUp(false);
+          }
+          // acceptInvite will fire via useEffect if sign-in succeeded
         }
+        // If session exists, auto-confirm worked — acceptInvite fires via useEffect
       } else {
         const { error } = await supabase.auth.signInWithPassword({ email: invite.email, password });
         if (error) throw error;
