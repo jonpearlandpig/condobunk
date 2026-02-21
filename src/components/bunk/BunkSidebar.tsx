@@ -1,5 +1,4 @@
 import { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
 import {
   LayoutDashboard,
   CalendarDays,
@@ -12,9 +11,6 @@ import {
   Loader2,
   ChevronRight,
   StickyNote,
-  ChevronsUpDown,
-  Plus,
-  Check,
 } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
 import {
@@ -31,16 +27,8 @@ import {
 import { useIsMobile } from "@/hooks/use-mobile";
 import { useSidebarContacts } from "@/hooks/useSidebarContacts";
 import { usePresence } from "@/hooks/usePresence";
-import { useTour } from "@/hooks/useTour";
 import SidebarContactList from "@/components/bunk/SidebarContactList";
 import { Separator } from "@/components/ui/separator";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 
 const navItems = [
   { title: "TL;DR", url: "/bunk", icon: LayoutDashboard },
@@ -55,8 +43,6 @@ const navItems = [
 const BunkSidebar = () => {
   const { setOpenMobile, setOpen } = useSidebar();
   const isMobile = useIsMobile();
-  const navigate = useNavigate();
-  const { tours, selectedTourId, setSelectedTourId, selectedTour, loading: toursLoading } = useTour();
   const { tourContacts, venueContacts, venueGroups, venueLabel, loading, updateContact, deleteContact } = useSidebarContacts();
   const { onlineUsers } = usePresence();
   const [tourTeamOpen, setTourTeamOpen] = useState(true);
@@ -83,50 +69,6 @@ const BunkSidebar = () => {
       onMouseLeave={() => { if (!isMobile) setOpen(false); }}
     >
       <SidebarContent className="pt-4">
-        {/* Tour Switcher */}
-        <div className="px-3 mb-2">
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <button className="w-full flex items-center justify-between gap-2 rounded-lg border border-border bg-muted/30 px-3 py-2 hover:bg-muted/50 transition-colors">
-                <div className="text-left min-w-0">
-                  <span className="font-mono text-[9px] tracking-[0.2em] text-muted-foreground/60 uppercase block">
-                    ACTIVE TOUR
-                  </span>
-                  <span className="text-sm font-semibold truncate block">
-                    {toursLoading ? "Loading..." : selectedTour?.name || "No Tour"}
-                  </span>
-                </div>
-                <ChevronsUpDown className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-              </button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="start" className="w-56">
-              {tours.map((tour) => (
-                <DropdownMenuItem
-                  key={tour.id}
-                  onClick={() => {
-                    setSelectedTourId(tour.id);
-                    navigate("/bunk");
-                  }}
-                  className="flex items-center justify-between"
-                >
-                  <span className="truncate">{tour.name}</span>
-                  {tour.id === selectedTourId && <Check className="h-3.5 w-3.5 text-primary shrink-0" />}
-                </DropdownMenuItem>
-              ))}
-              <DropdownMenuSeparator />
-              <DropdownMenuItem
-                onClick={() => navigate("/bunk/setup")}
-                className="flex items-center gap-2 text-primary"
-              >
-                <Plus className="h-3.5 w-3.5" />
-                New Tour
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </div>
-
-        <Separator className="mx-4 w-auto mb-1" />
-
         <SidebarGroup>
           <SidebarGroupLabel className="font-mono text-[10px] tracking-[0.2em] text-muted-foreground/60 uppercase px-4">
             Operations
