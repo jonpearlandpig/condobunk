@@ -939,6 +939,11 @@ async function aiExtractFromText(text: string, apiKey: string, prompt: string, m
     const data = await resp.json();
     let content = data.choices?.[0]?.message?.content || "";
     content = content.replace(/^```(?:json)?\s*\n?/i, "").replace(/\n?```\s*$/i, "").trim();
+    // Sanitize control characters that break JSON.parse
+    content = content.replace(/[\x00-\x1F\x7F]/g, (ch) => {
+      if (ch === '\n' || ch === '\r' || ch === '\t') return ch;
+      return '';
+    });
     return JSON.parse(content);
   } catch (err) {
     console.error("[extract] Text extraction failed:", err);
