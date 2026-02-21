@@ -129,6 +129,46 @@ const BunkSetup = () => {
     [tourId, user]
   );
 
+  // Check if extraction succeeded on the backend despite client disconnect
+  const checkExtractionResult = async (docId: string): Promise<boolean> => {
+    const { data: doc } = await supabase
+      .from("documents")
+      .select("doc_type, is_active")
+      .eq("id", docId)
+      .single();
+    return !!(doc && doc.doc_type !== "UNKNOWN");
+  };
+
+  const handleExtractionSuccess = async (docId: string, docType: string, tourName_?: string) => {
+    setDocs((prev) =>
+      prev.map((d) =>
+        d.id === docId ? { ...d, doc_type: docType, extracted: true } : d
+      )
+    );
+
+    if (tourName_) setTourName(tourName_);
+
+    // Fetch contacts for display
+    if (tourId) {
+      const { data: contacts } = await supabase
+        .from("contacts")
+        .select("name, role")
+        .eq("tour_id", tourId)
+        .limit(10);
+      if (contacts && contacts.length > 0) setExtractedContacts(contacts);
+    }
+
+    // Refresh tour name from DB
+    if (tourId) {
+      const { data: freshTour } = await supabase
+        .from("tours")
+        .select("name")
+        .eq("id", tourId)
+        .single();
+      if (freshTour && freshTour.name !== "New Tour") setTourName(freshTour.name);
+    }
+  };
+
   const runExtraction = async (docId: string) => {
     setExtracting(docId);
     try {
@@ -136,30 +176,34 @@ const BunkSetup = () => {
         "extract-document",
         { document_id: docId }
       );
-      if (error) throw error;
 
-      setDocs((prev) =>
-        prev.map((d) =>
-          d.id === docId ? { ...d, doc_type: data.doc_type, extracted: true } : d
-        )
-      );
-
-      // If extraction returned a tour name, update local state
-      if (data.tour_name) {
-        setTourName(data.tour_name);
-      }
-
-      // If contacts were extracted, fetch them for display
-      if (data.doc_type === "CONTACTS" && tourId) {
-        const { data: contacts } = await supabase
-          .from("contacts")
-          .select("name, role")
-          .eq("tour_id", tourId)
-          .limit(10);
-        if (contacts) {
-          setExtractedContacts(contacts);
+      if (error) {
+        // Connection may have dropped but extraction could have succeeded on the backend.
+        // Poll the document row to check.
+        console.log("[BunkSetup] Extraction call failed, checking if backend succeeded...", error.message);
+        let recovered = false;
+        for (let attempt = 0; attempt < 6; attempt++) {
+          await new Promise((r) => setTimeout(r, 5000)); // wait 5s between checks
+          const ok = await checkExtractionResult(docId);
+          if (ok) {
+            const { data: doc } = await supabase
+              .from("documents")
+              .select("doc_type")
+              .eq("id", docId)
+              .single();
+            if (doc) {
+              await handleExtractionSuccess(docId, doc.doc_type);
+              toast({ title: "Extracted", description: `${doc.doc_type} — extraction completed (recovered after timeout)` });
+              recovered = true;
+              break;
+            }
+          }
         }
+        if (!recovered) throw error;
+        return;
       }
+
+      await handleExtractionSuccess(docId, data.doc_type, data.tour_name);
 
       const parts = [];
       if (data.summary?.events) parts.push(`${data.summary.events} dates`);
@@ -170,18 +214,6 @@ const BunkSetup = () => {
       if (data.summary?.venues) parts.push(`${data.summary.venues} venues`);
       const desc = parts.length > 0 ? parts.join(", ") : `${data.extracted_count} items`;
       toast({ title: "Extracted", description: `${data.doc_type} — ${desc}` });
-
-      // Refresh tour name from DB
-      if (tourId) {
-        const { data: freshTour } = await supabase
-          .from("tours")
-          .select("name")
-          .eq("id", tourId)
-          .single();
-        if (freshTour && freshTour.name !== "New Tour") {
-          setTourName(freshTour.name);
-        }
-      }
     } catch (err: any) {
       toast({ title: "Extraction failed", description: err.message, variant: "destructive" });
     } finally {
