@@ -1,4 +1,4 @@
-import { Outlet } from "react-router-dom";
+import { Outlet, useSearchParams } from "react-router-dom";
 import BunkSidebar from "@/components/bunk/BunkSidebar";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { Radio } from "lucide-react";
@@ -7,10 +7,12 @@ import { TourProvider } from "@/hooks/useTour";
 
 const BunkLayout = () => {
   const { signOut } = useAuth();
+  const [searchParams] = useSearchParams();
+  const isWelcome = searchParams.get("welcome") === "1";
 
   return (
     <TourProvider>
-      <SidebarProvider defaultOpen={false}>
+      <SidebarProvider defaultOpen={isWelcome}>
         <div className="h-dvh flex w-full overflow-hidden">
           <BunkSidebar />
           {/* Invisible hover zone to open sidebar on desktop */}

@@ -30,11 +30,10 @@ const InviteAccept = () => {
   const [accepting, setAccepting] = useState(false);
   const [accepted, setAccepted] = useState(false);
 
-  // Auth form state (if not logged in)
-  const [email, setEmail] = useState("");
+  // Auth form state
   const [password, setPassword] = useState("");
   const [isSignUp, setIsSignUp] = useState(false);
-  const [authLoading2, setAuthLoading2] = useState(false);
+  const [authSubmitting, setAuthSubmitting] = useState(false);
 
   useEffect(() => {
     const fetchInvite = async () => {
@@ -53,8 +52,7 @@ const InviteAccept = () => {
         setInviteError("This invite has expired. Ask your Tour Admin for a new one.");
       } else {
         setInvite(data as InviteData);
-        setEmail(data.email); // Pre-fill email
-        setIsSignUp(true); // Default to sign up for new invitees
+        setIsSignUp(true);
       }
       setInviteLoading(false);
     };
@@ -72,7 +70,6 @@ const InviteAccept = () => {
     if (!invite) return;
     setAccepting(true);
     try {
-      // Check if already a member
       const { data: existing } = await supabase
         .from("tour_members")
         .select("id")
@@ -81,7 +78,6 @@ const InviteAccept = () => {
         .maybeSingle();
 
       if (!existing) {
-        // Add to tour_members
         const { error: memberError } = await supabase.from("tour_members").insert({
           tour_id: invite.tour_id,
           user_id: userId,
@@ -90,14 +86,13 @@ const InviteAccept = () => {
         if (memberError) throw memberError;
       }
 
-      // Mark invite as used
       await supabase
         .from("tour_invites")
         .update({ used_by: userId, used_at: new Date().toISOString() })
         .eq("id", invite.id);
 
       setAccepted(true);
-      setTimeout(() => navigate("/bunk"), 2000);
+      setTimeout(() => navigate("/bunk?welcome=1"), 1500);
     } catch (err: any) {
       toast.error(err.message || "Failed to accept invite");
     }
@@ -106,25 +101,26 @@ const InviteAccept = () => {
 
   const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault();
-    setAuthLoading2(true);
+    if (!invite) return;
+    setAuthSubmitting(true);
     try {
       if (isSignUp) {
         const { error } = await supabase.auth.signUp({
-          email,
+          email: invite.email,
           password,
           options: { emailRedirectTo: window.location.href },
         });
         if (error) throw error;
         toast.success("Check your email to confirm your account, then return to this link.");
       } else {
-        const { error } = await supabase.auth.signInWithPassword({ email, password });
+        const { error } = await supabase.auth.signInWithPassword({ email: invite.email, password });
         if (error) throw error;
-        // acceptInvite will fire via the useEffect above
+        // acceptInvite will fire via useEffect
       }
     } catch (err: any) {
       toast.error(err.message);
     }
-    setAuthLoading2(false);
+    setAuthSubmitting(false);
   };
 
   if (inviteLoading || authLoading) {
@@ -138,17 +134,11 @@ const InviteAccept = () => {
   if (inviteError) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-background">
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="text-center space-y-4 px-6 max-w-sm"
-        >
+        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="text-center space-y-4 px-6 max-w-sm">
           <XCircle className="h-12 w-12 text-destructive mx-auto" />
           <h2 className="text-xl font-bold font-mono">Invite Invalid</h2>
           <p className="text-sm text-muted-foreground">{inviteError}</p>
-          <Button variant="outline" onClick={() => navigate("/login")} className="font-mono">
-            Go to Login
-          </Button>
+          <Button variant="outline" onClick={() => navigate("/login")} className="font-mono">Go to Login</Button>
         </motion.div>
       </div>
     );
@@ -157,11 +147,7 @@ const InviteAccept = () => {
   if (accepted) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-background">
-        <motion.div
-          initial={{ opacity: 0, scale: 0.9 }}
-          animate={{ opacity: 1, scale: 1 }}
-          className="text-center space-y-4 px-6 max-w-sm"
-        >
+        <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} className="text-center space-y-4 px-6 max-w-sm">
           <CheckCircle className="h-12 w-12 text-primary mx-auto" />
           <h2 className="text-xl font-bold font-mono">Welcome to the Bunk!</h2>
           <p className="text-sm text-muted-foreground">
@@ -183,7 +169,7 @@ const InviteAccept = () => {
     );
   }
 
-  // Not logged in — show auth form
+  // Not logged in — streamlined password-only form
   return (
     <div className="flex min-h-screen items-center justify-center bg-background">
       <motion.div
@@ -201,9 +187,7 @@ const InviteAccept = () => {
             <h1 className="text-3xl font-bold tracking-tight text-foreground">CONDO BUNK</h1>
           </div>
           <div className="rounded-lg border border-primary/30 bg-primary/5 px-4 py-3">
-            <p className="text-sm font-mono text-primary">
-              You've been invited to join
-            </p>
+            <p className="text-sm font-mono text-primary">You've been invited to join</p>
             <p className="text-lg font-bold mt-0.5">{invite?.tour_name}</p>
             <p className="text-xs font-mono text-muted-foreground mt-1">
               Role: <span className="text-foreground">{invite?.role}</span>
@@ -213,7 +197,7 @@ const InviteAccept = () => {
 
         <div className="rounded-lg border border-border bg-card p-6 shadow-lg">
           <p className="text-sm font-mono text-muted-foreground mb-4 text-center">
-            {isSignUp ? "CREATE YOUR ACCOUNT TO JOIN" : "SIGN IN TO ACCEPT INVITE"}
+            {isSignUp ? "SET YOUR PASSWORD TO JOIN" : "ENTER YOUR PASSWORD"}
           </p>
           <form onSubmit={handleAuth} className="space-y-4">
             <div className="space-y-2">
@@ -221,14 +205,15 @@ const InviteAccept = () => {
               <Input
                 id="email"
                 type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                required
-                className="bg-muted border-border font-mono text-sm"
+                value={invite?.email || ""}
+                disabled
+                className="bg-muted/50 border-border font-mono text-sm opacity-70"
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="password" className="text-sm text-muted-foreground font-mono">PASSWORD</Label>
+              <Label htmlFor="password" className="text-sm text-muted-foreground font-mono">
+                {isSignUp ? "CREATE PASSWORD" : "PASSWORD"}
+              </Label>
               <Input
                 id="password"
                 type="password"
@@ -236,13 +221,14 @@ const InviteAccept = () => {
                 onChange={(e) => setPassword(e.target.value)}
                 required
                 minLength={6}
+                autoFocus
                 className="bg-muted border-border font-mono text-sm"
                 placeholder="••••••••"
               />
             </div>
-            <Button type="submit" disabled={authLoading2} className="w-full font-mono tracking-wider">
-              {authLoading2 ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
-              {isSignUp ? "CREATE ACCOUNT & JOIN" : "SIGN IN & JOIN"}
+            <Button type="submit" disabled={authSubmitting} className="w-full font-mono tracking-wider">
+              {authSubmitting ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+              {isSignUp ? "JOIN TOUR →" : "SIGN IN & JOIN →"}
             </Button>
           </form>
           <div className="mt-4 text-center">
