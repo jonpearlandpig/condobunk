@@ -1,6 +1,7 @@
 import { useEffect, useState, useMemo, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useTour } from "@/hooks/useTour";
+import { useIsMobile } from "@/hooks/use-mobile";
 import {
   format,
   parseISO,
@@ -42,11 +43,11 @@ import AddEventDialog from "@/components/bunk/AddEventDialog";
 import EventNoteEditor from "@/components/bunk/EventNoteEditor";
 import { Button } from "@/components/ui/button";
 import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+  ResponsiveDialog,
+  ResponsiveDialogContent,
+  ResponsiveDialogHeader,
+  ResponsiveDialogTitle,
+} from "@/components/ui/responsive-dialog";
 import {
   Select,
   SelectContent,
@@ -118,6 +119,7 @@ const buildShareText = (entry: CalendarEntry): string => {
 
 const BunkCalendar = () => {
   const { tours } = useTour();
+  const isMobile = useIsMobile();
   const [entries, setEntries] = useState<CalendarEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [viewMode, setViewMode] = useState<ViewMode>("week");
@@ -391,18 +393,18 @@ const BunkCalendar = () => {
   return (
     <div className="space-y-4 max-w-5xl">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 sm:gap-3">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Calendar</h1>
-          <p className="text-sm text-muted-foreground font-mono mt-1">
+          <h1 className="text-xl sm:text-2xl font-bold tracking-tight">Calendar</h1>
+          <p className="text-xs sm:text-sm text-muted-foreground font-mono mt-0.5 sm:mt-1">
             {headerLabel}
             {visibleEventCount > 0 && <span className="ml-2 text-primary">· {visibleEventCount} events</span>}
           </p>
         </div>
-        <div className="flex items-center gap-2 flex-wrap">
+        <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
           {tours.length > 1 && (
             <Select value={tourFilter} onValueChange={setTourFilter}>
-              <SelectTrigger className="w-44 font-mono text-xs bg-muted h-8">
+              <SelectTrigger className="w-32 sm:w-44 font-mono text-xs bg-muted h-8">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -415,7 +417,8 @@ const BunkCalendar = () => {
               </SelectContent>
             </Select>
           )}
-          <div className="flex rounded-md border border-border overflow-hidden">
+          {/* Hide WEEK/MONTH toggle on mobile — force agenda */}
+          <div className="hidden sm:flex rounded-md border border-border overflow-hidden">
             <button onClick={() => setViewMode("week")} className={`px-3 py-1.5 text-[11px] font-mono tracking-wider transition-colors ${viewMode === "week" ? "bg-primary text-primary-foreground" : "bg-card text-muted-foreground hover:bg-muted"}`}>WEEK</button>
             <button onClick={() => setViewMode("month")} className={`px-3 py-1.5 text-[11px] font-mono tracking-wider transition-colors ${viewMode === "month" ? "bg-primary text-primary-foreground" : "bg-card text-muted-foreground hover:bg-muted"}`}>MONTH</button>
           </div>
@@ -424,7 +427,7 @@ const BunkCalendar = () => {
           <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => nav(1)}><ChevronRight className="h-4 w-4" /></Button>
           <Button size="sm" className="h-8 gap-1 font-mono text-xs" onClick={() => { setAddEventDefaultDate(undefined); setAddEventOpen(true); }}>
             <Plus className="h-3.5 w-3.5" />
-            Add Event
+            <span className="hidden sm:inline">Add Event</span>
           </Button>
         </div>
       </div>
@@ -455,6 +458,63 @@ const BunkCalendar = () => {
           <p className="text-sm text-muted-foreground font-mono">No events yet. Upload documents to auto-populate the calendar.</p>
         </div>
       ) : (
+        isMobile ? (
+          <div className="space-y-1">
+            {(() => {
+              const allDayKeys = visibleDays.map(d => format(d, "yyyy-MM-dd"));
+              const daysWithEntries = allDayKeys.filter(k => entriesByDate[k]?.length);
+              if (daysWithEntries.length === 0) {
+                return (
+                  <div className="rounded-lg border border-border border-dashed bg-card/50 p-8 text-center">
+                    <p className="text-sm text-muted-foreground font-mono">No events this {viewMode}.</p>
+                  </div>
+                );
+              }
+              return daysWithEntries.map(key => {
+                const day = parseISO(key);
+                const dayEntries = entriesByDate[key];
+                const today = isToday(day);
+                return (
+                  <div key={key}>
+                    <div className={`sticky top-0 z-10 px-2 py-1.5 text-[11px] font-mono tracking-wider uppercase ${today ? "text-primary font-bold bg-primary/10 rounded" : "text-muted-foreground bg-background/90 backdrop-blur-sm"}`}>
+                      {format(day, "EEE, MMM d")}
+                      {today && <span className="ml-1.5 text-[9px] font-normal">TODAY</span>}
+                    </div>
+                    <div className="space-y-1 mt-1">
+                      {dayEntries.map(entry => {
+                        const colorIdx = tourColorMap[entry.tourId] ?? 0;
+                        const colors = TOUR_COLORS[colorIdx];
+                        const Icon = entry.category === "SHOW" ? Music : (TRAVEL_ICONS[entry.travelType || ""] || Plane);
+                        return (
+                          <button
+                            key={entry.id}
+                            onClick={() => setSelectedEntry(entry)}
+                            className={`w-full text-left rounded-lg px-3 py-3 min-h-[44px] transition-colors border flex items-center gap-3 ${colors.bg} ${colors.text} ${colors.border} ${colors.hover}`}
+                          >
+                            <Icon className="h-4 w-4 shrink-0" />
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2">
+                                <span className="font-semibold text-sm truncate">{entry.title}</span>
+                                {entry.hasVan && <ClipboardList className="h-3 w-3 shrink-0 opacity-60" />}
+                              </div>
+                              <div className="flex items-center gap-2 mt-0.5 text-xs opacity-70">
+                                {entry.subtitle && <span className="truncate">{entry.subtitle}</span>}
+                                {entry.showTime && <span className="font-mono shrink-0">🎤 {entry.showTime}</span>}
+                                {!entry.showTime && entry.loadIn && <span className="font-mono shrink-0">🚪 {entry.loadIn}</span>}
+                              </div>
+                            </div>
+                            <ChevronRight className="h-4 w-4 shrink-0 opacity-40" />
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              });
+            })()}
+          </div>
+        ) : (
+        /* Desktop Grid View */
         <div className="grid grid-cols-7 gap-px bg-border rounded-lg overflow-hidden border border-border">
           {WEEKDAYS.map((day) => (
             <div key={day} className="bg-muted/50 px-1 py-2 text-center text-[10px] font-mono tracking-wider text-muted-foreground uppercase">{day}</div>
@@ -525,6 +585,7 @@ const BunkCalendar = () => {
             );
           })}
         </div>
+        )
       )}
 
       {/* Upcoming Events List */}
@@ -565,14 +626,14 @@ const BunkCalendar = () => {
         );
       })()}
 
-      <Dialog open={!!selectedEntry} onOpenChange={(open) => { if (!open) { setSelectedEntry(null); setCopied(false); setSelectedVanData(null); } }}>
-        <DialogContent className="sm:max-w-md">
+      <ResponsiveDialog open={!!selectedEntry} onOpenChange={(open) => { if (!open) { setSelectedEntry(null); setCopied(false); setSelectedVanData(null); } }}>
+        <ResponsiveDialogContent className="sm:max-w-md">
           {selectedEntry && (() => {
             const colorIdx = tourColorMap[selectedEntry.tourId] ?? 0;
             const colors = TOUR_COLORS[colorIdx];
             return (
               <>
-                <DialogHeader>
+                <ResponsiveDialogHeader>
                   <div className="flex items-start gap-3">
                     <div className={`rounded-lg p-2 shrink-0 ${colors.bg} ${colors.text}`}>
                       {selectedEntry.category === "SHOW"
@@ -581,7 +642,7 @@ const BunkCalendar = () => {
                       }
                     </div>
                     <div className="min-w-0">
-                      <DialogTitle className="text-base leading-tight">{selectedEntry.title}</DialogTitle>
+                      <ResponsiveDialogTitle className="text-base leading-tight">{selectedEntry.title}</ResponsiveDialogTitle>
                       {selectedEntry.subtitle && (
                         <p className="text-sm text-muted-foreground mt-0.5">{selectedEntry.subtitle}</p>
                       )}
@@ -590,9 +651,9 @@ const BunkCalendar = () => {
                       </p>
                     </div>
                   </div>
-                </DialogHeader>
+                </ResponsiveDialogHeader>
 
-                <div className="space-y-3 pt-1">
+                <div className="space-y-3 pt-1 px-4 sm:px-0 pb-4 sm:pb-0 overflow-auto max-h-[60dvh] sm:max-h-none">
                   {/* Key info card — venue, address, show time only */}
                   {(selectedEntry.address || selectedEntry.showTime) && (
                     <div className="rounded-lg border border-border bg-muted/30 divide-y divide-border">
@@ -686,7 +747,7 @@ const BunkCalendar = () => {
                     <Button
                       size="sm"
                       variant="outline"
-                      className="h-7 gap-1.5 font-mono text-[10px] tracking-wider"
+                      className="h-8 sm:h-7 gap-1.5 font-mono text-[10px] tracking-wider min-w-[70px]"
                       onClick={() => handleCopy(selectedEntry)}
                     >
                       {copied ? <Check className="h-3 w-3 text-success" /> : <Copy className="h-3 w-3" />}
@@ -695,7 +756,7 @@ const BunkCalendar = () => {
                     <Button
                       size="sm"
                       variant="outline"
-                      className="h-7 gap-1.5 font-mono text-[10px] tracking-wider"
+                      className="h-8 sm:h-7 gap-1.5 font-mono text-[10px] tracking-wider min-w-[60px]"
                       onClick={() => handleSMS(selectedEntry)}
                     >
                       <MessageSquare className="h-3 w-3" />
@@ -726,8 +787,8 @@ const BunkCalendar = () => {
               </>
             );
           })()}
-        </DialogContent>
-      </Dialog>
+        </ResponsiveDialogContent>
+      </ResponsiveDialog>
 
       <AddEventDialog
         open={addEventOpen}

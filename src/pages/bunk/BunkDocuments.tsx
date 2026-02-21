@@ -361,8 +361,8 @@ const BunkDocuments = () => {
     <div className="space-y-4 max-w-4xl w-full overflow-hidden">
       <div className="space-y-3">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">AKB Builder</h1>
-          <p className="text-sm text-muted-foreground font-mono mt-1">
+          <h1 className="text-xl sm:text-2xl font-bold tracking-tight">AKB Builder</h1>
+          <p className="text-xs sm:text-sm text-muted-foreground font-mono mt-0.5 sm:mt-1">
             Upload documents
           </p>
         </div>
@@ -396,7 +396,7 @@ const BunkDocuments = () => {
       </div>
 
       {/* Upload Zone */}
-      <div className="rounded-lg border border-dashed border-border bg-card/50 p-8 text-center relative">
+      <div className="rounded-lg border border-dashed border-border bg-card/50 p-4 sm:p-8 text-center relative">
         <input
           type="file"
           accept=".txt,.csv,.tsv,.md,.doc,.docx,.pdf,.xlsx,.xls"
