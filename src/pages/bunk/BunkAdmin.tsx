@@ -235,6 +235,29 @@ const BunkAdmin = () => {
     else { toast.success("Invite revoked"); load(); }
   };
 
+  const handleResendInvite = async (oldInvite: TourInvite) => {
+    if (!selectedTourId || !user) return;
+    // Delete the expired invite
+    await supabase.from("tour_invites").delete().eq("id", oldInvite.id);
+    // Create a fresh one
+    const { data, error } = await supabase
+      .from("tour_invites")
+      .insert({ tour_id: selectedTourId, email: oldInvite.email, role: oldInvite.role as "TA" | "MGMT" | "CREW", created_by: user.id, tour_name: selectedTour?.name || null } as any)
+      .select()
+      .single();
+    if (error) {
+      toast.error(error.message);
+      return;
+    }
+    const inviteUrl = `${window.location.origin}/invite/${data.token}`;
+    await navigator.clipboard.writeText(inviteUrl);
+    const subject = encodeURIComponent(`You're invited to ${selectedTour?.name || "the tour"}`);
+    const body = encodeURIComponent(`Hey — here's your invite link to join the tour:\n\n${inviteUrl}\n\nIt expires ${new Date(data.expires_at).toLocaleDateString()}.`);
+    window.open(`mailto:${oldInvite.email}?subject=${subject}&body=${body}`, "_blank");
+    toast.success("New invite created — email composer opened & link copied!");
+    load();
+  };
+
   const copyInviteLink = (token: string) => {
     const inviteUrl = `${window.location.origin}/invite/${token}`;
     navigator.clipboard.writeText(inviteUrl);
@@ -568,7 +591,16 @@ const BunkAdmin = () => {
                   </div>
                 </div>
                 <div className="flex items-center gap-1 shrink-0">
-                  {!isExpired(inv.expires_at) && (
+                  {isExpired(inv.expires_at) ? (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => handleResendInvite(inv)}
+                      title="Resend with fresh invite"
+                    >
+                      <RefreshCw className="h-4 w-4 mr-1" /> Resend
+                    </Button>
+                  ) : (
                     <>
                       <Button
                         size="sm"
