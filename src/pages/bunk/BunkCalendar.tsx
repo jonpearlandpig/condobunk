@@ -34,6 +34,7 @@ import {
   Check,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import VenueTelaMini from "@/components/bunk/VenueTelaMini";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -601,6 +602,16 @@ const BunkCalendar = () => {
                       SMS
                     </Button>
                   </div>
+
+                  {/* Inline TELA for venue questions */}
+                  {selectedEntry.category === "SHOW" && (
+                    <VenueTelaMini
+                      tourId={selectedEntry.tourId}
+                      venueName={selectedEntry.title}
+                      eventDate={selectedEntry.date}
+                      city={selectedEntry.subtitle}
+                    />
+                  )}
                 </div>
               </>
             );
