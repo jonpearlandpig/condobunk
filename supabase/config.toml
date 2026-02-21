@@ -1,5 +1,9 @@
 project_id = "zxaaymyuoqdehiyrynnp"
 
+[functions.extract-document]
+verify_jwt = false
+wall_clock_limit = 300
+
 [functions.mt-sync]
 verify_jwt = false
 
