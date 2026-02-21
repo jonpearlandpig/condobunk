@@ -24,6 +24,7 @@ import {
 } from "lucide-react";
 import ExtractionReviewDialog from "@/components/bunk/ExtractionReviewDialog";
 import TechPackReviewDialog from "@/components/bunk/TechPackReviewDialog";
+import VANReviewDialog from "@/components/bunk/VANReviewDialog";
 import TechPackInlineSummary from "@/components/bunk/TechPackInlineSummary";
 import { Button } from "@/components/ui/button";
 import {
@@ -98,6 +99,8 @@ const BunkDocuments = () => {
     venueName: string;
     contactCount: number;
   } | null>(null);
+  const [vanReviewDocId, setVanReviewDocId] = useState<string | null>(null);
+  const [vanReviewSummary, setVanReviewSummary] = useState<any>(null);
   const [reviewLoading, setReviewLoading] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<DocRow | null>(null);
   const [renameTarget, setRenameTarget] = useState<DocRow | null>(null);
@@ -221,10 +224,10 @@ const BunkDocuments = () => {
       if (data.is_advance_master) {
         toast({
           title: "★ Advance Master extracted",
-          description: `${data.venue_count || 0} venues, ${data.extracted_count} items. This is your canonical document. Review before approving.`,
+          description: `${data.venue_count || 0} venues, ${data.extracted_count} items. Review before approving.`,
         });
-        setReviewSummary(data);
-        setReviewDocId(docId);
+        setVanReviewSummary(data);
+        setVanReviewDocId(docId);
       } else if (data.is_tech_pack) {
         toast({
           title: "Tech pack extracted",
@@ -524,6 +527,20 @@ const BunkDocuments = () => {
                               REVIEW
                             </Button>
                           )}
+                          {doc.doc_type === "SCHEDULE" && doc.is_active && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="font-mono text-[10px] h-7 gap-1"
+                              onClick={() => {
+                                setVanReviewSummary({ doc_type: doc.doc_type, extracted_count: 0 });
+                                setVanReviewDocId(doc.id);
+                              }}
+                            >
+                              <Eye className="h-3 w-3" />
+                              REVIEW
+                            </Button>
+                          )}
                           <button
                             onClick={() => toggleActive(doc)}
                             className={`flex items-center gap-1.5 font-mono text-[10px] tracking-wider px-2.5 py-1 rounded-full border transition-colors ${
@@ -632,8 +649,22 @@ const BunkDocuments = () => {
           onApproved={loadDocuments}
         />
       )}
+      {vanReviewDocId && (
+        <VANReviewDialog
+          open={!!vanReviewDocId}
+          onOpenChange={(open) => {
+            if (!open) {
+              setVanReviewDocId(null);
+              setVanReviewSummary(null);
+            }
+          }}
+          documentId={vanReviewDocId}
+          tourId={selectedTourId}
+          extractionSummary={vanReviewSummary}
+          onApproved={loadDocuments}
+        />
+      )}
 
-      {/* Archive Confirmation */}
       <AlertDialog open={!!deleteTarget} onOpenChange={(open) => { if (!open) setDeleteTarget(null); }}>
         <AlertDialogContent>
           <AlertDialogHeader>
