@@ -88,15 +88,18 @@ const BunkAdmin = () => {
   const [mtApiSecret, setMtApiSecret] = useState("");
   const [mtTourId, setMtTourId] = useState("");
   const [inviteEmail, setInviteEmail] = useState("");
+  const [inviteSearch, setInviteSearch] = useState("");
   const [inviteRole, setInviteRole] = useState<string>("CREW");
   const [invitingLoading, setInvitingLoading] = useState(false);
   const [bulkInviting, setBulkInviting] = useState(false);
   const [selectedMemberIds, setSelectedMemberIds] = useState<Set<string>>(new Set());
+  const [akbContacts, setAkbContacts] = useState<{ name: string; email: string; role: string | null }[]>([]);
+  const [showSuggestions, setShowSuggestions] = useState(false);
 
   const load = useCallback(async () => {
     if (!selectedTourId) return;
     setLoading(true);
-    const [intRes, logRes, memberRes, inviteRes] = await Promise.all([
+    const [intRes, logRes, memberRes, inviteRes, contactRes] = await Promise.all([
       supabase
         .from("tour_integrations")
         .select("*")
@@ -118,11 +121,17 @@ const BunkAdmin = () => {
         .select("id, email, role, token, used_at, expires_at, created_at")
         .eq("tour_id", selectedTourId)
         .order("created_at", { ascending: false }),
+      supabase
+        .from("contacts")
+        .select("name, email, role")
+        .eq("tour_id", selectedTourId)
+        .not("email", "is", null),
     ]);
     if (intRes.data) setIntegrations(intRes.data as unknown as Integration[]);
     if (logRes.data) setSyncLogs(logRes.data as unknown as SyncLog[]);
     if (memberRes.data) setMembers(memberRes.data as unknown as TourMember[]);
     if (inviteRes.data) setInvites(inviteRes.data as TourInvite[]);
+    if (contactRes.data) setAkbContacts(contactRes.data.filter(c => c.email) as { name: string; email: string; role: string | null }[]);
     setLoading(false);
   }, [selectedTourId]);
 
@@ -210,6 +219,7 @@ const BunkAdmin = () => {
       toast.success("Invite link copied to clipboard! Send it to " + inviteEmail);
       setInviteOpen(false);
       setInviteEmail("");
+      setInviteSearch("");
       load();
     }
     setInvitingLoading(false);
@@ -358,15 +368,62 @@ const BunkAdmin = () => {
                   <p className="text-sm text-muted-foreground">
                     Enter their email and role. An invite link will be generated — copy it and send it to them directly (SMS, email, etc.).
                   </p>
-                  <div>
-                    <Label>Email address</Label>
+                  <div className="relative">
+                    <Label>Name or email</Label>
                     <Input
-                      value={inviteEmail}
-                      onChange={(e) => setInviteEmail(e.target.value)}
-                      type="email"
-                      placeholder="caleb@tourcompany.com"
+                      value={inviteSearch}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setInviteSearch(val);
+                        setShowSuggestions(val.length >= 2);
+                        // If user clears, also clear email
+                        if (!val) setInviteEmail("");
+                      }}
+                      placeholder="Start typing a name or email…"
                       className="font-mono text-sm"
+                      autoComplete="off"
+                      onFocus={() => inviteSearch.length >= 2 && setShowSuggestions(true)}
+                      onBlur={() => setTimeout(() => setShowSuggestions(false), 200)}
                     />
+                    {showSuggestions && (() => {
+                      const q = inviteSearch.toLowerCase();
+                      const matches = akbContacts.filter(
+                        c => c.name.toLowerCase().includes(q) || c.email.toLowerCase().includes(q)
+                      ).slice(0, 6);
+                      if (matches.length === 0) return null;
+                      return (
+                        <div className="absolute z-50 mt-1 w-full rounded-md border border-border bg-popover shadow-lg max-h-48 overflow-y-auto">
+                          {matches.map((c, i) => (
+                            <button
+                              key={i}
+                              type="button"
+                              className="w-full text-left px-3 py-2 hover:bg-accent text-sm flex flex-col gap-0.5 border-b border-border last:border-0"
+                              onMouseDown={(e) => {
+                                e.preventDefault();
+                                setInviteEmail(c.email);
+                                setInviteSearch(`${c.name} (${c.email})`);
+                                setShowSuggestions(false);
+                              }}
+                            >
+                              <span className="font-medium">{c.name}</span>
+                              <span className="text-xs font-mono text-muted-foreground">{c.email}{c.role ? ` · ${c.role}` : ""}</span>
+                            </button>
+                          ))}
+                        </div>
+                      );
+                    })()}
+                    {inviteEmail && (
+                      <p className="text-xs font-mono text-primary mt-1">→ {inviteEmail}</p>
+                    )}
+                    {!inviteEmail && inviteSearch.includes("@") && (
+                      <button
+                        type="button"
+                        className="text-xs font-mono text-muted-foreground mt-1 hover:text-primary"
+                        onClick={() => { setInviteEmail(inviteSearch); }}
+                      >
+                        Use "{inviteSearch}" as email
+                      </button>
+                    )}
                   </div>
                   <div>
                     <Label>Role</Label>
