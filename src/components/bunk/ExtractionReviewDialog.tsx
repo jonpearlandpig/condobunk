@@ -33,6 +33,7 @@ interface ExtractionReviewDialogProps {
     doc_type: string;
     extracted_count: number;
     is_multi_venue?: boolean;
+    is_advance_master?: boolean;
     venue_count?: number;
     summary: {
       events: number;
@@ -227,12 +228,22 @@ const ExtractionReviewDialog = ({
           </DrawerDescription>
           {extractionSummary && (
             <div className="flex gap-2 flex-wrap pt-1">
+              {extractionSummary.is_advance_master && (
+                <Badge className="font-mono text-[11px] bg-primary/20 text-primary border-primary/30">
+                  ★ ADVANCE MASTER
+                </Badge>
+              )}
               <Badge variant="outline" className="font-mono text-[11px]">
                 {extractionSummary.doc_type}
               </Badge>
               <Badge variant="outline" className="font-mono text-[11px]">
                 {extractionSummary.extracted_count} items
               </Badge>
+              {extractionSummary.is_multi_venue && extractionSummary.venue_count && (
+                <Badge variant="outline" className="font-mono text-[11px]">
+                  {extractionSummary.venue_count} venues
+                </Badge>
+              )}
               {deletedEventIds.size + deletedContactIds.size > 0 && (
                 <Badge variant="destructive" className="font-mono text-[11px]">
                   {deletedEventIds.size + deletedContactIds.size} removing
