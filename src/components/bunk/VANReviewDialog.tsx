@@ -278,8 +278,7 @@ const VANReviewDialog = ({
         ) : (
           <div className="flex-1 flex flex-col min-h-0">
             {/* Venue selector - horizontal scroll */}
-            <div className="shrink-0 px-4 pt-3 pb-2">
-              <ScrollArea className="w-full">
+            <div className="shrink-0 px-4 pt-3 pb-2 overflow-x-auto">
                 <div className="flex gap-2 pb-1" ref={venueBarRef}>
                   {vans.map((van, idx) => {
                     const coverage = venueCoverage(van);
@@ -323,7 +322,6 @@ const VANReviewDialog = ({
                     );
                   })}
                 </div>
-              </ScrollArea>
             </div>
 
             {/* Category accordion */}
