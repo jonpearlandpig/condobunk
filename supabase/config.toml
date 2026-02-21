@@ -9,3 +9,6 @@ verify_jwt = false
 
 [functions.inbound-sync]
 verify_jwt = false
+
+[functions.process-akb-notifications]
+verify_jwt = false

@@ -33,10 +33,13 @@ import {
   MessageSquare,
   Check,
   ClipboardList,
+  Plus,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import VenueTelaMini from "@/components/bunk/VenueTelaMini";
+import AddEventDialog from "@/components/bunk/AddEventDialog";
+import EventNoteEditor from "@/components/bunk/EventNoteEditor";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -125,6 +128,8 @@ const BunkCalendar = () => {
   const [copied, setCopied] = useState(false);
   const [vanMap, setVanMap] = useState<Record<string, any[]>>({});
   const [selectedVanData, setSelectedVanData] = useState<any[] | null>(null);
+  const [addEventOpen, setAddEventOpen] = useState(false);
+  const [addEventDefaultDate, setAddEventDefaultDate] = useState<string | undefined>();
 
   const tourColorMap = useMemo(() => {
     const map: Record<string, number> = {};
@@ -417,6 +422,10 @@ const BunkCalendar = () => {
           <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => nav(-1)}><ChevronLeft className="h-4 w-4" /></Button>
           <Button variant="outline" size="sm" className="font-mono text-xs h-8" onClick={() => setCurrentDate(new Date())}>Today</Button>
           <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => nav(1)}><ChevronRight className="h-4 w-4" /></Button>
+          <Button size="sm" className="h-8 gap-1 font-mono text-xs" onClick={() => { setAddEventDefaultDate(undefined); setAddEventOpen(true); }}>
+            <Plus className="h-3.5 w-3.5" />
+            Add Event
+          </Button>
         </div>
       </div>
 
@@ -694,6 +703,18 @@ const BunkCalendar = () => {
                     </Button>
                   </div>
 
+                  {/* Editable notes */}
+                  {selectedEntry.category === "SHOW" && (
+                    <EventNoteEditor
+                      eventId={selectedEntry.id}
+                      tourId={selectedEntry.tourId}
+                      currentNotes={selectedEntry.notes}
+                      eventDate={selectedEntry.date}
+                      venueName={selectedEntry.title}
+                      onUpdated={() => { loadCalendar(); }}
+                    />
+                  )}
+
                   {/* Inline TELA — available on all event types */}
                   <VenueTelaMini
                     tourId={selectedEntry.tourId}
@@ -707,6 +728,13 @@ const BunkCalendar = () => {
           })()}
         </DialogContent>
       </Dialog>
+
+      <AddEventDialog
+        open={addEventOpen}
+        onOpenChange={setAddEventOpen}
+        defaultDate={addEventDefaultDate}
+        onCreated={() => loadCalendar()}
+      />
     </div>
   );
 };
