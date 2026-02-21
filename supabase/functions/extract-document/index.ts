@@ -141,7 +141,8 @@ Return a JSON object with these fields (include only what you find, omit empty a
       "name": "Full Name",
       "role": "ROLE TITLE",
       "phone": "phone number",
-      "email": "email@domain.com"
+      "email": "email@domain.com",
+      "category": "TOUR_TEAM" or "TOUR_CREW" or "VENUE_STAFF"
     }
   ],
   "travel": [
@@ -203,7 +204,10 @@ GENERAL:
 - For dates, always use YYYY-MM-DD format. If only month/day given, assume the most likely year.
 - For times, use 24-hour HH:MM format.
 - CRITICAL: If a time (show_time, doors, soundcheck) is NOT explicitly stated, set it to null. NEVER guess. Only include times literally written in the source.
-- For contacts, capture ALL people mentioned with any identifying info.
+- For contacts, capture ALL people mentioned with any identifying info. For each contact, classify their "category":
+  * "TOUR_TEAM" = management, agents, accountants, business managers, production managers, tour managers, promoter reps, tour coordinators, legal counsel — people who run the business/management side of the tour.
+  * "TOUR_CREW" = stagehands, riggers, lighting techs, audio techs, carpenters, drivers, wardrobe, catering staff, backline techs, video operators, FOH engineers, monitor engineers, lighting designers, guitar/drum/bass techs — people who execute the production.
+  * "VENUE_STAFF" = house manager, box office, venue security, venue production manager, local crew chief, promoter local rep — people employed by the venue or local promoter.
 - For travel, capture flights, buses, hotels, ground transport — anything.
 - For protocols, capture rider requirements, security protocols, hospitality needs, dressing room requirements, catering specs.
 - For venues, capture the full address, capacity, and any venue contacts mentioned.
@@ -1831,22 +1835,39 @@ Deno.serve(async (req) => {
 
     const contacts = aiResult?.contacts || [];
     const isVenueDoc = ["TECH", "VENUE"].includes(finalDocType);
+    const isContactsDoc = finalDocType === "CONTACTS";
     if (contacts.length > 0) {
-      const rows = contacts.map(c => ({
-        tour_id: doc.tour_id,
-        name: c.name,
-        phone: c.phone || null,
-        email: c.email || null,
-        role: c.role || null,
-        source_doc_id: document_id,
-        scope: isVenueDoc ? "VENUE" : "TOUR",
-        venue: isVenueDoc ? (aiResult?.venues?.[0]?.name || filename.replace(/\.[^.]+$/, "")) : null,
-      }));
+      // For CONTACTS-type docs, only insert TOUR_TEAM contacts (skip crew & venue staff)
+      const filteredContacts = isContactsDoc
+        ? contacts.filter(c => {
+            const cat = (c as any).category?.toUpperCase?.() || "";
+            // Default to TOUR_TEAM if no category (backward compat)
+            return cat === "TOUR_TEAM" || cat === "";
+          })
+        : contacts;
 
-      const { error: cErr } = await adminClient.from("contacts").insert(rows);
-      if (cErr) console.error("[extract] contacts insert error:", cErr);
-      else console.log("[extract] Inserted", contacts.length, "contacts (scope:", isVenueDoc ? "VENUE" : "TOUR", ")");
-      totalExtracted += contacts.length;
+      const skipped = contacts.length - filteredContacts.length;
+      if (skipped > 0) {
+        console.log(`[extract] Filtered out ${skipped} non-TOUR_TEAM contacts from CONTACTS doc`);
+      }
+
+      if (filteredContacts.length > 0) {
+        const rows = filteredContacts.map(c => ({
+          tour_id: doc.tour_id,
+          name: c.name,
+          phone: c.phone || null,
+          email: c.email || null,
+          role: c.role || null,
+          source_doc_id: document_id,
+          scope: isVenueDoc ? "VENUE" : "TOUR",
+          venue: isVenueDoc ? (aiResult?.venues?.[0]?.name || filename.replace(/\.[^.]+$/, "")) : null,
+        }));
+
+        const { error: cErr } = await adminClient.from("contacts").insert(rows);
+        if (cErr) console.error("[extract] contacts insert error:", cErr);
+        else console.log("[extract] Inserted", filteredContacts.length, "contacts (scope:", isVenueDoc ? "VENUE" : "TOUR", ")");
+        totalExtracted += filteredContacts.length;
+      }
     }
 
     const venues = aiResult?.venues || [];

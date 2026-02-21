@@ -131,7 +131,10 @@ const BunkOverview = () => {
 
       // If AKB is completely empty, show "Begin Tour Build"
       if (upcomingEvents.length === 0 && openGaps.length === 0 && openConflicts.length === 0) {
-        setTldr([{ text: "Begin Tour Build", actionable: false }]);
+        setTldr([
+          { text: "Ready to build a new tour.", actionable: false },
+          { text: "Upload your Contacts and Advance Master documents to get started.", actionable: false },
+        ]);
         setTldrLoading(false);
         return;
       }
