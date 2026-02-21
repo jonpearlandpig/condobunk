@@ -37,12 +37,9 @@ export const TourProvider = ({ children }: { children: React.ReactNode }) => {
 
   const autoMatchContacts = async () => {
     if (!user?.email) return;
-    // Find TOUR-scoped contacts matching this email
+    // Use security definer function to bypass RLS chicken-and-egg
     const { data: matches } = await supabase
-      .from("contacts")
-      .select("tour_id")
-      .eq("scope", "TOUR")
-      .ilike("email", user.email);
+      .rpc("match_contact_tours", { _email: user.email });
     if (!matches || matches.length === 0) return;
 
     // Check existing memberships
@@ -52,10 +49,10 @@ export const TourProvider = ({ children }: { children: React.ReactNode }) => {
       .eq("user_id", user.id);
     const existingTourIds = new Set((existing || []).map(m => m.tour_id));
 
-    // Add missing memberships
-    const toInsert = matches
-      .filter(m => !existingTourIds.has(m.tour_id))
-      .map(m => ({ tour_id: m.tour_id, user_id: user.id, role: "MGMT" as const }));
+    // Add missing memberships — matches is uuid[] from RPC
+    const toInsert = (matches || [])
+      .filter((tourId: string) => !existingTourIds.has(tourId))
+      .map((tourId: string) => ({ tour_id: tourId, user_id: user.id, role: "MGMT" as const }));
     if (toInsert.length > 0) {
       await supabase.from("tour_members").insert(toInsert);
     }
