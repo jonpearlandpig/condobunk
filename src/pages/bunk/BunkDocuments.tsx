@@ -172,7 +172,8 @@ const BunkDocuments = () => {
           .eq("tour_id", selectedTourId);
         const nextVersion = (count ?? 0) + 1;
 
-        const filePath = `${selectedTourId}/${Date.now()}_${file.name}`;
+        const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
+        const filePath = `${selectedTourId}/${Date.now()}_${safeName}`;
         const { error: storageErr } = await supabase.storage
           .from("document-files")
           .upload(filePath, file);
