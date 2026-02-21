@@ -939,14 +939,34 @@ async function aiExtractFromText(text: string, apiKey: string, prompt: string, m
     const data = await resp.json();
     let content = data.choices?.[0]?.message?.content || "";
     content = content.replace(/^```(?:json)?\s*\n?/i, "").replace(/\n?```\s*$/i, "").trim();
-    // Escape control characters inside JSON string values
-    content = content.replace(/[\x00-\x1F\x7F]/g, (ch) => {
-      if (ch === '\n') return '\\n';
-      if (ch === '\r') return '\\r';
-      if (ch === '\t') return '\\t';
-      return '';
-    });
-    return JSON.parse(content);
+
+    // If the AI returned a non-JSON response (e.g. apology text), bail early
+    if (!content.startsWith("{") && !content.startsWith("[")) {
+      console.error("[extract] AI returned non-JSON response:", content.slice(0, 200));
+      return null;
+    }
+
+    // Sanitize control characters that are illegal inside JSON string literals.
+    // We must only target chars INSIDE quoted strings, not structural whitespace.
+    // Strategy: replace all raw control chars except \n \r \t (valid JSON whitespace)
+    // with nothing, then fix any raw \n \r \t inside string values by doing a
+    // careful parse that tolerates them.
+    content = content.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '');
+
+    try {
+      return JSON.parse(content);
+    } catch (firstErr) {
+      // If still failing, the AI put raw newlines/tabs inside string values.
+      // Escape them only within quoted strings.
+      console.log("[extract] First JSON.parse failed, attempting string-interior fix...");
+      const fixed = content.replace(/"(?:[^"\\]|\\.)*"/g, (match) => {
+        return match
+          .replace(/\n/g, '\\n')
+          .replace(/\r/g, '\\r')
+          .replace(/\t/g, '\\t');
+      });
+      return JSON.parse(fixed);
+    }
   } catch (err) {
     console.error("[extract] Text extraction failed:", err);
     return null;
