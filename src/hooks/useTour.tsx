@@ -35,9 +35,39 @@ export const TourProvider = ({ children }: { children: React.ReactNode }) => {
   const [selectedTourId, setSelectedTourId] = useState("");
   const [loading, setLoading] = useState(true);
 
+  const autoMatchContacts = async () => {
+    if (!user?.email) return;
+    // Find TOUR-scoped contacts matching this email
+    const { data: matches } = await supabase
+      .from("contacts")
+      .select("tour_id")
+      .eq("scope", "TOUR")
+      .ilike("email", user.email);
+    if (!matches || matches.length === 0) return;
+
+    // Check existing memberships
+    const { data: existing } = await supabase
+      .from("tour_members")
+      .select("tour_id")
+      .eq("user_id", user.id);
+    const existingTourIds = new Set((existing || []).map(m => m.tour_id));
+
+    // Add missing memberships
+    const toInsert = matches
+      .filter(m => !existingTourIds.has(m.tour_id))
+      .map(m => ({ tour_id: m.tour_id, user_id: user.id, role: "MGMT" as const }));
+    if (toInsert.length > 0) {
+      await supabase.from("tour_members").insert(toInsert);
+    }
+  };
+
   const loadTours = async () => {
     if (!user) return;
     setLoading(true);
+
+    // Auto-match on every load (idempotent)
+    await autoMatchContacts();
+
     const { data } = await supabase
       .from("tours")
       .select("*")
