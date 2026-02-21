@@ -21,10 +21,17 @@ export interface VenueGroup {
   contacts: SidebarContact[];
 }
 
+export interface TourTeamGroup {
+  tourId: string;
+  tourName: string;
+  contacts: SidebarContact[];
+}
+
 export const useSidebarContacts = () => {
   const { tours } = useTour();
   const tourId = tours[0]?.id;
   const [tourContacts, setTourContacts] = useState<SidebarContact[]>([]);
+  const [tourTeamGroups, setTourTeamGroups] = useState<TourTeamGroup[]>([]);
   const [venueGroups, setVenueGroups] = useState<VenueGroup[]>([]);
   const [venueContacts, setVenueContacts] = useState<SidebarContact[]>([]);
   const [venueLabel, setVenueLabel] = useState<string>("");
@@ -34,12 +41,14 @@ export const useSidebarContacts = () => {
     if (!tourId) return;
     setLoading(true);
 
-    // Fetch contacts, tour members, and profiles in parallel
+    // Fetch TOUR contacts for ALL tours the user belongs to
+    const tourIds = tours.map(t => t.id);
+    
     const [tourDataRes, membersRes] = await Promise.all([
       supabase
         .from("contacts")
-        .select("id, name, role, phone, email, scope, venue")
-        .eq("tour_id", tourId)
+        .select("id, name, role, phone, email, scope, venue, tour_id")
+        .in("tour_id", tourIds)
         .eq("scope", "TOUR")
         .order("name"),
       supabase
@@ -49,7 +58,7 @@ export const useSidebarContacts = () => {
     ]);
 
     const memberIds = (membersRes.data || []).map(m => m.user_id);
-    let profileMap: Record<string, string> = {}; // email -> user_id
+    let profileMap: Record<string, string> = {};
 
     if (memberIds.length > 0) {
       const { data: profiles } = await supabase
@@ -61,13 +70,22 @@ export const useSidebarContacts = () => {
       });
     }
 
-    // Map contacts to app user IDs by matching email
-    const enriched: SidebarContact[] = ((tourDataRes.data || []) as SidebarContact[]).map(c => ({
+    const allTourContacts: SidebarContact[] = ((tourDataRes.data || []) as any[]).map(c => ({
       ...c,
       appUserId: c.email ? profileMap[c.email.toLowerCase()] : undefined,
     }));
 
-    setTourContacts(enriched);
+    // Build groups per tour
+    const groups: TourTeamGroup[] = tours.map(t => ({
+      tourId: t.id,
+      tourName: t.name,
+      contacts: allTourContacts.filter(c => (c as any).tour_id === t.id),
+    }));
+    setTourTeamGroups(groups);
+
+    // Keep flat list for the active tour (used by venue window etc.)
+    const activeTourContacts = allTourContacts.filter(c => (c as any).tour_id === tourId);
+    setTourContacts(activeTourContacts);
 
     // Venue contacts (rolling 3 weeks)
     const today = new Date();
@@ -116,9 +134,9 @@ export const useSidebarContacts = () => {
     setVenueContacts(venueContactsData);
 
     // Build grouped structure ordered by calendar
-    const groups: VenueGroup[] = [];
+    const venueGroupList: VenueGroup[] = [];
     for (const [venue, meta] of venueMap) {
-      groups.push({
+      venueGroupList.push({
         venue,
         city: meta.city,
         earliestDate: meta.earliestDate,
@@ -126,10 +144,10 @@ export const useSidebarContacts = () => {
       });
     }
     // Already in calendar order from the Map insertion order (events were ordered by date)
-    setVenueGroups(groups);
+    setVenueGroups(venueGroupList);
 
     setLoading(false);
-  }, [tourId]);
+  }, [tourId, tours]);
 
   useEffect(() => {
     if (!tourId) {
@@ -166,5 +184,5 @@ export const useSidebarContacts = () => {
     setVenueContacts(remover);
   }, []);
 
-  return { tourContacts, venueContacts, venueGroups, venueLabel, loading, updateContact, deleteContact, refetch: fetchContacts };
+  return { tourContacts, tourTeamGroups, venueContacts, venueGroups, venueLabel, loading, updateContact, deleteContact, refetch: fetchContacts };
 };
