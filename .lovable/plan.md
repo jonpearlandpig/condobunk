@@ -1,78 +1,84 @@
 
 
-# Mobile-First Optimization for Condo Bunk
+# Empty AKB State + Smart Contact Routing from Documents
 
 ## Problem
-The app works but was built desktop-first. On a phone, users deal with cramped calendar grids, oversized dialogs, too many buttons visible at once, and wasted space in headers. Tour teams need to get answers and take action fast from their phones -- zero friction.
+1. When all tour AKBs are empty, the UI still shows stale data or confusing states. Users should see a clean slate: no tour team, no venue partners, blank calendar, empty archives -- only My Artifacts persist.
+2. When a Contacts PDF is uploaded and extracted, the system creates TOUR-scoped contacts but doesn't distinguish "Tour Team" (management/production) from "Tour Crew" or "Venue Staff". All contacts from a Contacts PDF get dumped into Tour Team.
+3. Venue partner contacts should only come from Advance Master documents, which already works correctly (scope: VENUE).
+4. There's no auto-creation of Bunk Chat availability -- contacts extracted from a Contacts PDF should automatically be flagged as available for bunk/text/email/phone based on what info was extracted.
 
-## Strategy
-Strip every screen down to what matters on a phone. Use bottom sheets (Drawer) instead of center Dialogs on mobile. Collapse toolbars. Make touch targets bigger. Hide chrome until needed.
+## What Changes
 
----
+### 1. Empty AKB State (UI Polish)
+Update the following screens to show proper empty states when the AKB has no data:
 
-## Changes by Screen
+**Calendar (BunkCalendar.tsx):**
+- When no events exist, show a centered empty state: "No events yet. Upload documents to build your tour schedule."
 
-### 1. Layout (BunkLayout.tsx)
-- Shrink header from `h-12` to `h-10` on mobile
-- Hide "CONDO BUNK" label on mobile (just show the Radio icon) to save horizontal space
-- Make SIGN OUT a smaller icon-only button on mobile
+**Sidebar (useSidebarContacts.ts):**
+- Already shows "None available" when contacts are empty -- no change needed.
 
-### 2. Calendar (BunkCalendar.tsx) -- biggest win
-- **Mobile view mode**: Default to a vertical list/agenda view on mobile instead of the 7-column grid (the grid cells are unreadable on 375px screens). Week grid stays on tablet/desktop.
-- **Header toolbar**: Stack filter/view controls into a single row with smaller buttons; hide the "WEEK/MONTH" toggle on phones (force agenda view)
-- **Event detail**: Swap `Dialog` for `Drawer` (bottom sheet) on mobile -- much more natural for thumb reach
-- **Add Event**: Also use Drawer on mobile
-- **Touch targets**: Event pills get `min-h-[44px]` tap targets in agenda view
+**Overview (BunkOverview.tsx):**
+- Already shows "Begin Tour Build" when AKB is empty -- just tighten the messaging to be clearer: "Ready to build a new tour. Upload your contacts and Advance Master documents to get started."
 
-### 3. Chat / TELA (BunkChat.tsx)
-- Already decent; minor tweaks:
-  - Reduce top bar height to `h-10` on mobile
-  - Remove scope badge text on very small screens (just show icon)
-  - Pin input bar with `pb-safe` (safe-area-inset-bottom) for phones with home indicators
-  - Make suggestion chips scroll horizontally instead of wrapping
+### 2. Smart Contact Scope Routing in Extraction Engine
+Update `supabase/functions/extract-document/index.ts` to filter contacts from CONTACTS-type documents:
 
-### 4. Overview / TL;DR (BunkOverview.tsx)
-- Reduce heading from `text-2xl` to `text-xl` on mobile
-- Make stat cards full-width single column (already `grid-cols-1 sm:grid-cols-2` -- good)
-- Reduce padding in briefing card
-- Make "ASK TELA" buttons full-width on mobile for easy tap
+**Current behavior:** All contacts from a Contacts PDF go into `scope: "TOUR"`.
 
-### 5. Documents (BunkDocuments.tsx)
-- Already uses `px-3 sm:px-4` -- good
-- Action buttons (EXTRACT, REVIEW, ARCHIVE) -- collapse into a single "..." dropdown on mobile (already partially done with DropdownMenu)
-- Upload zone: reduce padding on mobile
+**New behavior:** During general extraction, when `doc_type === "CONTACTS"`, apply role-based filtering:
+- **Tour Team (scope: TOUR):** Contacts with management/production roles -- Tour Manager, Production Manager, Tour Accountant, Business Manager, Agent, Promoter Rep, Management, etc. These are the people who manage the tour.
+- **Skip (do not insert):** Contacts identified as "Tour Crew" (stagehands, riggers, drivers, techs) or "Venue Staff" (house manager, box office, security) -- these come from other document types or are added manually.
 
-### 6. VAN Review Dialog (VANReviewDialog.tsx)
-- Use Drawer instead of Dialog on mobile
-- Venue scroll bar already fixed; ensure buttons have adequate tap targets (`min-h-[44px]`)
+Add a role classification step in the AI extraction prompt to tag each contact with a `category` field: `"TOUR_TEAM"`, `"TOUR_CREW"`, or `"VENUE_STAFF"`. Only insert contacts where `category === "TOUR_TEAM"` from CONTACTS documents.
 
-### 7. Sidebar (BunkSidebar.tsx)
-- Already handles mobile via `setOpenMobile` -- no changes needed
+### 3. Advance Master Venue Contacts (Already Working)
+The current extraction already inserts contacts from Advance Masters with `scope: "VENUE"` and associates them with the venue name. No changes needed here -- just confirming the existing behavior matches the requirement.
 
-### 8. Shared responsive wrapper component
-- Create a `ResponsiveDialog` component that renders a `Drawer` on mobile and a `Dialog` on desktop. This avoids duplicating every dialog.
+### 4. Contact Communication Availability
+Contacts extracted from documents already have phone/email stored. The sidebar already renders:
+- Bunk Chat button (if contact matches an app user who is online)
+- TEXT/SMS button (if phone number exists)
+- EMAIL button (if email exists)
+- CALL button (if phone exists)
+
+No additional changes needed -- the communication channels are already driven by what data exists on the contact record.
 
 ---
 
 ## Technical Details
 
-### New file: `src/components/ui/responsive-dialog.tsx`
-A wrapper that checks `useIsMobile()` and renders either Drawer or Dialog with matching sub-components (Header, Title, Description, Content, Footer, Close). All existing Dialogs that appear on event detail, add event, VAN review, tech pack review, and extraction review will switch to this.
+### Files Modified
 
-### Files modified:
 | File | Change |
 |---|---|
-| `src/components/ui/responsive-dialog.tsx` | New -- responsive Dialog/Drawer wrapper |
-| `src/pages/bunk/BunkLayout.tsx` | Compact mobile header |
-| `src/pages/bunk/BunkCalendar.tsx` | Agenda view on mobile, use ResponsiveDialog for event detail |
-| `src/pages/bunk/BunkChat.tsx` | Safe-area padding, compact top bar |
-| `src/pages/bunk/BunkOverview.tsx` | Tighter mobile spacing |
-| `src/pages/bunk/BunkDocuments.tsx` | Tighter mobile padding |
-| `src/components/bunk/AddEventDialog.tsx` | Use ResponsiveDialog |
-| `src/components/bunk/VANReviewDialog.tsx` | Use Drawer on mobile |
-| `src/components/bunk/ExtractionReviewDialog.tsx` | Use ResponsiveDialog |
-| `src/components/bunk/TechPackReviewDialog.tsx` | Use ResponsiveDialog |
-| `src/index.css` | Add `env(safe-area-inset-bottom)` utility |
+| `supabase/functions/extract-document/index.ts` | Update EXTRACTION_PROMPT to add `category` field to contacts. Filter contacts from CONTACTS docs to only insert TOUR_TEAM. |
+| `src/pages/bunk/BunkOverview.tsx` | Improve empty AKB state messaging to guide users toward uploading contacts + advance masters. |
+| `src/pages/bunk/BunkCalendar.tsx` | Improve empty calendar state with clearer guidance. |
 
-### No database or backend changes required.
+### Extraction Prompt Change
+Add to the contacts section of EXTRACTION_PROMPT:
+```
+"contacts": [
+  {
+    "name": "Full Name",
+    "role": "ROLE TITLE",
+    "phone": "phone number",
+    "email": "email@domain.com",
+    "category": "TOUR_TEAM" | "TOUR_CREW" | "VENUE_STAFF"
+  }
+]
+```
+
+With guidance:
+- TOUR_TEAM = management, agents, accountants, business managers, production managers, tour managers, promoter reps -- people who run the business side of the tour
+- TOUR_CREW = stagehands, riggers, lighting techs, audio techs, carpenters, drivers, wardrobe, catering staff -- people who execute the production
+- VENUE_STAFF = house manager, box office, venue security, venue production, local crew chief -- people employed by the venue
+
+### Insertion Filter (extract-document/index.ts, ~line 1834)
+When `finalDocType === "CONTACTS"`, filter to only insert contacts where `category === "TOUR_TEAM"` with `scope: "TOUR"`. Skip TOUR_CREW and VENUE_STAFF from contacts documents since those come from Advance Masters and Tech Packs respectively.
+
+### No database changes required.
+### No new dependencies.
 
