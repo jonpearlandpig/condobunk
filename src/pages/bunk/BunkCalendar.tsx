@@ -55,6 +55,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import PullToRefresh from "@/components/ui/pull-to-refresh";
 
 type EventCategory = "SHOW" | "TRAVEL";
 type ViewMode = "week" | "month";
@@ -390,7 +391,12 @@ const BunkCalendar = () => {
   const isMonthView = viewMode === "month";
   const isGlobal = tourFilter === "all";
 
+  const handleRefresh = useCallback(async () => {
+    await loadCalendar();
+  }, [loadCalendar]);
+
   return (
+    <PullToRefresh onRefresh={handleRefresh}>
     <div className="space-y-4 max-w-5xl">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 sm:gap-3">
@@ -797,6 +803,7 @@ const BunkCalendar = () => {
         onCreated={() => loadCalendar()}
       />
     </div>
+    </PullToRefresh>
   );
 };
 
