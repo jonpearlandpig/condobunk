@@ -32,6 +32,8 @@ interface ExtractionReviewDialogProps {
   extractionSummary: {
     doc_type: string;
     extracted_count: number;
+    is_multi_venue?: boolean;
+    venue_count?: number;
     summary: {
       events: number;
       contacts: number;
