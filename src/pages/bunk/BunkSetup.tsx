@@ -1,6 +1,7 @@
 import { useState, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
+import { invokeWithTimeout } from "@/lib/invoke-with-timeout";
 import { useAuth } from "@/hooks/useAuth";
 import { useTour } from "@/hooks/useTour";
 import { useToast } from "@/hooks/use-toast";
@@ -131,9 +132,10 @@ const BunkSetup = () => {
   const runExtraction = async (docId: string) => {
     setExtracting(docId);
     try {
-      const { data, error } = await supabase.functions.invoke("extract-document", {
-        body: { document_id: docId },
-      });
+      const { data, error } = await invokeWithTimeout(
+        "extract-document",
+        { document_id: docId }
+      );
       if (error) throw error;
 
       setDocs((prev) =>
