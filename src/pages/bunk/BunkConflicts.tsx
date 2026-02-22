@@ -25,6 +25,9 @@ const BunkConflicts = () => {
 
   useEffect(() => {
     loadConflicts();
+    const handler = () => loadConflicts();
+    window.addEventListener("akb-changed", handler);
+    return () => window.removeEventListener("akb-changed", handler);
   }, []);
 
   const loadConflicts = async () => {

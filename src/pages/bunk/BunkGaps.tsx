@@ -19,6 +19,9 @@ const BunkGaps = () => {
 
   useEffect(() => {
     loadGaps();
+    const handler = () => loadGaps();
+    window.addEventListener("akb-changed", handler);
+    return () => window.removeEventListener("akb-changed", handler);
   }, []);
 
   const loadGaps = async () => {

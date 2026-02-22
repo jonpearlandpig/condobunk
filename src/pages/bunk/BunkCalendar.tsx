@@ -144,6 +144,11 @@ const BunkCalendar = () => {
 
   useEffect(() => {
     if (activeTourIds.length > 0) loadCalendar();
+
+    // Listen for TELA-triggered changes
+    const handler = () => { if (activeTourIds.length > 0) loadCalendar(); };
+    window.addEventListener("akb-changed", handler);
+    return () => window.removeEventListener("akb-changed", handler);
   }, [activeTourIds, tourFilter]);
 
   useEffect(() => {

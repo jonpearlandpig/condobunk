@@ -94,6 +94,11 @@ const BunkOverview = () => {
     if (!user || tours.length === 0) return;
     loadCounts();
     loadEventDates();
+
+    // Listen for TELA-triggered changes
+    const handler = () => { loadCounts(); loadEventDates(); generateTldr(); };
+    window.addEventListener("akb-changed", handler);
+    return () => window.removeEventListener("akb-changed", handler);
   }, [user, tours]);
 
   useEffect(() => {
