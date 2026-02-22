@@ -9,6 +9,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { useRef } from "react";
+import { useAkbAlerts } from "@/hooks/useAkbAlerts";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -25,6 +26,9 @@ const BunkLayout = () => {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Real-time CRITICAL AKB change alerts
+  useAkbAlerts();
 
   const { data: profile } = useQuery({
     queryKey: ["profile-avatar", user?.id],
