@@ -1,80 +1,45 @@
 
 
-## Problem
+## Changes
 
-Jon's Google profile picture isn't showing when signed in as jonathan@pearlandpig.com. Two root causes:
+### 1. Hide the signed-in user from the Tour Team contact list
 
-1. The `profiles` table has no `avatar_url` column to store the Google profile picture
-2. The `handle_new_user` database trigger only saves `id` and `email` -- it ignores Google OAuth metadata like avatar and display name
+Currently all tour team contacts are shown, including the logged-in user. The fix is to filter out contacts whose `appUserId` matches the current `user.id` (or whose email matches the current user's email) before rendering.
 
-The app header reads avatar from `user.user_metadata.avatar_url` or `user.user_metadata.picture`, which depends on the auth session metadata being populated. If the metadata wasn't captured properly during sign-up, the avatar won't show.
+This will be done in `SidebarContactList.tsx` by filtering the `contacts` array to exclude the current user, OR in `BunkSidebar.tsx` by filtering before passing contacts down. The cleaner approach is filtering in `BunkSidebar.tsx` at the data level, so the count badge also reflects the correct number.
 
-## Fix Plan
+**File: `src/components/bunk/BunkSidebar.tsx`**
+- Filter each `tourTeamGroups` group's contacts to exclude contacts where `appUserId === user.id`
+- Update the total count to reflect the filtered list
+- Update `getUninvitedContacts()` to also exclude the current user
 
-### Step 1: Add `avatar_url` column to `profiles` table
+### 2. Start Tour Team and Venue Partners collapsed by default
 
-Add an `avatar_url` text column to the profiles table so the Google profile picture URL is persisted.
+Currently both sections default to `useState(true)` (open). Change both to `useState(false)`.
 
-### Step 2: Update `handle_new_user` trigger
+**File: `src/components/bunk/BunkSidebar.tsx`**
+- Change `tourTeamOpen` initial state from `true` to `false`
+- Change `venuePartnersOpen` initial state from `true` to `false`
 
-Modify the trigger to also capture `avatar_url` and `display_name` from `raw_user_meta_data` when a new user signs up (including via Google OAuth). Use `ON CONFLICT ... DO UPDATE` so existing profiles also get updated on subsequent logins.
-
-### Step 3: Backfill Jon's profile now
-
-Run a data update to set Jon's `display_name` and `avatar_url` from his current auth metadata so it takes effect immediately without waiting for a new sign-in.
-
-### Step 4: Update the header avatar logic
-
-Update `BunkLayout.tsx` to also check the `profiles` table as a fallback source for avatar URL, so it works even if `user_metadata` is incomplete.
+Sub-groups (individual tours under Tour Team, and venues under Venue Partners) already start collapsed since `expandedTours` starts as an empty Set and venue groups use `expandedVenues` which also starts empty.
 
 ### Technical Details
 
-**Migration SQL:**
-```text
--- Add avatar_url column
-ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS avatar_url text;
+**BunkSidebar.tsx changes:**
 
--- Update handle_new_user to capture OAuth metadata
-CREATE OR REPLACE FUNCTION public.handle_new_user()
-RETURNS trigger
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path TO 'public'
-AS $$
-BEGIN
-  INSERT INTO public.profiles (id, email, display_name, avatar_url)
-  VALUES (
-    NEW.id,
-    NEW.email,
-    COALESCE(NEW.raw_user_meta_data->>'full_name', NEW.raw_user_meta_data->>'name'),
-    COALESCE(NEW.raw_user_meta_data->>'avatar_url', NEW.raw_user_meta_data->>'picture')
-  )
-  ON CONFLICT (id) DO UPDATE SET
-    email = EXCLUDED.email,
-    display_name = COALESCE(EXCLUDED.display_name, profiles.display_name),
-    avatar_url = COALESCE(EXCLUDED.avatar_url, profiles.avatar_url);
+1. Lines 67-68: Change default state:
+   - `const [tourTeamOpen, setTourTeamOpen] = useState(false);`
+   - `const [venuePartnersOpen, setVenuePartnersOpen] = useState(false);`
 
-  -- Auto-add tour membership if email matches a TOUR-scoped contact
-  INSERT INTO public.tour_members (tour_id, user_id, role)
-  SELECT c.tour_id, NEW.id, 'MGMT'::tour_role
-  FROM public.contacts c
-  WHERE lower(c.email) = lower(NEW.email)
-    AND c.scope = 'TOUR'
-  ON CONFLICT DO NOTHING;
+2. Create a filtered version of `tourTeamGroups` that excludes the current user:
+   ```text
+   const filteredTourTeamGroups = tourTeamGroups.map(g => ({
+     ...g,
+     contacts: g.contacts.filter(c => c.appUserId !== user?.id),
+   }));
+   ```
 
-  RETURN NEW;
-END;
-$$;
-```
+3. Use `filteredTourTeamGroups` everywhere instead of `tourTeamGroups` (count badge, rendering, bulk invite)
 
-**Data backfill for Jon** (using insert tool):
-```text
-UPDATE profiles
-SET display_name = 'Jon Hartman',
-    avatar_url = (SELECT raw_user_meta_data->>'picture' FROM auth.users WHERE id = '1385f11a-1337-4ef7-83ac-1bbd62af4781')
-WHERE id = '1385f11a-1337-4ef7-83ac-1bbd62af4781';
-```
+4. Update `getUninvitedContacts()` to use the filtered groups
 
-**Code change in BunkLayout.tsx:**
-- The existing avatar logic (`user?.user_metadata?.avatar_url || user?.user_metadata?.picture`) will continue to work as-is since Google OAuth populates these fields
-- Add a React Query hook or inline fetch to load the profile's `avatar_url` as a fallback if `user_metadata` doesn't have one
