@@ -5,12 +5,21 @@ import { Radio, LogOut } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { TourProvider } from "@/hooks/useTour";
 import { useIsMobile } from "@/hooks/use-mobile";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 const BunkLayout = () => {
-  const { signOut } = useAuth();
+  const { user, signOut } = useAuth();
   const [searchParams] = useSearchParams();
   const isWelcome = searchParams.get("welcome") === "1";
   const isMobile = useIsMobile();
+
+  const avatarUrl = user?.user_metadata?.avatar_url || user?.user_metadata?.picture;
+  const displayName = user?.user_metadata?.full_name || user?.user_metadata?.name || user?.email;
 
   return (
     <TourProvider>
@@ -36,22 +45,29 @@ const BunkLayout = () => {
                   </span>
                 </div>
               </div>
-              {isMobile ? (
-                <button
-                  onClick={signOut}
-                  className="h-8 w-8 flex items-center justify-center rounded-md text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
-                  aria-label="Sign out"
-                >
-                  <LogOut className="h-4 w-4" />
-                </button>
-              ) : (
-                <button
-                  onClick={signOut}
-                  className="font-mono text-xs text-muted-foreground hover:text-destructive transition-colors tracking-wider"
-                >
-                  SIGN OUT
-                </button>
-              )}
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button className="h-7 w-7 rounded-full overflow-hidden ring-1 ring-border hover:ring-primary transition-all focus:outline-none focus:ring-2 focus:ring-primary" aria-label="Account menu">
+                    {avatarUrl ? (
+                      <img src={avatarUrl} alt={displayName || "Profile"} className="h-full w-full object-cover" referrerPolicy="no-referrer" />
+                    ) : (
+                      <div className="h-full w-full bg-primary/20 flex items-center justify-center text-xs font-bold text-primary">
+                        {(displayName || "?")[0].toUpperCase()}
+                      </div>
+                    )}
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-48">
+                  <div className="px-2 py-1.5 border-b border-border mb-1">
+                    <p className="text-sm font-medium text-foreground truncate">{displayName}</p>
+                    {user?.email && <p className="text-[10px] text-muted-foreground truncate">{user.email}</p>}
+                  </div>
+                  <DropdownMenuItem onClick={signOut} className="text-destructive focus:text-destructive cursor-pointer">
+                    <LogOut className="h-3.5 w-3.5 mr-2" />
+                    Sign out
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             </header>
             <main className="flex-1 p-3 sm:p-6 overflow-auto min-w-0">
               <Outlet />
