@@ -76,6 +76,7 @@ export function useTelaActions() {
             .update({ resolved: true })
             .eq("id", action.id);
           if (error) throw error;
+          window.dispatchEvent(new Event("akb-changed"));
           toast({ title: "Conflict resolved", description: "TELA marked this conflict as resolved." });
           return true;
         }
@@ -85,6 +86,7 @@ export function useTelaActions() {
             .update({ resolved: true })
             .eq("id", action.id);
           if (error) throw error;
+          window.dispatchEvent(new Event("akb-changed"));
           toast({ title: "Gap resolved", description: "TELA marked this knowledge gap as resolved." });
           return true;
         }
@@ -95,6 +97,7 @@ export function useTelaActions() {
             .update(action.fields)
             .eq("id", action.id);
           if (error) throw error;
+          window.dispatchEvent(new Event("akb-changed"));
           toast({ title: "Event updated", description: "TELA updated the schedule event." });
           return true;
         }
@@ -113,6 +116,7 @@ export function useTelaActions() {
             .eq("id", action.id);
           if (error) throw error;
           window.dispatchEvent(new Event("contacts-changed"));
+          window.dispatchEvent(new Event("akb-changed"));
           toast({ title: "Contact updated", description: "TELA updated the contact info." });
           return true;
         }
@@ -136,6 +140,7 @@ export function useTelaActions() {
             .insert(insert as any);
           if (error) throw error;
           window.dispatchEvent(new Event("contacts-changed"));
+          window.dispatchEvent(new Event("akb-changed"));
           toast({ title: "Contact added", description: `TELA added ${action.fields.name} to the AKB.` });
           return true;
         }
@@ -173,6 +178,7 @@ export function useTelaActions() {
             .eq("id", action.id);
           if (error) throw error;
           window.dispatchEvent(new Event("van-changed"));
+          window.dispatchEvent(new Event("akb-changed"));
           toast({ title: "Advance notes updated", description: "TELA updated the venue advance notes." });
           return true;
         }
