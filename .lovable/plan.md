@@ -1,111 +1,38 @@
 
 
-# AKB Sovereignty + Telauthorium ID
+# Make Critical Alerts Configurable and Shelve Notification Settings
 
-## Two changes in one
+## Summary
+Make the real-time critical AKB alerts respect user preferences (can be turned up, down, or off), and remove the Notification Settings page from navigation since the full notification system is being deferred. The alert hook will check the user's `notification_preferences` before showing toasts.
 
-### 1. Telauthorium ID (TID)
+## Changes
 
-Every user gets a permanent, unique Telauthorium ID at sign-up. It never changes, follows them across all tours, and is displayed in the UI wherever identity matters.
+### 1. Update `useAkbAlerts` hook to respect user preferences
+**File:** `src/hooks/useAkbAlerts.ts`
 
-**Format**: `TID-XXXXXXXX` (8 hex characters derived from their user UUID, guaranteed unique)
+- Query `notification_preferences` for the current user + tour combo
+- If a preference row exists, check:
+  - `min_severity` -- only alert if the change meets or exceeds the threshold (INFO < IMPORTANT < CRITICAL)
+  - `safety_always` / `time_always` / `money_always` -- if any matching impact flag is true and the change has that flag, alert regardless of severity
+  - `day_window` -- only alert if the event is within N days
+- If no preference row exists, fall back to current behavior (CRITICAL only, always alert)
+- This makes alerts fully controllable: users can set `min_severity` to CRITICAL (current default), IMPORTANT (more alerts), INFO (all alerts), or effectively "off" by disabling all change types
 
-**Database change**: Add `telauthorium_id` column to `profiles` table, auto-populated by updating the `handle_new_user()` trigger.
+### 2. Remove Notification Settings from routing and sidebar
+**File:** `src/App.tsx`
+- Remove the `/bunk/notifications` route and the `BunkNotificationSettings` import
 
-**Where it appears**:
-- Account dropdown menu (under display name)
-- AKB change log entries (who made the change)
-- Sign-off dialog (alongside display name)
+The page file (`BunkNotificationSettings.tsx`) stays in the codebase for when notifications come back -- just unreachable for now.
 
-### 2. AKB Edit Sign-off Gate
-
-Once the AKB is built, every edit must be signed. A new `AkbEditSignoff` dialog component gates all mutations with:
-
-- **What changed** (auto-filled)
-- **Why** (required free-text, min 10 chars)
-- **Impact flags** (Safety / Time / Money)
-- **Signed by**: Display name + Telauthorium ID
-- **Timestamp**: Auto-captured
-
-The dialog writes to `akb_change_log` (with new `change_reason` column) then executes the mutation.
-
-### 3. AKB Change Log Page
-
-A new `/bunk/changelog` page showing a filterable audit trail: who changed what, when, why, with Telauthorium ID, impact badges, and severity.
-
----
+### 3. No database changes needed
+The `notification_preferences` table already has all the columns needed. The `useAkbAlerts` hook just needs to read from it.
 
 ## Technical Details
 
-### Database Migration
-
-```sql
--- Add change_reason to akb_change_log
-ALTER TABLE akb_change_log ADD COLUMN change_reason text;
-
--- Add telauthorium_id to profiles
-ALTER TABLE profiles ADD COLUMN telauthorium_id text UNIQUE;
-
--- Backfill existing profiles
-UPDATE profiles SET telauthorium_id = 'TID-' || upper(substr(replace(id::text, '-', ''), 1, 8))
-WHERE telauthorium_id IS NULL;
-
--- Make NOT NULL after backfill
-ALTER TABLE profiles ALTER COLUMN telauthorium_id SET NOT NULL;
-ALTER TABLE profiles ALTER COLUMN telauthorium_id SET DEFAULT '';
-
--- Update handle_new_user trigger to auto-assign TID
-CREATE OR REPLACE FUNCTION public.handle_new_user() ...
-  -- adds: telauthorium_id = 'TID-' || upper(substr(replace(NEW.id::text, '-', ''), 1, 8))
+The severity comparison logic:
+```
+const SEVERITY_RANK = { INFO: 0, IMPORTANT: 1, CRITICAL: 2 };
 ```
 
-### New Files
-
-| File | Purpose |
-|------|---------|
-| `src/components/bunk/AkbEditSignoff.tsx` | Reusable sign-off dialog |
-| `src/pages/bunk/BunkChangeLog.tsx` | Audit trail page |
-
-### Modified Files
-
-| File | Change |
-|------|--------|
-| `src/components/bunk/EventNoteEditor.tsx` | Wrap save with AkbEditSignoff (replaces inline impact checkboxes) |
-| `src/components/bunk/AddEventDialog.tsx` | Wrap save with AkbEditSignoff (replaces inline impact checkboxes) |
-| `src/hooks/useTelaActions.ts` | Accept `reason` param, log to `akb_change_log` with `change_reason` |
-| `src/components/bunk/TelaActionCard.tsx` | Show AkbEditSignoff before executing action |
-| `src/components/bunk/ExtractionReviewDialog.tsx` | Show AkbEditSignoff before committing reviewed data |
-| `src/pages/bunk/BunkLayout.tsx` | Display Telauthorium ID in account dropdown |
-| `src/App.tsx` | Add `/bunk/changelog` route |
-| `src/components/bunk/BunkSidebar.tsx` | Add "Change Log" nav link |
-
-### Sign-off Flow
-
-```text
-User clicks Save / Apply / Add
-         |
-         v
-+------------------------+
-| AKB Edit Sign-off      |
-|                        |
-| What: [auto-filled]   |
-| Why:  [__________]    |
-|                        |
-| Impact:                |
-| [ ] Safety [ ] Time   |
-| [ ] Money              |
-|                        |
-| Signed by:             |
-| Jane Doe (TID-4A2F9B1C)|
-| 2026-02-22 14:30       |
-|                        |
-| [Cancel]    [Commit]   |
-+------------------------+
-         |
-         v
-Write akb_change_log (with change_reason)
-         |
-         v
-Execute actual mutation
-```
+The hook will use a `useQuery` to fetch the user's prefs for each tour, then filter incoming realtime events against those prefs. If a user has no prefs row, the system defaults (CRITICAL-only with all impact overrides on) apply -- identical to current behavior.
 
