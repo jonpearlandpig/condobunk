@@ -33,6 +33,7 @@ import {
   CalendarDays,
   MapPin,
   Clock,
+  Sparkles,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -607,17 +608,40 @@ const BunkOverview = () => {
                         {evt.notes}
                       </p>
                     )}
+                    <button
+                      onClick={() => {
+                        const q = `What's the full rundown for ${evt.venue || "the venue"} in ${evt.city || "the city"} on ${selectedDate ? format(new Date(selectedDate + "T12:00:00"), "MMM d") : "that date"}?`;
+                        setSelectedTourId(evt.tour_id);
+                        setSelectedDate(null);
+                        navigate(`/bunk/chat?q=${encodeURIComponent(q)}&scope=tour`);
+                      }}
+                      className="mt-1 inline-flex items-center gap-1.5 text-[11px] font-mono tracking-wider text-primary hover:text-primary/80 transition-colors min-h-[44px] sm:min-h-0 px-2 -mx-2 sm:px-0 sm:mx-0"
+                    >
+                      <Sparkles className="h-3 w-3" />
+                      ASK TELA
+                    </button>
                   </div>
                 );
               })}
             </div>
           </ScrollArea>
-          <div className="pt-2 border-t border-border">
+          <div className="pt-2 border-t border-border flex items-center justify-between">
             <button
               onClick={() => { setSelectedDate(null); navigate("/bunk/calendar"); }}
               className="font-mono text-[11px] text-primary hover:text-primary/80 transition-colors flex items-center gap-1 min-h-[44px] sm:min-h-0"
             >
               VIEW FULL CALENDAR <ChevronRight className="h-3 w-3" />
+            </button>
+            <button
+              onClick={() => {
+                const q = `What's happening on ${selectedDate ? format(new Date(selectedDate + "T12:00:00"), "MMM d") : "that date"}?`;
+                setSelectedDate(null);
+                navigate(`/bunk/chat?q=${encodeURIComponent(q)}&scope=tour`);
+              }}
+              className="font-mono text-[11px] text-primary hover:text-primary/80 transition-colors flex items-center gap-1 min-h-[44px] sm:min-h-0"
+            >
+              <Sparkles className="h-3 w-3" />
+              ASK TELA
             </button>
           </div>
         </ResponsiveDialogContent>
