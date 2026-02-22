@@ -5,6 +5,8 @@ import { Radio, LogOut } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { TourProvider } from "@/hooks/useTour";
 import { useIsMobile } from "@/hooks/use-mobile";
+import { useQuery } from "@tanstack/react-query";
+import { supabase } from "@/integrations/supabase/client";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -18,8 +20,22 @@ const BunkLayout = () => {
   const isWelcome = searchParams.get("welcome") === "1";
   const isMobile = useIsMobile();
 
-  const avatarUrl = user?.user_metadata?.avatar_url || user?.user_metadata?.picture;
-  const displayName = user?.user_metadata?.full_name || user?.user_metadata?.name || user?.email;
+  const { data: profile } = useQuery({
+    queryKey: ["profile-avatar", user?.id],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from("profiles")
+        .select("avatar_url, display_name")
+        .eq("id", user!.id)
+        .single();
+      return data;
+    },
+    enabled: !!user?.id,
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const avatarUrl = user?.user_metadata?.avatar_url || user?.user_metadata?.picture || profile?.avatar_url;
+  const displayName = user?.user_metadata?.full_name || user?.user_metadata?.name || profile?.display_name || user?.email;
 
   return (
     <TourProvider>
