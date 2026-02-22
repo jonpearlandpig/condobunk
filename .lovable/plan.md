@@ -1,96 +1,111 @@
 
 
-# Add "Ask TELA" Section to Sidebar with Persistent Chat Threads
+# AKB Sovereignty + Telauthorium ID
 
-## What's changing
+## Two changes in one
 
-A new **"Ask TELA"** collapsible folder will appear in the sidebar above "Tour Team", showing the latest 10 TELA conversation threads. Each thread is expandable to preview messages. Threads can be renamed, deleted, and messages can be edited.
+### 1. Telauthorium ID (TID)
 
----
+Every user gets a permanent, unique Telauthorium ID at sign-up. It never changes, follows them across all tours, and is displayed in the UI wherever identity matters.
 
-## How it works
+**Format**: `TID-XXXXXXXX` (8 hex characters derived from their user UUID, guaranteed unique)
 
-**Sidebar section** (above Tour Team, below nav links):
-- Collapsible "ASK TELA" header with Sparkles icon and thread count
-- Lists up to 10 most recent threads, each showing a title (auto-generated from first message or user-renamed)
-- Clicking a thread navigates to `/bunk/chat?thread={id}` and loads that conversation
-- Each thread has a context menu (or inline icons) for **Rename** and **Delete**
-- A "+ New Thread" button at the top starts a fresh conversation
+**Database change**: Add `telauthorium_id` column to `profiles` table, auto-populated by updating the `handle_new_user()` trigger.
 
-**Thread persistence** (BunkChat changes):
-- When a user sends their first message, a new thread row is created automatically
-- All messages are saved to the database as they stream in
-- Loading a thread from the sidebar restores the full conversation history
-- User messages can be edited inline (pencil icon) -- editing re-sends to TELA for a fresh response
-- Messages can be deleted individually
+**Where it appears**:
+- Account dropdown menu (under display name)
+- AKB change log entries (who made the change)
+- Sign-off dialog (alongside display name)
 
----
+### 2. AKB Edit Sign-off Gate
 
-## Database changes
+Once the AKB is built, every edit must be signed. A new `AkbEditSignoff` dialog component gates all mutations with:
 
-### New table: `tela_threads`
-| Column | Type | Notes |
-|--------|------|-------|
-| id | uuid | PK, default gen_random_uuid() |
-| tour_id | uuid | NOT NULL |
-| user_id | uuid | NOT NULL |
-| title | text | Default: first 60 chars of first message |
-| created_at | timestamptz | default now() |
-| updated_at | timestamptz | default now() |
+- **What changed** (auto-filled)
+- **Why** (required free-text, min 10 chars)
+- **Impact flags** (Safety / Time / Money)
+- **Signed by**: Display name + Telauthorium ID
+- **Timestamp**: Auto-captured
 
-RLS: Users can CRUD their own threads (user_id = auth.uid() AND is_tour_member(tour_id)).
+The dialog writes to `akb_change_log` (with new `change_reason` column) then executes the mutation.
 
-### New table: `tela_messages`
-| Column | Type | Notes |
-|--------|------|-------|
-| id | uuid | PK, default gen_random_uuid() |
-| thread_id | uuid | FK to tela_threads.id ON DELETE CASCADE |
-| role | text | 'user' or 'assistant' |
-| content | text | NOT NULL |
-| created_at | timestamptz | default now() |
-| updated_at | timestamptz | default now() |
+### 3. AKB Change Log Page
 
-RLS: Users can CRUD messages on threads they own.
+A new `/bunk/changelog` page showing a filterable audit trail: who changed what, when, why, with Telauthorium ID, impact badges, and severity.
 
 ---
 
-## Code changes
+## Technical Details
 
-### 1. `src/hooks/useTelaThreads.ts` (new)
-- Fetches latest 10 threads for the current user + tour
-- Provides `createThread`, `renameThread`, `deleteThread` functions
-- Subscribes to realtime updates on `tela_threads` table
+### Database Migration
 
-### 2. `src/components/bunk/SidebarTelaThreads.tsx` (new)
-- Renders the "ASK TELA" collapsible section
-- Lists threads with title, timestamp, expand/collapse
-- Inline rename (click title to edit)
-- Delete button with confirmation
-- "+ New" button to start fresh thread
+```sql
+-- Add change_reason to akb_change_log
+ALTER TABLE akb_change_log ADD COLUMN change_reason text;
 
-### 3. `src/components/bunk/BunkSidebar.tsx` (modified)
-- Import and render `SidebarTelaThreads` between the Separator and Tour Team section
+-- Add telauthorium_id to profiles
+ALTER TABLE profiles ADD COLUMN telauthorium_id text UNIQUE;
 
-### 4. `src/pages/bunk/BunkChat.tsx` (modified)
-- Accept `?thread={id}` search param
-- On load with thread ID: fetch all messages from `tela_messages` and populate state
-- On first message send (no active thread): create a new thread, save messages as they arrive
-- Save each user message and completed assistant response to `tela_messages`
-- Add edit/delete controls per message:
-  - **Edit**: pencil icon on user messages, replaces content and re-sends from that point
-  - **Delete**: remove message (and subsequent assistant response) from DB and state
-- Update thread `updated_at` on each new message
+-- Backfill existing profiles
+UPDATE profiles SET telauthorium_id = 'TID-' || upper(substr(replace(id::text, '-', ''), 1, 8))
+WHERE telauthorium_id IS NULL;
 
-### 5. `src/App.tsx` (no change needed -- existing `/bunk/chat` route handles search params)
+-- Make NOT NULL after backfill
+ALTER TABLE profiles ALTER COLUMN telauthorium_id SET NOT NULL;
+ALTER TABLE profiles ALTER COLUMN telauthorium_id SET DEFAULT '';
 
----
+-- Update handle_new_user trigger to auto-assign TID
+CREATE OR REPLACE FUNCTION public.handle_new_user() ...
+  -- adds: telauthorium_id = 'TID-' || upper(substr(replace(NEW.id::text, '-', ''), 1, 8))
+```
 
-## User experience flow
+### New Files
 
-1. User opens sidebar -- sees "ASK TELA" section with recent threads listed by title
-2. Clicks a thread -- navigates to TELA chat with full history loaded
-3. Clicks "+ New" -- opens fresh TELA chat
-4. Long-press or hover on thread title -- rename or delete options appear
-5. Inside a chat, user can hover a message to edit or delete it
-6. Editing a user message removes all subsequent messages and re-sends to TELA
+| File | Purpose |
+|------|---------|
+| `src/components/bunk/AkbEditSignoff.tsx` | Reusable sign-off dialog |
+| `src/pages/bunk/BunkChangeLog.tsx` | Audit trail page |
+
+### Modified Files
+
+| File | Change |
+|------|--------|
+| `src/components/bunk/EventNoteEditor.tsx` | Wrap save with AkbEditSignoff (replaces inline impact checkboxes) |
+| `src/components/bunk/AddEventDialog.tsx` | Wrap save with AkbEditSignoff (replaces inline impact checkboxes) |
+| `src/hooks/useTelaActions.ts` | Accept `reason` param, log to `akb_change_log` with `change_reason` |
+| `src/components/bunk/TelaActionCard.tsx` | Show AkbEditSignoff before executing action |
+| `src/components/bunk/ExtractionReviewDialog.tsx` | Show AkbEditSignoff before committing reviewed data |
+| `src/pages/bunk/BunkLayout.tsx` | Display Telauthorium ID in account dropdown |
+| `src/App.tsx` | Add `/bunk/changelog` route |
+| `src/components/bunk/BunkSidebar.tsx` | Add "Change Log" nav link |
+
+### Sign-off Flow
+
+```text
+User clicks Save / Apply / Add
+         |
+         v
++------------------------+
+| AKB Edit Sign-off      |
+|                        |
+| What: [auto-filled]   |
+| Why:  [__________]    |
+|                        |
+| Impact:                |
+| [ ] Safety [ ] Time   |
+| [ ] Money              |
+|                        |
+| Signed by:             |
+| Jane Doe (TID-4A2F9B1C)|
+| 2026-02-22 14:30       |
+|                        |
+| [Cancel]    [Commit]   |
++------------------------+
+         |
+         v
+Write akb_change_log (with change_reason)
+         |
+         v
+Execute actual mutation
+```
 
