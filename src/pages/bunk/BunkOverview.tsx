@@ -625,23 +625,12 @@ const BunkOverview = () => {
               })}
             </div>
           </ScrollArea>
-          <div className="pt-2 border-t border-border flex items-center justify-between">
+          <div className="pt-2 border-t border-border">
             <button
               onClick={() => { setSelectedDate(null); navigate("/bunk/calendar"); }}
               className="font-mono text-[11px] text-primary hover:text-primary/80 transition-colors flex items-center gap-1 min-h-[44px] sm:min-h-0"
             >
               VIEW FULL CALENDAR <ChevronRight className="h-3 w-3" />
-            </button>
-            <button
-              onClick={() => {
-                const q = `What's happening on ${selectedDate ? format(new Date(selectedDate + "T12:00:00"), "MMM d") : "that date"}?`;
-                setSelectedDate(null);
-                navigate(`/bunk/chat?q=${encodeURIComponent(q)}&scope=tour`);
-              }}
-              className="font-mono text-[11px] text-primary hover:text-primary/80 transition-colors flex items-center gap-1 min-h-[44px] sm:min-h-0"
-            >
-              <Sparkles className="h-3 w-3" />
-              ASK TELA
             </button>
           </div>
         </ResponsiveDialogContent>
