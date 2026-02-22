@@ -189,7 +189,7 @@ const VANReviewDialog = ({
       if (bar && startIdx > 0) {
         const btn = bar.children[startIdx] as HTMLElement | undefined;
         if (btn) {
-          btn.scrollIntoView({ behavior: "smooth", inline: "start", block: "nearest" });
+          btn.scrollIntoView({ behavior: "smooth", inline: "center", block: "nearest" });
         }
       }
     });
