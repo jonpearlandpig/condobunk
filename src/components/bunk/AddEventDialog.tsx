@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { useTour } from "@/hooks/useTour";
@@ -39,6 +39,13 @@ const AddEventDialog = ({ open, onOpenChange, defaultDate, onCreated }: AddEvent
   const [showSignoff, setShowSignoff] = useState(false);
 
   const [tourId, setTourId] = useState(selectedTourId);
+
+  // Sync tourId when selectedTourId becomes available
+  const prevSelectedRef = useRef(selectedTourId);
+  if (prevSelectedRef.current !== selectedTourId && !tourId && selectedTourId) {
+    setTourId(selectedTourId);
+  }
+  prevSelectedRef.current = selectedTourId;
   const [venue, setVenue] = useState("");
   const [city, setCity] = useState("");
   const [eventDate, setEventDate] = useState(defaultDate || format(new Date(), "yyyy-MM-dd"));
