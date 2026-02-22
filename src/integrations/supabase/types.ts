@@ -21,6 +21,7 @@ export type Database = {
           affects_safety: boolean
           affects_time: boolean
           change_detail: Json | null
+          change_reason: string | null
           change_summary: string | null
           created_at: string
           entity_id: string
@@ -38,6 +39,7 @@ export type Database = {
           affects_safety?: boolean
           affects_time?: boolean
           change_detail?: Json | null
+          change_reason?: string | null
           change_summary?: string | null
           created_at?: string
           entity_id: string
@@ -55,6 +57,7 @@ export type Database = {
           affects_safety?: boolean
           affects_time?: boolean
           change_detail?: Json | null
+          change_reason?: string | null
           change_summary?: string | null
           created_at?: string
           entity_id?: string
@@ -403,6 +406,7 @@ export type Database = {
           email: string | null
           id: string
           phone: string | null
+          telauthorium_id: string
         }
         Insert: {
           avatar_url?: string | null
@@ -411,6 +415,7 @@ export type Database = {
           email?: string | null
           id: string
           phone?: string | null
+          telauthorium_id?: string
         }
         Update: {
           avatar_url?: string | null
@@ -419,6 +424,7 @@ export type Database = {
           email?: string | null
           id?: string
           phone?: string | null
+          telauthorium_id?: string
         }
         Relationships: []
       }

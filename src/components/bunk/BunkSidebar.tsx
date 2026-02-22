@@ -14,6 +14,7 @@ import {
   StickyNote,
   Bell,
   UserPlus,
+  ShieldCheck,
 } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
 import {
@@ -50,6 +51,7 @@ const navItems = [
   { title: "CALENDAR", url: "/bunk/calendar", icon: CalendarDays },
   { title: "ASK TELA", url: "/bunk/chat", icon: MessageSquare },
   { title: "TOUR AKB'S", url: "/bunk/documents", icon: FileText },
+  { title: "CHANGE LOG", url: "/bunk/changelog", icon: ShieldCheck },
   { title: "ADMIN", url: "/bunk/admin", icon: Settings },
 ];
 

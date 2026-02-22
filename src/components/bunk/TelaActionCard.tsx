@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { CheckCircle, Loader2, Zap } from "lucide-react";
 import { TelaAction, getActionLabel, useTelaActions } from "@/hooks/useTelaActions";
+import AkbEditSignoff, { type SignoffData } from "./AkbEditSignoff";
 
 interface TelaActionCardProps {
   action: TelaAction;
@@ -8,11 +9,15 @@ interface TelaActionCardProps {
 
 const TelaActionCard = ({ action }: TelaActionCardProps) => {
   const { executeAction } = useTelaActions();
-  const [state, setState] = useState<"idle" | "loading" | "done">("idle");
+  const [state, setState] = useState<"idle" | "signoff" | "loading" | "done">("idle");
 
-  const handleApply = async () => {
+  const handleClick = () => {
+    setState("signoff");
+  };
+
+  const handleCommit = async (signoff: SignoffData) => {
     setState("loading");
-    const ok = await executeAction(action);
+    const ok = await executeAction(action, signoff.reason, signoff);
     setState(ok ? "done" : "idle");
   };
 
@@ -26,18 +31,28 @@ const TelaActionCard = ({ action }: TelaActionCardProps) => {
   }
 
   return (
-    <button
-      onClick={handleApply}
-      disabled={state === "loading"}
-      className="flex items-center gap-2 mt-2 px-4 py-2.5 rounded-xl bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition-colors disabled:opacity-60"
-    >
-      {state === "loading" ? (
-        <Loader2 className="h-4 w-4 animate-spin" />
-      ) : (
-        <Zap className="h-4 w-4" />
-      )}
-      {getActionLabel(action)}
-    </button>
+    <>
+      <button
+        onClick={handleClick}
+        disabled={state === "loading"}
+        className="flex items-center gap-2 mt-2 px-4 py-2.5 rounded-xl bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition-colors disabled:opacity-60"
+      >
+        {state === "loading" ? (
+          <Loader2 className="h-4 w-4 animate-spin" />
+        ) : (
+          <Zap className="h-4 w-4" />
+        )}
+        {getActionLabel(action)}
+      </button>
+
+      <AkbEditSignoff
+        open={state === "signoff"}
+        onOpenChange={(o) => { if (!o) setState("idle"); }}
+        changeSummary={`TELA action: ${getActionLabel(action)}`}
+        onCommit={handleCommit}
+        loading={state === "loading"}
+      />
+    </>
   );
 };
 

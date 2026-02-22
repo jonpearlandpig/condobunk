@@ -31,7 +31,7 @@ const BunkLayout = () => {
     queryFn: async () => {
       const { data } = await supabase
         .from("profiles")
-        .select("avatar_url, display_name")
+        .select("avatar_url, display_name, telauthorium_id")
         .eq("id", user!.id)
         .single();
       return data;
@@ -128,6 +128,9 @@ const BunkLayout = () => {
                 <DropdownMenuContent align="end" className="w-48">
                   <div className="px-2 py-1.5 border-b border-border mb-1">
                     <p className="text-sm font-medium text-foreground truncate">{displayName}</p>
+                    {(profile as any)?.telauthorium_id && (
+                      <p className="text-[10px] font-mono text-primary tracking-wider">{(profile as any).telauthorium_id}</p>
+                    )}
                     {user?.email && <p className="text-[10px] text-muted-foreground truncate">{user.email}</p>}
                   </div>
                   <DropdownMenuItem onClick={() => fileInputRef.current?.click()} className="cursor-pointer">
