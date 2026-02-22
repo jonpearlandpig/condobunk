@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { useTour } from "@/hooks/useTour";
@@ -18,21 +18,24 @@ export function useTelaThreads() {
   const [threads, setThreads] = useState<TelaThread[]>([]);
   const [loading, setLoading] = useState(false);
 
-  const tourIds = tours.map((t) => t.id);
+  // Stable string for dependency tracking
+  const tourIdsStr = useMemo(() => tours.map((t) => t.id).sort().join(","), [tours]);
 
   const fetchThreads = useCallback(async () => {
-    if (!user || tourIds.length === 0) return;
+    if (!user || !tourIdsStr) return;
+    const ids = tourIdsStr.split(",");
     setLoading(true);
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from("tela_threads" as any)
       .select("*")
       .eq("user_id", user.id)
-      .in("tour_id", tourIds)
+      .in("tour_id", ids)
       .order("updated_at", { ascending: false })
       .limit(10);
+    if (error) console.error("[tela_threads] fetch error:", error);
     setThreads((data as any as TelaThread[]) || []);
     setLoading(false);
-  }, [user, tourIds.join(",")]);
+  }, [user, tourIdsStr]);
 
   useEffect(() => {
     fetchThreads();
