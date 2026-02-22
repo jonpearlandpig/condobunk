@@ -48,6 +48,29 @@ const BunkSetup = () => {
     { name: string; role?: string }[]
   >([]);
 
+  // Check if user already belongs to a tour with a given name
+  const checkDuplicateTour = async (name: string): Promise<{ id: string; name: string } | null> => {
+    if (!user) return null;
+    const { data: memberRows } = await supabase
+      .from("tour_members")
+      .select("tour_id")
+      .eq("user_id", user.id);
+    if (!memberRows || memberRows.length === 0) return null;
+
+    const tourIds = memberRows.map((m) => m.tour_id);
+    const { data: existing } = await supabase
+      .from("tours")
+      .select("id, name")
+      .in("id", tourIds)
+      .eq("status", "ACTIVE");
+    if (!existing) return null;
+
+    const match = existing.find(
+      (t) => t.name.toLowerCase().trim() === name.toLowerCase().trim()
+    );
+    return match ? { id: match.id, name: match.name } : null;
+  };
+
   // Auto-create tour on first upload (placeholder name)
   const ensureTour = async (): Promise<string | null> => {
     if (tourId) return tourId;
@@ -158,14 +181,25 @@ const BunkSetup = () => {
       if (contacts && contacts.length > 0) setExtractedContacts(contacts);
     }
 
-    // Refresh tour name from DB
+    // Refresh tour name from DB and check for duplicates
     if (tourId) {
       const { data: freshTour } = await supabase
         .from("tours")
         .select("name")
         .eq("id", tourId)
         .single();
-      if (freshTour && freshTour.name !== "New Tour") setTourName(freshTour.name);
+      if (freshTour && freshTour.name !== "New Tour") {
+        setTourName(freshTour.name);
+        // Warn if another tour with the same name already exists
+        const dup = await checkDuplicateTour(freshTour.name);
+        if (dup && dup.id !== tourId) {
+          toast({
+            title: "Duplicate tour detected",
+            description: `A tour named "${dup.name}" already exists. You may want to join that tour instead of creating a new one.`,
+            variant: "destructive",
+          });
+        }
+      }
     }
   };
 
