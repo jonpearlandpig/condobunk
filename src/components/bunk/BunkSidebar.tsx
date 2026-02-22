@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
+import { getInviteUrl } from "@/lib/invite-url";
 import {
   LayoutDashboard,
   CalendarDays,
@@ -127,7 +128,7 @@ const BunkSidebar = () => {
       // Compose a single mailto with all invites listed in the body
       const subject = encodeURIComponent(`You're invited to ${tourName} on Condo Bunk`);
       const bodyLines = newInvites.map(inv =>
-        `${inv.name}: ${window.location.origin}/invite/${inv.token}`
+        `${inv.name}: ${getInviteUrl(inv.token)}`
       ).join("\n");
       const body = encodeURIComponent(`Hey team,\n\nYou've been invited to join ${tourName} on Condo Bunk. Click your personal link below to sign in and join:\n\n${bodyLines}\n\nEach link expires in 7 days.`);
       const allEmails = newInvites.map(i => i.email).join(",");
