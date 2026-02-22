@@ -1,64 +1,61 @@
 
 
-# Sidebar "Invite to Condo Bunk" for Non-User Contacts
+# Simplify Invite Flow: One-Click Google Sign-In
+
+## Problem
+1. **Bulk invite doesn't send anything** -- it creates database records but never emails anyone
+2. **Individual invite** opens a `mailto:` link (relies on your email app), which is clunky
+3. **Invite landing page** is cluttered with password fields and sign-up/sign-in toggles when all you want is "Sign in with Google and join"
 
 ## What Changes
 
-Tour team contacts in the sidebar who have an email but are NOT yet signed up for Condo Bunk (no `appUserId`) get an **Invite** button directly on their contact row. No need to go to Admin. One click creates the invite, copies the link, and opens the email composer -- same flow as Admin but triggered right from the sidebar.
+### 1. Invite Landing Page (`InviteAccept.tsx`) -- Simplified
+- Remove the password form, sign-up/sign-in toggle, and all email/password auth
+- Show only: Tour name, role, and a single **"SIGN IN WITH GOOGLE & JOIN"** button
+- If user is already logged in, show a single **"JOIN TOUR TEAM"** button that accepts immediately
+- After accepting, redirect to `/bunk` (TL;DR page) instead of showing a delay screen
 
-## How It Works
+### 2. Bulk Invite -- Actually Send via Email Edge Function
+- Create a new backend function `send-invite-email` that sends a branded email to each invitee using the Lovable AI-supported approach (or a simple SMTP/Resend integration)
+- The "INVITE ALL" button will: create invite records, then call the edge function to send emails to all eligible contacts
+- Each email contains: Tour name, a "Join Tour" button linking to `/invite/{token}`
 
-1. **Single invite**: Hover over a non-user contact in the sidebar Tour Team section. An "Invite to Condo Bunk" icon (UserPlus) appears. Click it -- an invite is created in `tour_invites`, the link is copied to clipboard, and a `mailto:` composer opens with the invite URL pre-filled.
+### 3. Individual Invite -- Also Send via Edge Function
+- Instead of opening `mailto:`, the individual invite button calls the same edge function to send the email directly
+- No more relying on the admin's email client
 
-2. **Bulk invite**: A small "Invite All" button appears at the top of the Tour Team section (only visible when there are uninvited contacts with emails). Clicking it creates invites for all eligible contacts in one pass, copies all links, and shows a summary toast.
-
-3. **Visual indicator**: Contacts who have a pending (unexpired, unused) invite show a small "invited" badge so you know they already got one. No duplicate invites.
-
-4. **Existing invites check**: Before creating an invite, the system checks `tour_invites` for an active (unexpired, unused) invite for that email. If one exists, it just copies the existing link instead of creating a duplicate.
+## Recipient Experience (After Changes)
+```
+1. Recipient gets email: "You've been invited to join [Tour Name] on Condo Bunk"
+2. Clicks "Join Tour" button in email --> opens /invite/{token}
+3. Sees: Tour name, their role, one big "SIGN IN WITH GOOGLE & JOIN" button
+4. Signs in with Google --> auto-accepts invite --> lands on TL;DR page
+```
 
 ## Technical Details
 
-### Files Modified
+### New Edge Function: `supabase/functions/send-invite-email/index.ts`
+- Accepts: `{ invites: [{ email, name, token, tour_name, role }] }`
+- Uses Resend API (requires RESEND_API_KEY secret) OR we can use the Lovable AI model to generate the email HTML and send via Supabase's built-in email
+- Sends a clean branded email with a "Join Tour" CTA button
 
-**`src/components/bunk/SidebarContactList.tsx`**
-- Accept new props: `tourId` (already available via `useTour`), `invites` (active invite list to check for existing ones)
-- Add `UserPlus` icon import from lucide-react
-- For contacts where `!c.appUserId && c.email`:
-  - Show a `UserPlus` invite button in the hover actions
-  - On click: call a new `handleInviteContact` function that:
-    1. Checks if an active invite already exists for this email (from the passed-in invites list)
-    2. If not, inserts into `tour_invites` with the contact's email, role mapped to tour role, tour name
-    3. Copies invite URL to clipboard
-    4. Opens `mailto:` with pre-filled subject and body containing the invite link
-    5. Dispatches a `contacts-changed` event so the sidebar refreshes
-  - If an active invite already exists, show a badge/tooltip "Invited" and on click just re-copy the link
+### Modified: `src/pages/InviteAccept.tsx`
+- Strip out password form, sign-up/sign-in toggle
+- Keep only: invite info card + "SIGN IN WITH GOOGLE & JOIN" button (for unauthenticated users)
+- Add: "JOIN TOUR TEAM" button (for already-authenticated users)
+- Redirect to `/bunk` immediately after acceptance
 
-**`src/components/bunk/BunkSidebar.tsx`**
-- Fetch active (unexpired, unused) `tour_invites` for the selected tour
-- Pass the invites list down to `SidebarContactList`
-- Add a "Invite All" button in the Tour Team header when uninvited contacts with emails exist
-- The bulk invite function iterates eligible contacts, creates invites, and shows a summary toast
+### Modified: `src/components/bunk/BunkSidebar.tsx`
+- `handleBulkInvite`: after creating invite records, call `send-invite-email` edge function with all the invite details
+- Show toast: "X invites sent!" instead of the misleading "Links will be included when you email each contact"
 
-**`src/hooks/useSidebarContacts.ts`**
-- No changes needed -- contacts already have `email` and `appUserId` fields
+### Modified: `src/components/bunk/SidebarContactList.tsx`
+- `handleInviteContact`: replace `mailto:` with a call to `send-invite-email` edge function
+- Show toast: "Invite sent to {name}!"
+
+### Secret Required
+- `RESEND_API_KEY` -- needed to send emails programmatically (Resend is free for up to 100 emails/day)
+- Alternative: If you prefer not to add another service, we can keep `mailto:` but make the bulk version open one pre-composed email per contact
 
 ### No Database Changes
-- Uses the existing `tour_invites` table and existing RLS policies (TA/MGMT can insert invites)
-- No new migrations needed
-
-### Invite Flow (same as existing Admin flow)
-```text
-1. Insert into tour_invites (tour_id, email, role, created_by, tour_name)
-2. Get back the token
-3. Build URL: {origin}/invite/{token}
-4. Copy to clipboard
-5. Open mailto:{email}?subject=...&body=...{inviteUrl}...
-6. Toast: "Invite sent -- link copied!"
-```
-
-### Edge Cases
-- Contact has no email: no invite button shown (falls back to existing "Ask TELA for details")
-- Contact already has appUserId: no invite button (they're already on the app)
-- Active invite already exists: show "Invited" badge, click re-copies link
-- User is not TA/MGMT: RLS will block the insert -- show appropriate error toast
-
+- Uses existing `tour_invites` table as-is
