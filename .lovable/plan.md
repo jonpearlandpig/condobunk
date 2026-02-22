@@ -1,37 +1,39 @@
 
 
-# Clickable Calendar Events with Inline Event Cards
+# Add "Ask TELA" Action to Event Cards
 
 ## What's changing
 
-Calendar date buttons on the TL;DR page will open an inline event card (popover/dialog) instead of navigating to the full Calendar page. Users can quickly read event details without leaving the TL;DR screen.
+Each event card in the TL;DR calendar popup will get an **"Ask TELA"** button alongside the existing "View Full Calendar" link. Tapping "Ask TELA" will:
+
+1. Close the event card dialog
+2. Navigate to the TELA chat page (`/bunk/chat`) with a pre-filled context query using the existing `?q=` parameter (e.g., `"What's the rundown for Rock Nashville on Feb 28?"`)
+3. The chat will auto-scope to the relevant tour using `?scope=tour`
+
+This uses the existing BunkChat auto-send feature (`?q=` search param) so no new components are needed.
+
+## How it will look
+
+The dialog footer will have two side-by-side actions:
+- **VIEW FULL CALENDAR** (existing, left-aligned)
+- **ASK TELA** (new, right-aligned, with Sparkles icon)
+
+Each individual event card will also get a small "Ask TELA" tap target that scopes the question specifically to that venue/city/date.
 
 ---
 
-## How it works
-
-- Tapping a date with events opens a **Popover** (desktop) or **bottom Drawer** (mobile) showing all events for that date
-- Each event card displays: venue, city, date, tour name, show time, load-in, and notes preview
-- A "View Full Calendar" link remains available inside the popover for deep navigation
-- Tapping outside or pressing X closes the card
-
 ## Technical details
 
-### Data changes
-- Expand `loadEventDates` to fetch full event details: `id, event_date, tour_id, venue, city, show_time, load_in, notes`
-- Store as `eventDetails` array instead of just date+tour_id pairs
+### Changes to `src/pages/bunk/BunkOverview.tsx`
 
-### UI changes in `BunkOverview.tsx`
-- Add state for `selectedDate: string | null`
-- On date button click: set `selectedDate` to that date string (instead of navigating)
-- Render a `ResponsiveDialog` (Drawer on mobile, Dialog on desktop) that filters events for the selected date
-- Event card content:
-  - Tour color dot + tour name
-  - Venue name (bold) + city
-  - Show time / load-in if available
-  - Notes snippet (first 2 lines)
-  - Tap event row to navigate to full calendar (optional deep link)
+1. Import `Sparkles` icon from lucide-react (may already be imported)
+2. Add a small "Ask TELA" button to each event card row that:
+   - Builds a query string like: `What's the full rundown for [venue] in [city] on [date]?`
+   - Navigates to `/bunk/chat?q={encodedQuery}&scope=tour`
+   - Sets `selectedTourId` before navigating (via existing tour selection mechanism)
+   - Closes the dialog
+3. Add an "Ask TELA" button in the dialog footer next to "View Full Calendar" for a general date-scoped question (e.g., `"What's happening on Feb 28?"`)
 
-### Files modified
-1. **`src/pages/bunk/BunkOverview.tsx`** -- Replace navigate-on-click with popover/dialog showing event details inline; expand event data fetch to include venue, city, times, notes
+### No other files need changes
+The BunkChat page already supports `?q=` for auto-sending and `?scope=tour` for tour-scoped queries.
 
