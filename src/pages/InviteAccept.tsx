@@ -59,30 +59,12 @@ const InviteAccept = () => {
     }
   }, [authLoading, user, invite]);
 
-  const acceptInvite = async (userId: string) => {
-    if (!invite) return;
+  const acceptInvite = async (_userId: string) => {
+    if (!invite || !token) return;
     setAccepting(true);
     try {
-      const { data: existing } = await supabase
-        .from("tour_members")
-        .select("id")
-        .eq("tour_id", invite.tour_id)
-        .eq("user_id", userId)
-        .maybeSingle();
-
-      if (!existing) {
-        const { error: memberError } = await supabase.from("tour_members").insert({
-          tour_id: invite.tour_id,
-          user_id: userId,
-          role: invite.role as "TA" | "MGMT" | "CREW",
-        } as any);
-        if (memberError) throw memberError;
-      }
-
-      await supabase
-        .from("tour_invites")
-        .update({ used_by: userId, used_at: new Date().toISOString() })
-        .eq("id", invite.id);
+      const { error } = await supabase.rpc("accept_tour_invite", { _token: token });
+      if (error) throw error;
 
       setAccepted(true);
       setTimeout(() => navigate("/bunk", { replace: true }), 1200);

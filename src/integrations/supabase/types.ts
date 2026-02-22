@@ -1236,6 +1236,7 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      accept_tour_invite: { Args: { _token: string }; Returns: Json }
       is_tour_admin_or_mgmt: { Args: { _tour_id: string }; Returns: boolean }
       is_tour_member: { Args: { _tour_id: string }; Returns: boolean }
       match_contact_tours: { Args: { _email: string }; Returns: string[] }
