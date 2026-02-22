@@ -27,12 +27,20 @@ export interface TourTeamGroup {
   contacts: SidebarContact[];
 }
 
+export interface TourVenueGroup {
+  tourId: string;
+  tourName: string;
+  venueGroups: VenueGroup[];
+  totalContacts: number;
+}
+
 export const useSidebarContacts = () => {
   const { tours } = useTour();
   const tourId = tours[0]?.id;
   const [tourContacts, setTourContacts] = useState<SidebarContact[]>([]);
   const [tourTeamGroups, setTourTeamGroups] = useState<TourTeamGroup[]>([]);
   const [venueGroups, setVenueGroups] = useState<VenueGroup[]>([]);
+  const [tourVenueGroups, setTourVenueGroups] = useState<TourVenueGroup[]>([]);
   const [venueContacts, setVenueContacts] = useState<SidebarContact[]>([]);
   const [venueLabel, setVenueLabel] = useState<string>("");
   const [loading, setLoading] = useState(true);
@@ -87,63 +95,89 @@ export const useSidebarContacts = () => {
     const activeTourContacts = allTourContacts.filter(c => (c as any).tour_id === tourId);
     setTourContacts(activeTourContacts);
 
-    // Venue contacts (rolling 3 weeks)
+    // Venue contacts for ALL tours (rolling 3 weeks)
     const today = new Date();
     const threeWeeks = new Date();
     threeWeeks.setDate(today.getDate() + 21);
     const todayStr = today.toISOString().split("T")[0];
     const threeWeeksStr = threeWeeks.toISOString().split("T")[0];
 
-    const { data: events } = await supabase
+    const { data: allEvents } = await supabase
       .from("schedule_events")
-      .select("venue, city, event_date")
-      .eq("tour_id", tourId)
+      .select("venue, city, event_date, tour_id")
+      .in("tour_id", tourIds)
       .gte("event_date", todayStr)
       .lte("event_date", threeWeeksStr)
       .order("event_date");
 
-    // Build unique venues in calendar order with city info
-    const venueMap = new Map<string, { city: string | null; earliestDate: string }>();
-    for (const e of (events || [])) {
+    // Build per-tour venue maps
+    const tourVenueMap = new Map<string, Map<string, { city: string | null; earliestDate: string }>>();
+    for (const e of (allEvents || [])) {
       if (!e.venue) continue;
+      if (!tourVenueMap.has(e.tour_id)) tourVenueMap.set(e.tour_id, new Map());
+      const venueMap = tourVenueMap.get(e.tour_id)!;
       if (!venueMap.has(e.venue)) {
         venueMap.set(e.venue, { city: e.city, earliestDate: e.event_date || todayStr });
       }
     }
 
-    // Also include venues from events without contacts (city-only from schedule)
-    // and venues that have no venue contacts yet
-    const venueNames = [...venueMap.keys()];
+    // Fetch venue contacts for all tours
+    const allVenueNames = new Set<string>();
+    for (const vm of tourVenueMap.values()) {
+      for (const v of vm.keys()) allVenueNames.add(v);
+    }
 
-    let venueContactsData: SidebarContact[] = [];
-    if (venueNames.length > 0) {
-      setVenueLabel(venueNames.length === 1 ? venueNames[0] : `${venueNames.length} Venues`);
+    let allVenueContacts: (SidebarContact & { tour_id: string })[] = [];
+    if (allVenueNames.size > 0) {
       const { data: venueData } = await supabase
         .from("contacts")
-        .select("id, name, role, phone, email, scope, venue")
-        .eq("tour_id", tourId)
+        .select("id, name, role, phone, email, scope, venue, tour_id")
+        .in("tour_id", tourIds)
         .eq("scope", "VENUE")
-        .in("venue", venueNames)
+        .in("venue", [...allVenueNames])
         .order("venue")
         .order("name");
-      venueContactsData = (venueData as SidebarContact[]) || [];
-    } else {
-      setVenueLabel("");
+      allVenueContacts = (venueData as any[]) || [];
     }
 
-    setVenueContacts(venueContactsData);
-
-    // Build grouped structure ordered by calendar
-    const venueGroupList: VenueGroup[] = [];
-    for (const [venue, meta] of venueMap) {
-      venueGroupList.push({
-        venue,
-        city: meta.city,
-        earliestDate: meta.earliestDate,
-        contacts: venueContactsData.filter(c => c.venue === venue),
+    // Build per-tour venue groups
+    const tvGroups: TourVenueGroup[] = [];
+    for (const t of tours) {
+      const venueMap = tourVenueMap.get(t.id);
+      if (!venueMap || venueMap.size === 0) continue;
+      const tourVenues: VenueGroup[] = [];
+      for (const [venue, meta] of venueMap) {
+        const contacts = allVenueContacts.filter(c => c.tour_id === t.id && c.venue === venue);
+        tourVenues.push({ venue, city: meta.city, earliestDate: meta.earliestDate, contacts });
+      }
+      tvGroups.push({
+        tourId: t.id,
+        tourName: t.name,
+        venueGroups: tourVenues,
+        totalContacts: tourVenues.reduce((sum, vg) => sum + vg.contacts.length, 0),
       });
     }
-    // Already in calendar order from the Map insertion order (events were ordered by date)
+    setTourVenueGroups(tvGroups);
+
+    // Keep flat lists for backward compat (active tour only)
+    const activeVenueMap = tourVenueMap.get(tourId);
+    const activeVenueNames = activeVenueMap ? [...activeVenueMap.keys()] : [];
+    const activeVenueContacts = allVenueContacts.filter(c => c.tour_id === tourId);
+    setVenueContacts(activeVenueContacts);
+    setVenueLabel(activeVenueNames.length === 1 ? activeVenueNames[0] : activeVenueNames.length > 0 ? `${activeVenueNames.length} Venues` : "");
+
+    // Build grouped structure for active tour
+    const venueGroupList: VenueGroup[] = [];
+    if (activeVenueMap) {
+      for (const [venue, meta] of activeVenueMap) {
+        venueGroupList.push({
+          venue,
+          city: meta.city,
+          earliestDate: meta.earliestDate,
+          contacts: activeVenueContacts.filter(c => c.venue === venue),
+        });
+      }
+    }
     setVenueGroups(venueGroupList);
 
     setLoading(false);
@@ -188,5 +222,5 @@ export const useSidebarContacts = () => {
     setVenueContacts(remover);
   }, []);
 
-  return { tourContacts, tourTeamGroups, venueContacts, venueGroups, venueLabel, loading, updateContact, deleteContact, refetch: fetchContacts };
+  return { tourContacts, tourTeamGroups, tourVenueGroups, venueContacts, venueGroups, venueLabel, loading, updateContact, deleteContact, refetch: fetchContacts };
 };

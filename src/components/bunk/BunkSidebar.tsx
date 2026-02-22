@@ -59,12 +59,13 @@ const BunkSidebar = () => {
   const { user } = useAuth();
   const { tours } = useTour();
   const tourId = tours[0]?.id;
-  const { tourContacts, tourTeamGroups, venueContacts, venueGroups, venueLabel, loading, updateContact, deleteContact } = useSidebarContacts();
+  const { tourContacts, tourTeamGroups, tourVenueGroups, venueContacts, venueGroups, venueLabel, loading, updateContact, deleteContact } = useSidebarContacts();
   const { onlineUsers } = usePresence();
   const { totalUnread, unreadFrom } = useUnreadDMs();
   const [tourTeamOpen, setTourTeamOpen] = useState(false);
   const [venuePartnersOpen, setVenuePartnersOpen] = useState(false);
   const [expandedTours, setExpandedTours] = useState<Set<string>>(new Set());
+  const [expandedVenueTours, setExpandedVenueTours] = useState<Set<string>>(new Set());
   const [activeInvites, setActiveInvites] = useState<ActiveInvite[]>([]);
   const [bulkInviting, setBulkInviting] = useState(false);
 
@@ -293,7 +294,9 @@ const BunkSidebar = () => {
             <ChevronRight className={`h-3 w-3 transition-transform ${venuePartnersOpen ? "rotate-90" : ""}`} />
             <Building2 className="h-3 w-3" />
             Venue Partners
-            <span className="ml-auto text-muted-foreground/40 normal-case tracking-normal">{venueGroups.length}</span>
+            <span className="ml-auto text-muted-foreground/40 normal-case tracking-normal">
+              {tourVenueGroups.reduce((sum, g) => sum + g.venueGroups.length, 0)}
+            </span>
           </button>
           {venuePartnersOpen && (
             <SidebarGroupContent>
@@ -301,8 +304,51 @@ const BunkSidebar = () => {
                 <div className="px-4 py-2">
                   <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground/40" />
                 </div>
+              ) : tourVenueGroups.length === 0 ? (
+                <p className="px-4 py-1.5 text-xs text-muted-foreground/50 italic">No upcoming venues</p>
+              ) : tourVenueGroups.length === 1 ? (
+                /* Single tour: show venue groups directly */
+                <SidebarContactList contacts={venueContacts} onNavigate={handleNavClick} onUpdate={updateContact} onDelete={deleteContact} onlineUserIds={onlineUsers} grouped venueGroups={tourVenueGroups[0].venueGroups} />
               ) : (
-                <SidebarContactList contacts={venueContacts} onNavigate={handleNavClick} onUpdate={updateContact} onDelete={deleteContact} onlineUserIds={onlineUsers} grouped venueGroups={venueGroups} />
+                /* Multiple tours: nest under tour folders */
+                <div className="space-y-0.5">
+                  {tourVenueGroups.map((tvg) => {
+                    const isExpanded = expandedVenueTours.has(tvg.tourId);
+                    const toggleTour = () => {
+                      setExpandedVenueTours(prev => {
+                        const next = new Set(prev);
+                        if (next.has(tvg.tourId)) next.delete(tvg.tourId);
+                        else next.add(tvg.tourId);
+                        return next;
+                      });
+                    };
+                    return (
+                      <div key={tvg.tourId}>
+                        <button
+                          onClick={toggleTour}
+                          className="w-full flex items-center gap-2 px-4 py-1.5 hover:bg-sidebar-accent/50 rounded-md transition-colors text-left"
+                        >
+                          <ChevronRight className={`h-3 w-3 text-muted-foreground/50 shrink-0 transition-transform ${isExpanded ? "rotate-90" : ""}`} />
+                          <span className="text-xs font-medium text-sidebar-foreground truncate">{tvg.tourName}</span>
+                          <span className="ml-auto text-[10px] font-mono text-muted-foreground/40">{tvg.venueGroups.length}</span>
+                        </button>
+                        {isExpanded && (
+                          <div className="ml-2 border-l border-border/30 pl-1">
+                            <SidebarContactList
+                              contacts={tvg.venueGroups.flatMap(vg => vg.contacts)}
+                              onNavigate={handleNavClick}
+                              onUpdate={updateContact}
+                              onDelete={deleteContact}
+                              onlineUserIds={onlineUsers}
+                              grouped
+                              venueGroups={tvg.venueGroups}
+                            />
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
               )}
             </SidebarGroupContent>
           )}
