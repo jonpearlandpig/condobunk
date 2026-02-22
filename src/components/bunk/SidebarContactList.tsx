@@ -560,6 +560,17 @@ const SidebarContactList = ({ contacts, onNavigate, onUpdate, onDelete, onlineUs
                 EMAIL
               </a>
             )}
+            {/* Invite button for non-user contacts with email */}
+            {!c.appUserId && c.email && (
+              <button
+                onClick={(e) => { e.stopPropagation(); handleInviteContact(c); }}
+                className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-md bg-primary/10 text-primary text-xs font-mono font-medium active:bg-primary/20 transition-colors"
+                aria-label="Invite to Condo Bunk"
+              >
+                <UserPlus className="h-3.5 w-3.5" />
+                INVITE
+              </button>
+            )}
             {onUpdate && (
               <button onClick={() => startEdit(c)} className="p-2 rounded-md bg-muted/50 text-muted-foreground active:bg-muted transition-colors" aria-label="Edit">
                 <Pencil className="h-3.5 w-3.5" />
