@@ -1,61 +1,53 @@
 
 
-# Simplify Invite Flow: One-Click Google Sign-In
+## Problem Diagnosis
 
-## Problem
-1. **Bulk invite doesn't send anything** -- it creates database records but never emails anyone
-2. **Individual invite** opens a `mailto:` link (relies on your email app), which is clunky
-3. **Invite landing page** is cluttered with password fields and sign-up/sign-in toggles when all you want is "Sign in with Google and join"
+There are **two separate "Brandon Lake -- King of Hearts Tour"** tours in the system:
 
-## What Changes
+| Tour | Owner | Events | ID (short) |
+|------|-------|--------|------------|
+| Tour A | Jon Hartman | 50 | `6aff7e98` |
+| Tour B | Nathan Jon | 61 | `202b5bb5` |
 
-### 1. Invite Landing Page (`InviteAccept.tsx`) -- Simplified
-- Remove the password form, sign-up/sign-in toggle, and all email/password auth
-- Show only: Tour name, role, and a single **"SIGN IN WITH GOOGLE & JOIN"** button
-- If user is already logged in, show a single **"JOIN TOUR TEAM"** button that accepts immediately
-- After accepting, redirect to `/bunk` (TL;DR page) instead of showing a delay screen
+**What happened:**
+1. Jon created Tour A at 7:58 PM
+2. Nathan created Tour B at 8:05 PM
+3. Nathan invited Jon to Tour B -- the invite was manually marked as "used" before the `accept_tour_invite` RPC existed, so **the tour_members INSERT never actually ran**
+4. Jon is only a member of his own Tour A, so he sees 50 events and only his own contacts
+5. Nathan is only a member of Tour B, so he sees 61 events and his team (David, Caleb, Pip, Sidney)
 
-### 2. Bulk Invite -- Actually Send via Email Edge Function
-- Create a new backend function `send-invite-email` that sends a branded email to each invitee using the Lovable AI-supported approach (or a simple SMTP/Resend integration)
-- The "INVITE ALL" button will: create invite records, then call the edge function to send emails to all eligible contacts
-- Each email contains: Tour name, a "Join Tour" button linking to `/invite/{token}`
+## Fix Plan
 
-### 3. Individual Invite -- Also Send via Edge Function
-- Instead of opening `mailto:`, the individual invite button calls the same edge function to send the email directly
-- No more relying on the admin's email client
+### Step 1: Data fix -- add Jon to Nathan's tour and clean up
 
-## Recipient Experience (After Changes)
+Run SQL to:
+- Add Jon as a member of Nathan's tour (`202b5bb5`)
+- Delete Jon's duplicate tour (`6aff7e98`) and its associated data (events, contacts, etc.)
+
+This will consolidate everyone onto a single tour with 61 events.
+
+### Step 2: Prevent future duplicate tours (code change)
+
+Update `BunkSetup.tsx` to check if a tour with the same name already exists before creating a new one, showing a warning if a duplicate is detected.
+
+### Technical Details
+
+**Data migration SQL:**
+```text
+-- Add Jon to Nathan's tour
+INSERT INTO tour_members (tour_id, user_id, role)
+VALUES ('202b5bb5-f404-41b1-bcb4-27d120d6324c', '1385f11a-1337-4ef7-83ac-1bbd62af4781', 'TA')
+ON CONFLICT DO NOTHING;
+
+-- Delete Jon's duplicate tour data
+DELETE FROM schedule_events WHERE tour_id = '6aff7e98-a84e-4dd8-8711-08010c360a83';
+DELETE FROM contacts WHERE tour_id = '6aff7e98-a84e-4dd8-8711-08010c360a83';
+DELETE FROM documents WHERE tour_id = '6aff7e98-a84e-4dd8-8711-08010c360a83';
+DELETE FROM tour_members WHERE tour_id = '6aff7e98-a84e-4dd8-8711-08010c360a83';
+DELETE FROM tours WHERE id = '6aff7e98-a84e-4dd8-8711-08010c360a83';
 ```
-1. Recipient gets email: "You've been invited to join [Tour Name] on Condo Bunk"
-2. Clicks "Join Tour" button in email --> opens /invite/{token}
-3. Sees: Tour name, their role, one big "SIGN IN WITH GOOGLE & JOIN" button
-4. Signs in with Google --> auto-accepts invite --> lands on TL;DR page
-```
 
-## Technical Details
+**Code change in BunkSetup.tsx:**
+- Before creating a new tour, query existing tours the user belongs to and warn if a tour with the same name exists
+- This prevents accidental duplicate tour creation
 
-### New Edge Function: `supabase/functions/send-invite-email/index.ts`
-- Accepts: `{ invites: [{ email, name, token, tour_name, role }] }`
-- Uses Resend API (requires RESEND_API_KEY secret) OR we can use the Lovable AI model to generate the email HTML and send via Supabase's built-in email
-- Sends a clean branded email with a "Join Tour" CTA button
-
-### Modified: `src/pages/InviteAccept.tsx`
-- Strip out password form, sign-up/sign-in toggle
-- Keep only: invite info card + "SIGN IN WITH GOOGLE & JOIN" button (for unauthenticated users)
-- Add: "JOIN TOUR TEAM" button (for already-authenticated users)
-- Redirect to `/bunk` immediately after acceptance
-
-### Modified: `src/components/bunk/BunkSidebar.tsx`
-- `handleBulkInvite`: after creating invite records, call `send-invite-email` edge function with all the invite details
-- Show toast: "X invites sent!" instead of the misleading "Links will be included when you email each contact"
-
-### Modified: `src/components/bunk/SidebarContactList.tsx`
-- `handleInviteContact`: replace `mailto:` with a call to `send-invite-email` edge function
-- Show toast: "Invite sent to {name}!"
-
-### Secret Required
-- `RESEND_API_KEY` -- needed to send emails programmatically (Resend is free for up to 100 emails/day)
-- Alternative: If you prefer not to add another service, we can keep `mailto:` but make the bulk version open one pre-composed email per contact
-
-### No Database Changes
-- Uses existing `tour_invites` table as-is
