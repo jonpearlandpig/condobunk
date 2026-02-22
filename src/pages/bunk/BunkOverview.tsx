@@ -31,6 +31,8 @@ import {
   Zap,
   Loader2,
   CalendarDays,
+  MapPin,
+  Clock,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -44,7 +46,14 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-
+import {
+  ResponsiveDialog,
+  ResponsiveDialogContent,
+  ResponsiveDialogHeader,
+  ResponsiveDialogTitle,
+  ResponsiveDialogDescription,
+} from "@/components/ui/responsive-dialog";
+import { ScrollArea } from "@/components/ui/scroll-area";
 const stateColors: Record<string, string> = {
   BUILDING: "text-info",
   SOVEREIGN: "text-success",
@@ -64,7 +73,8 @@ const BunkOverview = () => {
   const [deletingTour, setDeletingTour] = useState<{ id: string; name: string } | null>(null);
   const [tldr, setTldr] = useState<Array<{ text: string; actionable: boolean }>>([]);
   const [tldrLoading, setTldrLoading] = useState(false);
-  const [eventDates, setEventDates] = useState<Array<{ event_date: string; tour_id: string }>>([]);
+  const [eventDates, setEventDates] = useState<Array<{ id: string; event_date: string; tour_id: string; venue: string | null; city: string | null; show_time: string | null; load_in: string | null; notes: string | null }>>([]);
+  const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const isMobile = useIsMobile();
 
   // Clear welcome param after initial render so it doesn't persist on refresh
@@ -117,11 +127,11 @@ const BunkOverview = () => {
     if (tourIds.length === 0) return;
     const { data } = await supabase
       .from("schedule_events")
-      .select("event_date, tour_id")
+      .select("id, event_date, tour_id, venue, city, show_time, load_in, notes")
       .in("tour_id", tourIds)
       .not("event_date", "is", null)
       .order("event_date");
-    setEventDates((data || []).filter(d => d.event_date) as Array<{ event_date: string; tour_id: string }>);
+    setEventDates((data || []).filter(d => d.event_date) as typeof eventDates);
   };
 
   const generateTldr = async () => {
@@ -302,6 +312,19 @@ const BunkOverview = () => {
     return map;
   }, [eventDates]);
 
+  // Events for selected date
+  const selectedDateEvents = useMemo(() => {
+    if (!selectedDate) return [];
+    return eventDates.filter(e => e.event_date === selectedDate);
+  }, [selectedDate, eventDates]);
+
+  // Tour name lookup
+  const tourNameMap = useMemo(() => {
+    const m: Record<string, string> = {};
+    tours.forEach(t => { m[t.id] = t.name; });
+    return m;
+  }, [tours]);
+
   // Calendar grid days
   const calendarDays = useMemo(() => {
     const today = new Date();
@@ -479,7 +502,7 @@ const BunkOverview = () => {
               return (
                 <button
                   key={i}
-                  onClick={() => hasEvents && navigate("/bunk/calendar")}
+                  onClick={() => hasEvents && setSelectedDate(dateStr)}
                   className={`relative flex flex-col items-center justify-center rounded-md transition-all py-1.5 sm:py-2 min-h-[36px] sm:min-h-[44px] ${
                     today
                       ? "bg-primary/15 border border-primary/30"
@@ -528,7 +551,79 @@ const BunkOverview = () => {
         </motion.div>
       )}
 
-      {/* Stat Cards */}
+      {/* Inline Event Card Dialog */}
+      <ResponsiveDialog open={!!selectedDate} onOpenChange={(open) => !open && setSelectedDate(null)}>
+        <ResponsiveDialogContent className="sm:max-w-md">
+          <ResponsiveDialogHeader>
+            <ResponsiveDialogTitle className="font-mono tracking-wider text-sm">
+              {selectedDate ? format(new Date(selectedDate + "T12:00:00"), "EEEE, MMM d, yyyy").toUpperCase() : ""}
+            </ResponsiveDialogTitle>
+            <ResponsiveDialogDescription className="text-xs font-mono text-muted-foreground">
+              {selectedDateEvents.length} event{selectedDateEvents.length !== 1 ? "s" : ""}
+            </ResponsiveDialogDescription>
+          </ResponsiveDialogHeader>
+          <ScrollArea className="max-h-[60dvh] overflow-y-auto">
+            <div className="space-y-3 px-1 pb-2">
+              {selectedDateEvents.map((evt) => {
+                const tourName = tourNameMap[evt.tour_id] || "Tour";
+                const color = tourColorMap[evt.tour_id] || "hsl(var(--primary))";
+                return (
+                  <div
+                    key={evt.id}
+                    className="rounded-lg border border-border bg-muted/30 p-3 space-y-1.5"
+                  >
+                    <div className="flex items-center gap-2">
+                      <span className="h-2.5 w-2.5 rounded-full shrink-0" style={{ backgroundColor: color }} />
+                      <span className="font-mono text-[10px] tracking-wider text-muted-foreground uppercase truncate">
+                        {tourName}
+                      </span>
+                    </div>
+                    <div className="flex items-start gap-2">
+                      <MapPin className="h-3.5 w-3.5 text-muted-foreground shrink-0 mt-0.5" />
+                      <div className="min-w-0">
+                        <p className="text-sm font-semibold leading-tight truncate">
+                          {evt.venue || "Venue TBD"}
+                        </p>
+                        {evt.city && (
+                          <p className="text-xs text-muted-foreground">{evt.city}</p>
+                        )}
+                      </div>
+                    </div>
+                    {(evt.show_time || evt.load_in) && (
+                      <div className="flex items-center gap-2">
+                        <Clock className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                        <div className="flex gap-3 text-xs font-mono text-muted-foreground">
+                          {evt.show_time && (
+                            <span>Show: {format(new Date(evt.show_time), "h:mm a")}</span>
+                          )}
+                          {evt.load_in && (
+                            <span>Load-in: {format(new Date(evt.load_in), "h:mm a")}</span>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                    {evt.notes && (
+                      <p className="text-xs text-muted-foreground/80 font-mono line-clamp-2 pl-5">
+                        {evt.notes}
+                      </p>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </ScrollArea>
+          <div className="pt-2 border-t border-border">
+            <button
+              onClick={() => { setSelectedDate(null); navigate("/bunk/calendar"); }}
+              className="font-mono text-[11px] text-primary hover:text-primary/80 transition-colors flex items-center gap-1 min-h-[44px] sm:min-h-0"
+            >
+              VIEW FULL CALENDAR <ChevronRight className="h-3 w-3" />
+            </button>
+          </div>
+        </ResponsiveDialogContent>
+      </ResponsiveDialog>
+
+
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         {cards.map((card, i) => (
           <motion.div
