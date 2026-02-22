@@ -21,14 +21,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from "@/hooks/use-toast";
 import { Loader2 } from "lucide-react";
+import AkbEditSignoff, { type SignoffData } from "./AkbEditSignoff";
 
 interface AddEventDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  defaultDate?: string; // yyyy-MM-dd
+  defaultDate?: string;
   onCreated?: () => void;
 }
 
@@ -36,6 +36,7 @@ const AddEventDialog = ({ open, onOpenChange, defaultDate, onCreated }: AddEvent
   const { user } = useAuth();
   const { tours, selectedTourId } = useTour();
   const [saving, setSaving] = useState(false);
+  const [showSignoff, setShowSignoff] = useState(false);
 
   const [tourId, setTourId] = useState(selectedTourId);
   const [venue, setVenue] = useState("");
@@ -44,9 +45,6 @@ const AddEventDialog = ({ open, onOpenChange, defaultDate, onCreated }: AddEvent
   const [showTime, setShowTime] = useState("");
   const [loadIn, setLoadIn] = useState("");
   const [notes, setNotes] = useState("");
-  const [affectsSafety, setAffectsSafety] = useState(false);
-  const [affectsTime, setAffectsTime] = useState(false);
-  const [affectsMoney, setAffectsMoney] = useState(false);
 
   const reset = () => {
     setVenue("");
@@ -55,9 +53,6 @@ const AddEventDialog = ({ open, onOpenChange, defaultDate, onCreated }: AddEvent
     setShowTime("");
     setLoadIn("");
     setNotes("");
-    setAffectsSafety(false);
-    setAffectsTime(false);
-    setAffectsMoney(false);
   };
 
   const toTimestamp = (date: string, time: string): string | null => {
@@ -65,7 +60,7 @@ const AddEventDialog = ({ open, onOpenChange, defaultDate, onCreated }: AddEvent
     return `${date}T${time}:00Z`;
   };
 
-  const handleSave = async () => {
+  const handleRequestSave = () => {
     if (!venue.trim()) {
       toast({ title: "Venue required", variant: "destructive" });
       return;
@@ -74,10 +69,14 @@ const AddEventDialog = ({ open, onOpenChange, defaultDate, onCreated }: AddEvent
       toast({ title: "Select a tour", variant: "destructive" });
       return;
     }
+    setShowSignoff(true);
+  };
+
+  const handleCommit = async (signoff: SignoffData) => {
     setSaving(true);
 
     const { data: event, error } = await supabase.from("schedule_events").insert({
-      tour_id: tourId,
+      tour_id: tourId!,
       venue: venue.trim(),
       city: city.trim() || null,
       event_date: eventDate,
@@ -94,23 +93,22 @@ const AddEventDialog = ({ open, onOpenChange, defaultDate, onCreated }: AddEvent
       return;
     }
 
-    // Log the change
-    const severity = (affectsSafety || affectsMoney) ? "CRITICAL" : affectsTime ? "IMPORTANT" : "INFO";
+    const severity = (signoff.affectsSafety || signoff.affectsMoney) ? "CRITICAL" : signoff.affectsTime ? "IMPORTANT" : "INFO";
     await supabase.from("akb_change_log").insert({
-      tour_id: tourId,
+      tour_id: tourId!,
       user_id: user!.id,
       entity_type: "schedule_event",
       entity_id: event.id,
       action: "CREATE",
       change_summary: `Added show: ${venue.trim()}${city ? `, ${city}` : ""} on ${eventDate}`,
+      change_reason: signoff.reason,
       severity,
-      affects_safety: affectsSafety,
-      affects_time: affectsTime,
-      affects_money: affectsMoney,
+      affects_safety: signoff.affectsSafety,
+      affects_time: signoff.affectsTime,
+      affects_money: signoff.affectsMoney,
       event_date: eventDate,
-    });
+    } as any);
 
-    // Trigger notification processing
     try {
       await supabase.functions.invoke("process-akb-notifications", {
         body: { change_log_id: event.id, tour_id: tourId },
@@ -120,6 +118,7 @@ const AddEventDialog = ({ open, onOpenChange, defaultDate, onCreated }: AddEvent
     toast({ title: "Event added" });
     reset();
     setSaving(false);
+    setShowSignoff(false);
     onOpenChange(false);
     onCreated?.();
   };
@@ -178,33 +177,23 @@ const AddEventDialog = ({ open, onOpenChange, defaultDate, onCreated }: AddEvent
             <Label className="text-xs font-mono">Notes</Label>
             <Textarea className="text-sm min-h-[60px]" value={notes} onChange={e => setNotes(e.target.value)} placeholder="Address, details..." />
           </div>
-
-          <div className="space-y-2 pt-1 border-t border-border">
-            <p className="text-[10px] font-mono text-muted-foreground tracking-wider uppercase">Change Impact</p>
-            <div className="flex items-center gap-4">
-              <label className="flex items-center gap-1.5 text-xs">
-                <Checkbox checked={affectsSafety} onCheckedChange={(v) => setAffectsSafety(!!v)} />
-                Safety
-              </label>
-              <label className="flex items-center gap-1.5 text-xs">
-                <Checkbox checked={affectsTime} onCheckedChange={(v) => setAffectsTime(!!v)} />
-                Time
-              </label>
-              <label className="flex items-center gap-1.5 text-xs">
-                <Checkbox checked={affectsMoney} onCheckedChange={(v) => setAffectsMoney(!!v)} />
-                Money
-              </label>
-            </div>
-          </div>
         </div>
 
         <ResponsiveDialogFooter>
           <Button variant="ghost" size="sm" onClick={() => onOpenChange(false)}>Cancel</Button>
-          <Button size="sm" onClick={handleSave} disabled={saving}>
+          <Button size="sm" onClick={handleRequestSave} disabled={saving}>
             {saving && <Loader2 className="h-3 w-3 animate-spin mr-1" />}
             Add Event
           </Button>
         </ResponsiveDialogFooter>
+
+        <AkbEditSignoff
+          open={showSignoff}
+          onOpenChange={setShowSignoff}
+          changeSummary={`Add new show: ${venue.trim()}${city ? `, ${city}` : ""} on ${eventDate}`}
+          onCommit={handleCommit}
+          loading={saving}
+        />
       </ResponsiveDialogContent>
     </ResponsiveDialog>
   );

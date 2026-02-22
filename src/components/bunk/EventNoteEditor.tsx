@@ -3,9 +3,9 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from "@/hooks/use-toast";
 import { Loader2, Pencil, Save, X } from "lucide-react";
+import AkbEditSignoff, { type SignoffData } from "./AkbEditSignoff";
 
 interface EventNoteEditorProps {
   eventId: string;
@@ -21,11 +21,13 @@ const EventNoteEditor = ({ eventId, tourId, currentNotes, eventDate, venueName, 
   const [editing, setEditing] = useState(false);
   const [notes, setNotes] = useState(currentNotes || "");
   const [saving, setSaving] = useState(false);
-  const [affectsSafety, setAffectsSafety] = useState(false);
-  const [affectsTime, setAffectsTime] = useState(false);
-  const [affectsMoney, setAffectsMoney] = useState(false);
+  const [showSignoff, setShowSignoff] = useState(false);
 
-  const handleSave = async () => {
+  const handleRequestSave = () => {
+    setShowSignoff(true);
+  };
+
+  const handleCommit = async (signoff: SignoffData) => {
     setSaving(true);
     const { error } = await supabase
       .from("schedule_events")
@@ -38,8 +40,7 @@ const EventNoteEditor = ({ eventId, tourId, currentNotes, eventDate, venueName, 
       return;
     }
 
-    // Log the change
-    const severity = (affectsSafety || affectsMoney) ? "CRITICAL" : affectsTime ? "IMPORTANT" : "INFO";
+    const severity = (signoff.affectsSafety || signoff.affectsMoney) ? "CRITICAL" : signoff.affectsTime ? "IMPORTANT" : "INFO";
     await supabase.from("akb_change_log").insert({
       tour_id: tourId,
       user_id: user!.id,
@@ -48,14 +49,14 @@ const EventNoteEditor = ({ eventId, tourId, currentNotes, eventDate, venueName, 
       action: "UPDATE",
       change_summary: `Updated notes for ${venueName} on ${eventDate}`,
       change_detail: { field: "notes", old: currentNotes || "", new: notes.trim() },
+      change_reason: signoff.reason,
       severity,
-      affects_safety: affectsSafety,
-      affects_time: affectsTime,
-      affects_money: affectsMoney,
+      affects_safety: signoff.affectsSafety,
+      affects_time: signoff.affectsTime,
+      affects_money: signoff.affectsMoney,
       event_date: eventDate,
-    });
+    } as any);
 
-    // Trigger notification processing
     try {
       await supabase.functions.invoke("process-akb-notifications", {
         body: { change_log_id: eventId, tour_id: tourId },
@@ -65,9 +66,7 @@ const EventNoteEditor = ({ eventId, tourId, currentNotes, eventDate, venueName, 
     toast({ title: "Notes updated" });
     setSaving(false);
     setEditing(false);
-    setAffectsSafety(false);
-    setAffectsTime(false);
-    setAffectsMoney(false);
+    setShowSignoff(false);
     onUpdated?.();
   };
 
@@ -100,26 +99,18 @@ const EventNoteEditor = ({ eventId, tourId, currentNotes, eventDate, venueName, 
       </div>
       <Textarea className="text-xs min-h-[60px]" value={notes} onChange={e => setNotes(e.target.value)} />
 
-      <div className="flex items-center gap-3">
-        <p className="text-[10px] font-mono text-muted-foreground">Impact:</p>
-        <label className="flex items-center gap-1 text-[10px]">
-          <Checkbox checked={affectsSafety} onCheckedChange={(v) => setAffectsSafety(!!v)} className="h-3 w-3" />
-          Safety
-        </label>
-        <label className="flex items-center gap-1 text-[10px]">
-          <Checkbox checked={affectsTime} onCheckedChange={(v) => setAffectsTime(!!v)} className="h-3 w-3" />
-          Time
-        </label>
-        <label className="flex items-center gap-1 text-[10px]">
-          <Checkbox checked={affectsMoney} onCheckedChange={(v) => setAffectsMoney(!!v)} className="h-3 w-3" />
-          Money
-        </label>
-      </div>
-
-      <Button size="sm" className="h-7 gap-1 text-xs w-full" onClick={handleSave} disabled={saving}>
+      <Button size="sm" className="h-7 gap-1 text-xs w-full" onClick={handleRequestSave} disabled={saving}>
         {saving ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />}
         Save Notes
       </Button>
+
+      <AkbEditSignoff
+        open={showSignoff}
+        onOpenChange={setShowSignoff}
+        changeSummary={`Update notes for ${venueName} on ${eventDate}`}
+        onCommit={handleCommit}
+        loading={saving}
+      />
     </div>
   );
 };

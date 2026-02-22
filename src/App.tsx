@@ -19,6 +19,7 @@ import BunkAdmin from "./pages/bunk/BunkAdmin";
 import BunkSetup from "./pages/bunk/BunkSetup";
 import BunkArtifacts from "./pages/bunk/BunkArtifacts";
 import BunkNotificationSettings from "./pages/bunk/BunkNotificationSettings";
+import BunkChangeLog from "./pages/bunk/BunkChangeLog";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -68,6 +69,7 @@ const App = () => (
               <Route path="setup" element={<BunkSetup />} />
               <Route path="artifacts" element={<BunkArtifacts />} />
               <Route path="notifications" element={<BunkNotificationSettings />} />
+              <Route path="changelog" element={<BunkChangeLog />} />
             </Route>
             <Route path="*" element={<NotFound />} />
           </Routes>

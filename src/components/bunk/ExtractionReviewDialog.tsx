@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -23,6 +24,7 @@ import {
   MapPin,
   Undo2,
 } from "lucide-react";
+import AkbEditSignoff, { type SignoffData } from "./AkbEditSignoff";
 
 interface ExtractionReviewDialogProps {
   open: boolean;
@@ -76,10 +78,12 @@ const ExtractionReviewDialog = ({
   onApproved,
 }: ExtractionReviewDialogProps) => {
   const { toast } = useToast();
+  const { user } = useAuth();
   const [events, setEvents] = useState<EventRow[]>([]);
   const [contacts, setContacts] = useState<ContactRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [approving, setApproving] = useState(false);
+  const [showSignoff, setShowSignoff] = useState(false);
   const [deletedEventIds, setDeletedEventIds] = useState<Set<string>>(new Set());
   const [deletedContactIds, setDeletedContactIds] = useState<Set<string>>(new Set());
   const [editedEvents, setEditedEvents] = useState<Record<string, Partial<EventRow>>>({});
@@ -144,7 +148,11 @@ const ExtractionReviewDialog = ({
     });
   };
 
-  const handleApprove = async () => {
+  const handleRequestApprove = () => {
+    setShowSignoff(true);
+  };
+
+  const handleApprove = async (signoff: SignoffData) => {
     setApproving(true);
     try {
       if (deletedEventIds.size > 0) {
@@ -184,7 +192,27 @@ const ExtractionReviewDialog = ({
         .update({ is_active: true })
         .eq("id", documentId);
 
+      // Log to change log
+      const severity = (signoff.affectsSafety || signoff.affectsMoney) ? "CRITICAL" : signoff.affectsTime ? "IMPORTANT" : "INFO";
+      const editCount = Object.keys(editedEvents).length + Object.keys(editedContacts).length;
+      const deleteCount = deletedEventIds.size + deletedContactIds.size;
+      const summary = `Approved extraction: ${activeEvents.length} events, ${activeContacts.length} contacts${editCount > 0 ? `, ${editCount} edits` : ""}${deleteCount > 0 ? `, ${deleteCount} removed` : ""}`;
+      await supabase.from("akb_change_log").insert({
+        tour_id: tourId,
+        user_id: user!.id,
+        entity_type: "document",
+        entity_id: documentId,
+        action: "APPROVE",
+        change_summary: summary,
+        change_reason: signoff.reason,
+        severity,
+        affects_safety: signoff.affectsSafety,
+        affects_time: signoff.affectsTime,
+        affects_money: signoff.affectsMoney,
+      } as any);
+
       toast({ title: "Approved into AKB", description: "Extraction reviewed and activated." });
+      setShowSignoff(false);
       onApproved();
       onOpenChange(false);
     } catch (err: any) {
@@ -454,7 +482,7 @@ const ExtractionReviewDialog = ({
             Cancel
           </Button>
           <Button
-            onClick={handleApprove}
+            onClick={handleRequestApprove}
             disabled={approving || loading}
             className="font-mono text-sm gap-2 flex-1"
           >
@@ -466,6 +494,14 @@ const ExtractionReviewDialog = ({
             Approve
           </Button>
         </DrawerFooter>
+
+        <AkbEditSignoff
+          open={showSignoff}
+          onOpenChange={setShowSignoff}
+          changeSummary={`Approve extraction: ${activeEvents.length} events, ${activeContacts.length} contacts into AKB`}
+          onCommit={handleApprove}
+          loading={approving}
+        />
       </DrawerContent>
     </Drawer>
   );
