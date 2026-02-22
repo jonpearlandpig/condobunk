@@ -14,7 +14,7 @@ const SidebarTelaThreads = () => {
   const isMobile = useIsMobile();
   const navigate = useNavigate();
   const location = useLocation();
-  const [open, setOpenState] = useState(true);
+  const [open, setOpenState] = useState(false);
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState("");
 
