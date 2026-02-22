@@ -47,10 +47,10 @@ import { toast } from "sonner";
 
 const navItems = [
   { title: "TL;DR", url: "/bunk", icon: LayoutDashboard },
-  { title: "Calendar", url: "/bunk/calendar", icon: CalendarDays },
-  { title: "TELA", url: "/bunk/chat", icon: MessageSquare },
-  { title: "Tour AKB's", url: "/bunk/documents", icon: FileText },
-  { title: "Admin", url: "/bunk/admin", icon: Settings },
+  { title: "CALENDAR", url: "/bunk/calendar", icon: CalendarDays },
+  { title: "ASK TELA", url: "/bunk/chat", icon: MessageSquare },
+  { title: "TOUR AKB'S", url: "/bunk/documents", icon: FileText },
+  { title: "ADMIN", url: "/bunk/admin", icon: Settings },
 ];
 
 const BunkSidebar = () => {
