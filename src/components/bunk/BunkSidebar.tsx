@@ -64,8 +64,8 @@ const BunkSidebar = () => {
   const { tourContacts, tourTeamGroups, venueContacts, venueGroups, venueLabel, loading, updateContact, deleteContact } = useSidebarContacts();
   const { onlineUsers } = usePresence();
   const { totalUnread, unreadFrom } = useUnreadDMs();
-  const [tourTeamOpen, setTourTeamOpen] = useState(true);
-  const [venuePartnersOpen, setVenuePartnersOpen] = useState(true);
+  const [tourTeamOpen, setTourTeamOpen] = useState(false);
+  const [venuePartnersOpen, setVenuePartnersOpen] = useState(false);
   const [expandedTours, setExpandedTours] = useState<Set<string>>(new Set());
   const [activeInvites, setActiveInvites] = useState<ActiveInvite[]>([]);
   const [bulkInviting, setBulkInviting] = useState(false);
@@ -85,9 +85,15 @@ const BunkSidebar = () => {
     fetchInvites();
   }, [fetchInvites]);
 
+  // Filter out the signed-in user from tour team groups
+  const filteredTourTeamGroups = tourTeamGroups.map(g => ({
+    ...g,
+    contacts: g.contacts.filter(c => c.appUserId !== user?.id),
+  }));
+
   // Get all uninvited contacts with emails across all tour groups
   const getUninvitedContacts = () => {
-    const allContacts = tourTeamGroups.flatMap(g => g.contacts);
+    const allContacts = filteredTourTeamGroups.flatMap(g => g.contacts);
     return allContacts.filter(c =>
       !c.appUserId && c.email &&
       !activeInvites.some(i => i.email.toLowerCase() === c.email!.toLowerCase())
@@ -201,7 +207,7 @@ const BunkSidebar = () => {
                 {totalUnread > 99 ? "99+" : totalUnread}
               </span>
             )}
-            <span className="ml-auto text-muted-foreground/40 normal-case tracking-normal">{tourTeamGroups.reduce((sum, g) => sum + g.contacts.length, 0)}</span>
+            <span className="ml-auto text-muted-foreground/40 normal-case tracking-normal">{filteredTourTeamGroups.reduce((sum, g) => sum + g.contacts.length, 0)}</span>
           </button>
           {tourTeamOpen && (
             <SidebarGroupContent>
@@ -229,11 +235,11 @@ const BunkSidebar = () => {
                 <div className="px-4 py-2">
                   <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground/40" />
                 </div>
-              ) : tourTeamGroups.length <= 1 ? (
-                <SidebarContactList contacts={tourTeamGroups[0]?.contacts || []} onNavigate={handleNavClick} onUpdate={updateContact} onDelete={deleteContact} onlineUserIds={onlineUsers} unreadFrom={unreadFrom} activeInvites={activeInvites} onInviteCreated={fetchInvites} />
+              ) : filteredTourTeamGroups.length <= 1 ? (
+                <SidebarContactList contacts={filteredTourTeamGroups[0]?.contacts || []} onNavigate={handleNavClick} onUpdate={updateContact} onDelete={deleteContact} onlineUserIds={onlineUsers} unreadFrom={unreadFrom} activeInvites={activeInvites} onInviteCreated={fetchInvites} />
               ) : (
                 <div className="space-y-0.5">
-                  {tourTeamGroups.map((group) => {
+                  {filteredTourTeamGroups.map((group) => {
                     const isExpanded = expandedTours.has(group.tourId);
                     const toggleTour = () => {
                       setExpandedTours(prev => {
