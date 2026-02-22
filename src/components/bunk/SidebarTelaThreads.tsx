@@ -72,13 +72,6 @@ const SidebarTelaThreads = () => {
       </button>
       {open && (
         <SidebarGroupContent>
-          <button
-            onClick={goNewThread}
-            className="mx-4 mb-1 flex items-center gap-1.5 px-2 py-1 rounded-md text-[10px] font-mono tracking-wider text-primary hover:bg-primary/10 transition-colors"
-          >
-            <Plus className="h-3 w-3" />
-            NEW THREAD
-          </button>
           {loading ? (
             <div className="px-4 py-2 text-[10px] text-muted-foreground/40 font-mono">Loading…</div>
           ) : threads.length === 0 ? (
