@@ -1,39 +1,37 @@
 
-# Add Calendar View to TL;DR + Fix Advance Master Start Position
+
+# Clickable Calendar Events with Inline Event Cards
 
 ## What's changing
 
-### 1. Calendar widget on the TL;DR page
-A compact, visual calendar will be added between the Daily Briefing and the Stat Cards sections. It shows upcoming events as colored dots/indicators on a date grid.
-
-- **Mobile**: 2-week rolling view starting from today
-- **Desktop**: Full month view (standard calendar grid)
-- Tapping a date with events navigates to the full Calendar page
-- Tour color coding matches existing palette (primary, info, success, warning)
-- Minimal design: date grid with small colored dots under dates that have events
-
-### 2. Advance Master Review -- start at closest venue
-The VANReviewDialog already has logic to auto-select the first venue from today forward. I'll verify it works correctly and ensure the horizontal venue bar scrolls to center on that venue.
+Calendar date buttons on the TL;DR page will open an inline event card (popover/dialog) instead of navigating to the full Calendar page. Users can quickly read event details without leaving the TL;DR screen.
 
 ---
 
+## How it works
+
+- Tapping a date with events opens a **Popover** (desktop) or **bottom Drawer** (mobile) showing all events for that date
+- Each event card displays: venue, city, date, tour name, show time, load-in, and notes preview
+- A "View Full Calendar" link remains available inside the popover for deep navigation
+- Tapping outside or pressing X closes the card
+
 ## Technical details
 
-### TL;DR Calendar Widget (`BunkOverview.tsx`)
-- Fetch `schedule_events` (already fetched for counts -- extend to include `event_date` and `tour_id`)
-- Use `date-fns` to build a date grid:
-  - Mobile (`useIsMobile`): 14-day range starting today
-  - Desktop: full month grid (same logic as BunkCalendar's month view)
-- Render a compact grid with day numbers and small colored dots for events
-- Clicking a day with events navigates to `/bunk/calendar`
-- Wrapped in a `motion.div` card matching existing design
-- No new components needed -- inline in BunkOverview
+### Data changes
+- Expand `loadEventDates` to fetch full event details: `id, event_date, tour_id, venue, city, show_time, load_in, notes`
+- Store as `eventDetails` array instead of just date+tour_id pairs
 
-### Advance Master Review (`VANReviewDialog.tsx`)
-- Current auto-select logic already picks the first venue >= today -- this is correct
-- Ensure the `scrollIntoView` call uses `inline: "center"` instead of `"start"` for better centering
-- No functional change needed beyond the scroll positioning tweak
+### UI changes in `BunkOverview.tsx`
+- Add state for `selectedDate: string | null`
+- On date button click: set `selectedDate` to that date string (instead of navigating)
+- Render a `ResponsiveDialog` (Drawer on mobile, Dialog on desktop) that filters events for the selected date
+- Event card content:
+  - Tour color dot + tour name
+  - Venue name (bold) + city
+  - Show time / load-in if available
+  - Notes snippet (first 2 lines)
+  - Tap event row to navigate to full calendar (optional deep link)
 
 ### Files modified
-1. **`src/pages/bunk/BunkOverview.tsx`** -- Add calendar widget section, fetch event dates, render date grid with responsive sizing
-2. **`src/components/bunk/VANReviewDialog.tsx`** -- Minor scroll behavior tweak (change `inline: "start"` to `inline: "center"`)
+1. **`src/pages/bunk/BunkOverview.tsx`** -- Replace navigate-on-click with popover/dialog showing event details inline; expand event data fetch to include venue, city, times, notes
+
