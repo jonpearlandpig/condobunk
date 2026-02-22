@@ -155,6 +155,7 @@ const InviteAccept = () => {
                 if (token) localStorage.setItem("pending_invite_token", token);
                 const { error } = await lovable.auth.signInWithOAuth("google", {
                   redirect_uri: `${window.location.origin}/login`,
+                  extraParams: { prompt: "consent" },
                 });
                 if (error) throw error;
               } catch (err: any) {
