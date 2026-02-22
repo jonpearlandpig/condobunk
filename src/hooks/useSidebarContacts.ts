@@ -95,19 +95,13 @@ export const useSidebarContacts = () => {
     const activeTourContacts = allTourContacts.filter(c => (c as any).tour_id === tourId);
     setTourContacts(activeTourContacts);
 
-    // Venue contacts for ALL tours (rolling 3 weeks)
-    const today = new Date();
-    const threeWeeks = new Date();
-    threeWeeks.setDate(today.getDate() + 21);
-    const todayStr = today.toISOString().split("T")[0];
-    const threeWeeksStr = threeWeeks.toISOString().split("T")[0];
+    // Venue contacts for ALL tours (all dates)
+    const todayStr = new Date().toISOString().split("T")[0];
 
     const { data: allEvents } = await supabase
       .from("schedule_events")
       .select("venue, city, event_date, tour_id")
       .in("tour_id", tourIds)
-      .gte("event_date", todayStr)
-      .lte("event_date", threeWeeksStr)
       .order("event_date");
 
     // Build per-tour venue maps
