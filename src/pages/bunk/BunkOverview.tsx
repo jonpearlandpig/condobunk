@@ -1,11 +1,23 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { useTour } from "@/hooks/useTour";
+import { useIsMobile } from "@/hooks/use-mobile";
 import PullToRefresh from "@/components/ui/pull-to-refresh";
 import { useToast } from "@/hooks/use-toast";
 import { motion } from "framer-motion";
+import {
+  startOfMonth,
+  endOfMonth,
+  startOfWeek,
+  endOfWeek,
+  addDays,
+  isSameMonth,
+  isSameDay,
+  isToday,
+  format,
+} from "date-fns";
 import {
   Activity,
   BarChart3,
@@ -18,6 +30,7 @@ import {
   X,
   Zap,
   Loader2,
+  CalendarDays,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -51,6 +64,8 @@ const BunkOverview = () => {
   const [deletingTour, setDeletingTour] = useState<{ id: string; name: string } | null>(null);
   const [tldr, setTldr] = useState<Array<{ text: string; actionable: boolean }>>([]);
   const [tldrLoading, setTldrLoading] = useState(false);
+  const [eventDates, setEventDates] = useState<Array<{ event_date: string; tour_id: string }>>([]);
+  const isMobile = useIsMobile();
 
   // Clear welcome param after initial render so it doesn't persist on refresh
   useEffect(() => {
@@ -65,6 +80,7 @@ const BunkOverview = () => {
   useEffect(() => {
     if (!user || tours.length === 0) return;
     loadCounts();
+    loadEventDates();
   }, [user, tours]);
 
   useEffect(() => {
@@ -94,6 +110,18 @@ const BunkOverview = () => {
       counts[tid] = results[i].count ?? 0;
     });
     setTourEventCounts(counts);
+  };
+
+  const loadEventDates = async () => {
+    const tourIds = tours.map(t => t.id);
+    if (tourIds.length === 0) return;
+    const { data } = await supabase
+      .from("schedule_events")
+      .select("event_date, tour_id")
+      .in("tour_id", tourIds)
+      .not("event_date", "is", null)
+      .order("event_date");
+    setEventDates((data || []).filter(d => d.event_date) as Array<{ event_date: string; tour_id: string }>);
   };
 
   const generateTldr = async () => {
@@ -258,6 +286,42 @@ const BunkOverview = () => {
 
   // Assign each tour a distinct accent color
   const tourColors = ["hsl(var(--primary))", "hsl(var(--info))", "hsl(var(--warning))", "hsl(var(--success))", "hsl(var(--destructive))"];
+  const tourColorMap = useMemo(() => {
+    const m: Record<string, string> = {};
+    tours.forEach((t, i) => { m[t.id] = tourColors[i % tourColors.length]; });
+    return m;
+  }, [tours]);
+
+  // Build event lookup: dateStr -> tour_ids[]
+  const eventsByDate = useMemo(() => {
+    const map: Record<string, Set<string>> = {};
+    for (const e of eventDates) {
+      if (!map[e.event_date]) map[e.event_date] = new Set();
+      map[e.event_date].add(e.tour_id);
+    }
+    return map;
+  }, [eventDates]);
+
+  // Calendar grid days
+  const calendarDays = useMemo(() => {
+    const today = new Date();
+    if (isMobile) {
+      // 2-week rolling from today
+      return Array.from({ length: 14 }, (_, i) => addDays(today, i));
+    }
+    // Full month grid
+    const monthStart = startOfMonth(today);
+    const monthEnd = endOfMonth(today);
+    const gridStart = startOfWeek(monthStart);
+    const gridEnd = endOfWeek(monthEnd);
+    const days: Date[] = [];
+    let d = gridStart;
+    while (d <= gridEnd) {
+      days.push(d);
+      d = addDays(d, 1);
+    }
+    return days;
+  }, [isMobile]);
 
   const cards = [
     { label: "ACTIVE TOURS", value: tours.length, icon: Radio, color: "text-primary", link: null },
@@ -265,7 +329,7 @@ const BunkOverview = () => {
   ];
 
   const handleRefresh = useCallback(async () => {
-    await Promise.all([loadCounts(), generateTldr()]);
+    await Promise.all([loadCounts(), loadEventDates(), generateTldr()]);
   }, [tours]);
 
   return (
@@ -363,6 +427,104 @@ const BunkOverview = () => {
               <ChevronRight className="h-4 w-4 text-muted-foreground ml-auto opacity-0 group-hover:opacity-100 transition-opacity" />
             </button>
           </div>
+        </motion.div>
+      )}
+
+      {/* Calendar Widget */}
+      {eventDates.length > 0 && (
+        <motion.div
+          initial={{ opacity: 0, y: 12 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.15 }}
+          className="rounded-lg border border-border bg-card p-3 sm:p-5"
+          style={{ boxShadow: "var(--shadow-card)" }}
+        >
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-2">
+              <CalendarDays className="h-4 w-4 text-primary" />
+              <span className="font-mono text-[10px] tracking-[0.15em] text-muted-foreground font-semibold">
+                {isMobile ? "NEXT 2 WEEKS" : format(new Date(), "MMMM yyyy").toUpperCase()}
+              </span>
+            </div>
+            <button
+              onClick={() => navigate("/bunk/calendar")}
+              className="font-mono text-[10px] text-primary hover:text-primary/80 transition-colors flex items-center gap-1"
+            >
+              FULL CALENDAR <ChevronRight className="h-3 w-3" />
+            </button>
+          </div>
+
+          {/* Day-of-week headers */}
+          {!isMobile && (
+            <div className="grid grid-cols-7 mb-1">
+              {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map(d => (
+                <div key={d} className="text-center font-mono text-[9px] text-muted-foreground uppercase tracking-wider py-1">
+                  {d}
+                </div>
+              ))}
+            </div>
+          )}
+
+          <div className={isMobile
+            ? "grid grid-cols-7 gap-0.5"
+            : "grid grid-cols-7 gap-0.5"
+          }>
+            {calendarDays.map((day, i) => {
+              const dateStr = format(day, "yyyy-MM-dd");
+              const tourIdsForDay = eventsByDate[dateStr];
+              const hasEvents = !!tourIdsForDay;
+              const today = isToday(day);
+              const outsideMonth = !isMobile && !isSameMonth(day, new Date());
+
+              return (
+                <button
+                  key={i}
+                  onClick={() => hasEvents && navigate("/bunk/calendar")}
+                  className={`relative flex flex-col items-center justify-center rounded-md transition-all py-1.5 sm:py-2 min-h-[36px] sm:min-h-[44px] ${
+                    today
+                      ? "bg-primary/15 border border-primary/30"
+                      : hasEvents
+                      ? "hover:bg-muted/50 cursor-pointer"
+                      : "cursor-default"
+                  } ${outsideMonth ? "opacity-30" : ""}`}
+                >
+                  <span className={`font-mono text-[11px] sm:text-xs leading-none ${
+                    today ? "font-bold text-primary" : "text-foreground"
+                  }`}>
+                    {format(day, "d")}
+                  </span>
+                  {isMobile && (
+                    <span className="font-mono text-[8px] text-muted-foreground leading-none mt-0.5">
+                      {format(day, "EEE")}
+                    </span>
+                  )}
+                  {hasEvents && (
+                    <div className="flex gap-0.5 mt-1">
+                      {Array.from(tourIdsForDay).slice(0, 3).map(tid => (
+                        <span
+                          key={tid}
+                          className="h-1.5 w-1.5 rounded-full"
+                          style={{ backgroundColor: tourColorMap[tid] || "hsl(var(--primary))" }}
+                        />
+                      ))}
+                    </div>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Tour legend */}
+          {tours.length > 1 && (
+            <div className="flex flex-wrap gap-3 mt-3 pt-2 border-t border-border">
+              {tours.map((tour, ti) => (
+                <span key={tour.id} className="inline-flex items-center gap-1.5 text-[10px] font-mono text-muted-foreground">
+                  <span className="h-2 w-2 rounded-full" style={{ backgroundColor: tourColors[ti % tourColors.length] }} />
+                  {tour.name}
+                </span>
+              ))}
+            </div>
+          )}
         </motion.div>
       )}
 
