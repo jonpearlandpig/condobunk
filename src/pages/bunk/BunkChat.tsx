@@ -1,16 +1,18 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { ArrowLeft, Send, Loader2, Zap, Globe, Target } from "lucide-react";
+import { ArrowLeft, Send, Loader2, Zap, Globe, Target, Pencil, Trash2, Check, X } from "lucide-react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { SidebarTrigger } from "@/components/ui/sidebar";
 import { useTour } from "@/hooks/useTour";
+import { useAuth } from "@/hooks/useAuth";
 import ReactMarkdown from "react-markdown";
 import { parseTelaActions } from "@/hooks/useTelaActions";
 import TelaActionCard from "@/components/bunk/TelaActionCard";
 import TelaSuggestionChips from "@/components/bunk/TelaSuggestionChips";
 import MessageActions from "@/components/bunk/MessageActions";
 import { supabase } from "@/integrations/supabase/client";
+import { useTelaThreads } from "@/hooks/useTelaThreads";
 
-type Msg = { role: "user" | "assistant"; content: string };
+type Msg = { role: "user" | "assistant"; content: string; id?: string };
 
 const AKB_CHAT_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/akb-chat`;
 
@@ -18,12 +20,18 @@ const BunkChat = () => {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const { tours, selectedTourId, selectedTour } = useTour();
+  const { user } = useAuth();
+  const { createThread, touchThread } = useTelaThreads();
   const [messages, setMessages] = useState<Msg[]>([]);
   const [input, setInput] = useState("");
   const [isStreaming, setIsStreaming] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const hasAutoSent = useRef(false);
+  const [activeThreadId, setActiveThreadId] = useState<string | null>(null);
+  const [editingIdx, setEditingIdx] = useState<number | null>(null);
+  const [editValue, setEditValue] = useState("");
+  const threadLoaded = useRef(false);
 
   // Determine scope: ?scope=tour locks to selectedTourId, otherwise global
   const scopeParam = searchParams.get("scope");
@@ -35,7 +43,6 @@ const BunkChat = () => {
     if (isScoped && selectedTourId) {
       return { tour_id: selectedTourId };
     }
-    // Global mode: send all active tour IDs
     const allIds = tours.map((t) => t.id);
     if (allIds.length === 1) {
       return { tour_id: allIds[0] };
@@ -45,12 +52,38 @@ const BunkChat = () => {
 
   const hasTours = tours.length > 0;
 
-  // Auto-send if launched with ?q= query from TLDR
+  // Load thread from ?thread= param
+  useEffect(() => {
+    const threadId = searchParams.get("thread");
+    if (threadId && threadId !== activeThreadId && !threadLoaded.current) {
+      threadLoaded.current = true;
+      setActiveThreadId(threadId);
+      // Load messages
+      (async () => {
+        const { data } = await supabase
+          .from("tela_messages" as any)
+          .select("id, role, content, created_at")
+          .eq("thread_id", threadId)
+          .order("created_at", { ascending: true });
+        if (data) {
+          setMessages((data as any[]).map((m) => ({ role: m.role, content: m.content, id: m.id })));
+        }
+      })();
+    } else if (!threadId) {
+      // Fresh thread
+      if (activeThreadId) {
+        setActiveThreadId(null);
+        setMessages([]);
+        threadLoaded.current = false;
+      }
+    }
+  }, [searchParams]);
+
+  // Auto-send if launched with ?q= query
   useEffect(() => {
     const q = searchParams.get("q");
     if (q && hasTours && !hasAutoSent.current && messages.length === 0) {
       hasAutoSent.current = true;
-      // Clear the q param but keep scope
       const newParams: Record<string, string> = {};
       if (scopeParam) newParams.scope = scopeParam;
       setSearchParams(newParams, { replace: true });
@@ -62,6 +95,17 @@ const BunkChat = () => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
   }, [messages]);
 
+  // Save a message to DB
+  const saveMessage = useCallback(async (threadId: string, role: string, content: string): Promise<string | null> => {
+    const { data, error } = await supabase
+      .from("tela_messages" as any)
+      .insert({ thread_id: threadId, role, content } as any)
+      .select("id")
+      .single();
+    if (error) { console.error("[tela_messages] save error:", error); return null; }
+    return (data as any).id;
+  }, []);
+
   const sendMessage = useCallback(async (text: string) => {
     if (!text.trim() || !hasTours || isStreaming) return;
 
@@ -69,6 +113,34 @@ const BunkChat = () => {
     setMessages(prev => [...prev, userMsg]);
     setInput("");
     setIsStreaming(true);
+
+    let threadId = activeThreadId;
+
+    // Auto-create thread on first message
+    if (!threadId && user) {
+      const tourId = selectedTourId || tours[0]?.id;
+      if (tourId) {
+        const title = text.trim().slice(0, 60);
+        threadId = await createThread(tourId, title);
+        if (threadId) {
+          setActiveThreadId(threadId);
+          setSearchParams((prev) => {
+            const next = new URLSearchParams(prev);
+            next.set("thread", threadId!);
+            return next;
+          }, { replace: true });
+        }
+      }
+    }
+
+    // Save user message to DB
+    if (threadId) {
+      const msgId = await saveMessage(threadId, "user", text.trim());
+      if (msgId) {
+        setMessages(prev => prev.map((m, i) => i === prev.length - 1 ? { ...m, id: msgId } : m));
+      }
+      touchThread(threadId);
+    }
 
     let assistantSoFar = "";
     const allMessages = [...messages, userMsg];
@@ -90,7 +162,12 @@ const BunkChat = () => {
 
       if (!resp.ok || !resp.body) {
         const errData = await resp.json().catch(() => ({ error: "Unknown error" }));
-        setMessages(prev => [...prev, { role: "assistant", content: `⚠ ${errData.error || "Failed to connect to AKB."}` }]);
+        const errMsg: Msg = { role: "assistant", content: `⚠ ${errData.error || "Failed to connect to AKB."}` };
+        setMessages(prev => [...prev, errMsg]);
+        if (threadId) {
+          const id = await saveMessage(threadId, "assistant", errMsg.content);
+          if (id) setMessages(prev => prev.map((m, i) => i === prev.length - 1 ? { ...m, id } : m));
+        }
         setIsStreaming(false);
         return;
       }
@@ -165,13 +242,22 @@ const BunkChat = () => {
           } catch { /* ignore */ }
         }
       }
+
+      // Save completed assistant response to DB
+      if (threadId && assistantSoFar) {
+        const id = await saveMessage(threadId, "assistant", assistantSoFar);
+        if (id) {
+          setMessages(prev => prev.map((m, i) => i === prev.length - 1 ? { ...m, id } : m));
+        }
+        touchThread(threadId);
+      }
     } catch (err) {
       console.error("[chat] stream error:", err);
       setMessages(prev => [...prev, { role: "assistant", content: "⚠ Connection error. Please try again." }]);
     }
 
     setIsStreaming(false);
-  }, [messages, hasTours, isStreaming, getPayloadTourIds]);
+  }, [messages, hasTours, isStreaming, getPayloadTourIds, activeThreadId, user, selectedTourId, tours, createThread, saveMessage, touchThread]);
 
   const handleSubmit = () => {
     sendMessage(input);
@@ -182,6 +268,42 @@ const BunkChat = () => {
       e.preventDefault();
       handleSubmit();
     }
+  };
+
+  // Edit a user message: update DB, remove subsequent messages, re-send
+  const handleEditMessage = async (idx: number) => {
+    const msg = messages[idx];
+    if (!msg || msg.role !== "user") return;
+    const newContent = editValue.trim();
+    if (!newContent) return;
+    setEditingIdx(null);
+
+    // Delete subsequent messages from DB
+    const toDelete = messages.slice(idx).filter((m) => m.id);
+    for (const m of toDelete) {
+      await supabase.from("tela_messages" as any).delete().eq("id", m.id!);
+    }
+
+    // Truncate messages to before edited one
+    setMessages(messages.slice(0, idx));
+
+    // Re-send with new content
+    sendMessage(newContent);
+  };
+
+  // Delete a single message (and its subsequent assistant response if user msg)
+  const handleDeleteMessage = async (idx: number) => {
+    const msg = messages[idx];
+    if (!msg) return;
+
+    // If user message, also delete the following assistant response
+    const endIdx = msg.role === "user" && messages[idx + 1]?.role === "assistant" ? idx + 2 : idx + 1;
+    const toDelete = messages.slice(idx, endIdx).filter((m) => m.id);
+    for (const m of toDelete) {
+      await supabase.from("tela_messages" as any).delete().eq("id", m.id!);
+    }
+
+    setMessages((prev) => [...prev.slice(0, idx), ...prev.slice(endIdx)]);
   };
 
   // Auto-resize textarea
@@ -209,7 +331,6 @@ const BunkChat = () => {
               TELA
             </span>
           </div>
-          {/* Scope badge */}
           {hasTours && (
             <div className={`flex items-center gap-1 md:gap-1.5 px-2 md:px-2.5 py-0.5 rounded-full text-[10px] font-mono tracking-wider uppercase ${
               isScoped
@@ -259,9 +380,9 @@ const BunkChat = () => {
           )}
 
           {messages.map((msg, i) => (
-            <div key={i} className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
+            <div key={msg.id || i} className={`group/msg flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
               <div
-                className={`max-w-[85%] rounded-2xl px-4 py-3 ${
+                className={`relative max-w-[85%] rounded-2xl px-4 py-3 ${
                   msg.role === "user"
                     ? "bg-primary text-primary-foreground rounded-br-md"
                     : "bg-card border border-border rounded-bl-md"
@@ -295,10 +416,47 @@ const BunkChat = () => {
                       </>
                     );
                   })()
+                ) : editingIdx === i ? (
+                  <div className="flex flex-col gap-2">
+                    <textarea
+                      autoFocus
+                      value={editValue}
+                      onChange={(e) => setEditValue(e.target.value)}
+                      onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleEditMessage(i); } if (e.key === "Escape") setEditingIdx(null); }}
+                      className="bg-primary-foreground/10 text-primary-foreground text-[14px] md:text-[15px] rounded-md p-2 outline-none resize-none min-h-[40px]"
+                      rows={2}
+                    />
+                    <div className="flex gap-1 justify-end">
+                      <button onClick={() => handleEditMessage(i)} className="p-1 rounded text-primary-foreground/80 hover:text-primary-foreground"><Check className="h-3.5 w-3.5" /></button>
+                      <button onClick={() => setEditingIdx(null)} className="p-1 rounded text-primary-foreground/80 hover:text-primary-foreground"><X className="h-3.5 w-3.5" /></button>
+                    </div>
+                  </div>
                 ) : (
                   <p className="text-[14px] md:text-[15px] leading-relaxed md:leading-7">{msg.content}</p>
                 )}
                 <MessageActions content={msg.content} role={msg.role} />
+
+                {/* Edit/Delete controls */}
+                {!isStreaming && editingIdx === null && (
+                  <div className="hidden group-hover/msg:flex absolute -top-3 right-2 gap-0.5 bg-background border border-border rounded-md shadow-sm px-1 py-0.5">
+                    {msg.role === "user" && (
+                      <button
+                        onClick={() => { setEditingIdx(i); setEditValue(msg.content); }}
+                        className="p-1 rounded text-muted-foreground hover:text-foreground"
+                        title="Edit message"
+                      >
+                        <Pencil className="h-3 w-3" />
+                      </button>
+                    )}
+                    <button
+                      onClick={() => handleDeleteMessage(i)}
+                      className="p-1 rounded text-muted-foreground hover:text-destructive"
+                      title="Delete message"
+                    >
+                      <Trash2 className="h-3 w-3" />
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
           ))}

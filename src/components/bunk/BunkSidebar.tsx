@@ -35,6 +35,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useTour } from "@/hooks/useTour";
 import { supabase } from "@/integrations/supabase/client";
 import SidebarContactList, { type ActiveInvite } from "@/components/bunk/SidebarContactList";
+import SidebarTelaThreads from "@/components/bunk/SidebarTelaThreads";
 import { Separator } from "@/components/ui/separator";
 import {
   Tooltip,
@@ -199,6 +200,8 @@ const BunkSidebar = () => {
         </SidebarGroup>
 
         <Separator className="mx-4 w-auto" />
+
+        <SidebarTelaThreads />
 
         <SidebarGroup>
           <button
