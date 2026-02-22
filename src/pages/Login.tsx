@@ -150,6 +150,7 @@ const Login = () => {
               try {
                 const { error } = await lovable.auth.signInWithOAuth("google", {
                   redirect_uri: `${window.location.origin}/login`,
+                  extraParams: { prompt: "consent" },
                 });
                 if (error) throw error;
               } catch (error: any) {
