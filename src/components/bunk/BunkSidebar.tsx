@@ -49,10 +49,7 @@ const navItems = [
   { title: "TL;DR", url: "/bunk", icon: LayoutDashboard },
   { title: "Calendar", url: "/bunk/calendar", icon: CalendarDays },
   { title: "TELA", url: "/bunk/chat", icon: MessageSquare },
-  { title: "AKB Builder", url: "/bunk/documents", icon: FileText },
-  { title: "My Artifacts", url: "/bunk/artifacts", icon: StickyNote },
-  { title: "Coverage", url: "/bunk/coverage", icon: BarChart3 },
-  { title: "Notifications", url: "/bunk/notifications", icon: Bell },
+  { title: "Tour AKB's", url: "/bunk/documents", icon: FileText },
   { title: "Admin", url: "/bunk/admin", icon: Settings },
 ];
 
