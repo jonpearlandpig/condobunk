@@ -9,7 +9,8 @@ export type TelaActionType =
   | "resolve_gap"
   | "update_event"
   | "update_contact"
-  | "create_contact";
+  | "create_contact"
+  | "update_van";
 
 export interface TelaAction {
   type: TelaActionType;
@@ -56,6 +57,8 @@ export function getActionLabel(action: TelaAction): string {
       return "Update Contact";
     case "create_contact":
       return "Add Contact";
+    case "update_van":
+      return "Update Advance Notes";
     default:
       return "Apply Fix";
   }
@@ -134,6 +137,43 @@ export function useTelaActions() {
           if (error) throw error;
           window.dispatchEvent(new Event("contacts-changed"));
           toast({ title: "Contact added", description: `TELA added ${action.fields.name} to the AKB.` });
+          return true;
+        }
+        case "update_van": {
+          if (!action.fields) throw new Error("No fields to update");
+          // action.id is the VAN row id
+          // action.fields should contain van_data patches (key-value pairs to merge)
+          if (!UUID_RE.test(action.id)) throw new Error("Invalid VAN ID");
+          
+          // Fetch existing van_data first, then merge
+          const { data: existingVan, error: fetchErr } = await supabase
+            .from("venue_advance_notes")
+            .select("van_data")
+            .eq("id", action.id)
+            .single();
+          if (fetchErr) throw fetchErr;
+          if (!existingVan) throw new Error("VAN record not found");
+          
+          const currentData = (existingVan.van_data as Record<string, unknown>) || {};
+          const mergedData = { ...currentData };
+          
+          // Merge fields into van_data categories
+          for (const [k, v] of Object.entries(action.fields)) {
+            if (typeof v === "object" && v !== null && !Array.isArray(v)) {
+              // Merge sub-object (e.g. "Event Details": { "Capacity": "5000" })
+              mergedData[k] = { ...(mergedData[k] as Record<string, unknown> || {}), ...(v as Record<string, unknown>) };
+            } else {
+              mergedData[k] = v;
+            }
+          }
+          
+          const { error } = await supabase
+            .from("venue_advance_notes")
+            .update({ van_data: mergedData as any })
+            .eq("id", action.id);
+          if (error) throw error;
+          window.dispatchEvent(new Event("van-changed"));
+          toast({ title: "Advance notes updated", description: "TELA updated the venue advance notes." });
           return true;
         }
         default:

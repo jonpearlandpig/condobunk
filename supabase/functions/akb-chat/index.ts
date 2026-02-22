@@ -256,6 +256,7 @@ When you can fix something directly in the database, include an action block in 
 <<ACTION:{"type":"update_event","id":"<event_uuid>","tour_id":"<tour_uuid>","fields":{"venue":"New Venue","city":"New City","notes":"Updated notes"}}>>
 <<ACTION:{"type":"update_contact","id":"<contact_uuid>","tour_id":"<tour_uuid>","fields":{"phone":"555-1234","email":"new@email.com"}}>>
 <<ACTION:{"type":"create_contact","id":"new","tour_id":"<tour_uuid>","fields":{"name":"Jane Doe","role":"Stage Manager","phone":"555-9999","email":"jane@tour.com","scope":"TOUR"}}>>
+<<ACTION:{"type":"update_van","id":"<van_uuid>","tour_id":"<tour_uuid>","fields":{"Event Details":{"Capacity":"5000"},"Misc":{"Curfew":"11:00 PM"}}}>>
 
 Rules for actions:
 - Include the action block AFTER your explanation of what the fix does
@@ -266,6 +267,7 @@ Rules for actions:
 - For create_contact, you MUST include "name" and "scope" (TOUR or VENUE) in fields. Optionally include role, phone, email, venue.
 - NEVER use fake IDs like "new_contact_xyz" for update_contact — that action is for EXISTING contacts only. Use create_contact to add new people.
 - ALWAYS include "tour_id" in action blocks so the correct tour is modified.
+- For update_van, use the VAN id from the data below. The "fields" object should contain category keys (e.g. "Event Details", "Misc", "Labour") with sub-objects of key-value pairs to update. The update merges into existing van_data — it does NOT replace the entire record.
 
 ## Your AKB Data:
 

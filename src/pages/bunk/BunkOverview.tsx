@@ -36,6 +36,7 @@ import {
   Sparkles,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Clipboard } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import {
   AlertDialog,
@@ -75,6 +76,7 @@ const BunkOverview = () => {
   const [tldr, setTldr] = useState<Array<{ text: string; actionable: boolean }>>([]);
   const [tldrLoading, setTldrLoading] = useState(false);
   const [eventDates, setEventDates] = useState<Array<{ id: string; event_date: string; tour_id: string; venue: string | null; city: string | null; show_time: string | null; load_in: string | null; notes: string | null }>>([]);
+  const [vanData, setVanData] = useState<Record<string, any>>({});
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const isMobile = useIsMobile();
 
@@ -126,13 +128,30 @@ const BunkOverview = () => {
   const loadEventDates = async () => {
     const tourIds = tours.map(t => t.id);
     if (tourIds.length === 0) return;
-    const { data } = await supabase
-      .from("schedule_events")
-      .select("id, event_date, tour_id, venue, city, show_time, load_in, notes")
-      .in("tour_id", tourIds)
-      .not("event_date", "is", null)
-      .order("event_date");
-    setEventDates((data || []).filter(d => d.event_date) as typeof eventDates);
+    const [eventsRes, vansRes] = await Promise.all([
+      supabase
+        .from("schedule_events")
+        .select("id, event_date, tour_id, venue, city, show_time, load_in, notes")
+        .in("tour_id", tourIds)
+        .not("event_date", "is", null)
+        .order("event_date"),
+      supabase
+        .from("venue_advance_notes")
+        .select("venue_name, normalized_venue_name, city, event_date, van_data, tour_id")
+        .in("tour_id", tourIds),
+    ]);
+    setEventDates((eventsRes.data || []).filter(d => d.event_date) as typeof eventDates);
+    
+    // Build VAN lookup keyed by normalized venue name + tour_id
+    const vanMap: Record<string, any> = {};
+    for (const van of (vansRes.data || [])) {
+      const key = `${van.tour_id}::${van.normalized_venue_name}`;
+      vanMap[key] = van.van_data;
+      // Also key by venue_name for fallback matching
+      const key2 = `${van.tour_id}::${van.venue_name?.toLowerCase().replace(/[^a-z0-9]/g, "")}`;
+      if (!vanMap[key2]) vanMap[key2] = van.van_data;
+    }
+    setVanData(vanMap);
   };
 
   const generateTldr = async () => {
@@ -568,6 +587,36 @@ const BunkOverview = () => {
               {selectedDateEvents.map((evt) => {
                 const tourName = tourNameMap[evt.tour_id] || "Tour";
                 const color = tourColorMap[evt.tour_id] || "hsl(var(--primary))";
+                // Look up VAN data for this event
+                const venueNorm = evt.venue?.toLowerCase().replace(/[^a-z0-9]/g, "") || "";
+                const van = vanData[`${evt.tour_id}::${venueNorm}`] || null;
+                
+                // Extract key VAN fields for display
+                const vanHighlights: Array<{ label: string; value: string }> = [];
+                if (van) {
+                  const extract = (cat: string, field: string) => {
+                    const val = van[cat]?.[field];
+                    if (val && val !== "N/A" && val !== "n/a" && val !== "" && val !== "TBD") return val;
+                    return null;
+                  };
+                  const capacity = extract("Event Details", "Capacity");
+                  if (capacity) vanHighlights.push({ label: "Capacity", value: capacity });
+                  const curfew = extract("Misc", "Curfew");
+                  if (curfew) vanHighlights.push({ label: "Curfew", value: curfew });
+                  const busArrival = extract("Event Details", "Bus Arrival");
+                  if (busArrival) vanHighlights.push({ label: "Bus Arrival", value: busArrival });
+                  const power = extract("Power", "Available Power");
+                  if (power) vanHighlights.push({ label: "Power", value: power });
+                  const union = extract("Labour", "Union");
+                  if (union) vanHighlights.push({ label: "Union", value: union });
+                  const haze = extract("Misc", "Haze Restrictions");
+                  if (haze) vanHighlights.push({ label: "Haze", value: haze });
+                  const spl = extract("Misc", "SPL Restrictions");
+                  if (spl) vanHighlights.push({ label: "SPL", value: spl });
+                  const docks = extract("Dock & Logistics", "Loading Dock");
+                  if (docks) vanHighlights.push({ label: "Dock", value: docks });
+                }
+                
                 return (
                   <div
                     key={evt.id}
@@ -578,6 +627,9 @@ const BunkOverview = () => {
                       <span className="font-mono text-[10px] tracking-wider text-muted-foreground uppercase truncate">
                         {tourName}
                       </span>
+                      {van && (
+                        <Clipboard className="h-3 w-3 text-primary/60 ml-auto" />
+                      )}
                     </div>
                     <div className="flex items-start gap-2">
                       <MapPin className="h-3.5 w-3.5 text-muted-foreground shrink-0 mt-0.5" />
@@ -607,6 +659,19 @@ const BunkOverview = () => {
                       <p className="text-xs text-muted-foreground/80 font-mono line-clamp-2 pl-5">
                         {evt.notes}
                       </p>
+                    )}
+                    {vanHighlights.length > 0 && (
+                      <div className="mt-1.5 pt-1.5 border-t border-border/50">
+                        <p className="text-[10px] font-mono tracking-wider text-primary/70 uppercase mb-1">Advance Notes</p>
+                        <div className="grid grid-cols-2 gap-x-3 gap-y-0.5">
+                          {vanHighlights.map((h) => (
+                            <div key={h.label} className="flex items-baseline gap-1 text-[11px] font-mono">
+                              <span className="text-muted-foreground">{h.label}:</span>
+                              <span className="text-foreground/80 truncate">{h.value}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
                     )}
                     <button
                       onClick={() => {
