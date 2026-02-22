@@ -6,8 +6,6 @@ import { useAuth } from "@/hooks/useAuth";
 import { motion } from "framer-motion";
 import { Radio, Loader2, CheckCircle, XCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 
 type InviteData = {
@@ -31,11 +29,6 @@ const InviteAccept = () => {
   const [accepting, setAccepting] = useState(false);
   const [accepted, setAccepted] = useState(false);
 
-  // Auth form state
-  const [password, setPassword] = useState("");
-  const [isSignUp, setIsSignUp] = useState(false);
-  const [authSubmitting, setAuthSubmitting] = useState(false);
-
   useEffect(() => {
     const fetchInvite = async () => {
       if (!token) { setInviteError("Invalid invite link."); setInviteLoading(false); return; }
@@ -53,7 +46,6 @@ const InviteAccept = () => {
         setInviteError("This invite has expired. Ask your Tour Admin for a new one.");
       } else {
         setInvite(data as InviteData);
-        setIsSignUp(true);
       }
       setInviteLoading(false);
     };
@@ -62,7 +54,7 @@ const InviteAccept = () => {
 
   // Auto-accept if user is already logged in and invite is valid
   useEffect(() => {
-    if (!authLoading && user && invite && !accepted) {
+    if (!authLoading && user && invite && !accepted && !accepting) {
       acceptInvite(user.id);
     }
   }, [authLoading, user, invite]);
@@ -93,47 +85,11 @@ const InviteAccept = () => {
         .eq("id", invite.id);
 
       setAccepted(true);
-      setTimeout(() => navigate("/bunk?welcome=1"), 1500);
+      setTimeout(() => navigate("/bunk", { replace: true }), 1200);
     } catch (err: any) {
       toast.error(err.message || "Failed to accept invite");
+      setAccepting(false);
     }
-    setAccepting(false);
-  };
-
-  const handleAuth = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!invite) return;
-    setAuthSubmitting(true);
-    try {
-      if (isSignUp) {
-        const { data, error } = await supabase.auth.signUp({
-          email: invite.email,
-          password,
-        });
-        if (error) throw error;
-        // Check for repeated signup (user already exists) — no session created
-        if (data.user && !data.session) {
-          // User already exists, try signing in instead
-          const { error: signInError } = await supabase.auth.signInWithPassword({
-            email: invite.email,
-            password,
-          });
-          if (signInError) {
-            toast.error("An account already exists for this email. Try signing in, or use Google if that's how you registered.");
-            setIsSignUp(false);
-          }
-          // acceptInvite will fire via useEffect if sign-in succeeded
-        }
-        // If session exists, auto-confirm worked — acceptInvite fires via useEffect
-      } else {
-        const { error } = await supabase.auth.signInWithPassword({ email: invite.email, password });
-        if (error) throw error;
-        // acceptInvite will fire via useEffect
-      }
-    } catch (err: any) {
-      toast.error(err.message);
-    }
-    setAuthSubmitting(false);
   };
 
   if (inviteLoading || authLoading) {
@@ -182,7 +138,7 @@ const InviteAccept = () => {
     );
   }
 
-  // Not logged in — streamlined password-only form
+  // Not logged in — show Google sign-in only
   return (
     <div className="flex min-h-screen items-center justify-center bg-background">
       <motion.div
@@ -209,59 +165,11 @@ const InviteAccept = () => {
         </div>
 
         <div className="rounded-lg border border-border bg-card p-6 shadow-lg">
-          <p className="text-sm font-mono text-muted-foreground mb-4 text-center">
-            {isSignUp ? "SET YOUR PASSWORD TO JOIN" : "ENTER YOUR PASSWORD"}
-          </p>
-          <form onSubmit={handleAuth} className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="email" className="text-sm text-muted-foreground font-mono">EMAIL</Label>
-              <Input
-                id="email"
-                type="email"
-                value={invite?.email || ""}
-                disabled
-                className="bg-muted/50 border-border font-mono text-sm opacity-70"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="password" className="text-sm text-muted-foreground font-mono">
-                {isSignUp ? "CREATE PASSWORD" : "PASSWORD"}
-              </Label>
-              <Input
-                id="password"
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required
-                minLength={6}
-                autoFocus
-                className="bg-muted border-border font-mono text-sm"
-                placeholder="••••••••"
-              />
-            </div>
-            <Button type="submit" disabled={authSubmitting} className="w-full font-mono tracking-wider">
-              {authSubmitting ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
-              {isSignUp ? "JOIN TOUR →" : "SIGN IN & JOIN →"}
-            </Button>
-          </form>
-
-          <div className="relative my-4">
-            <div className="absolute inset-0 flex items-center">
-              <span className="w-full border-t border-border" />
-            </div>
-            <div className="relative flex justify-center text-xs">
-              <span className="bg-card px-2 font-mono text-muted-foreground">OR</span>
-            </div>
-          </div>
-
           <Button
             type="button"
-            variant="outline"
-            disabled={authSubmitting}
+            disabled={accepting}
             onClick={async () => {
-              setAuthSubmitting(true);
               try {
-                // Persist invite token so it survives the OAuth redirect
                 if (token) localStorage.setItem("pending_invite_token", token);
                 const { error } = await lovable.auth.signInWithOAuth("google", {
                   redirect_uri: `${window.location.origin}/login`,
@@ -269,12 +177,11 @@ const InviteAccept = () => {
                 if (error) throw error;
               } catch (err: any) {
                 toast.error(err.message);
-                setAuthSubmitting(false);
               }
             }}
-            className="w-full font-mono tracking-wider border-border"
+            className="w-full font-mono tracking-wider h-12 text-base"
           >
-            <svg className="mr-2 h-4 w-4" viewBox="0 0 24 24">
+            <svg className="mr-2 h-5 w-5" viewBox="0 0 24 24">
               <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
               <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
               <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/>
@@ -283,15 +190,9 @@ const InviteAccept = () => {
             SIGN IN WITH GOOGLE & JOIN
           </Button>
 
-          <div className="mt-4 text-center">
-            <button
-              type="button"
-              onClick={() => setIsSignUp(!isSignUp)}
-              className="text-xs font-mono text-muted-foreground hover:text-primary transition-colors"
-            >
-              {isSignUp ? "ALREADY HAVE AN ACCOUNT? SIGN IN" : "NEW USER? CREATE ACCOUNT"}
-            </button>
-          </div>
+          <p className="text-[10px] font-mono text-muted-foreground/60 text-center mt-4">
+            Sign in to accept your invite and open your workspace
+          </p>
         </div>
       </motion.div>
     </div>

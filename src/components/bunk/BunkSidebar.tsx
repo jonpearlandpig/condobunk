@@ -100,6 +100,7 @@ const BunkSidebar = () => {
     setBulkInviting(true);
     const tourName = tours.find(t => t.id === tourId)?.name || "";
     let created = 0;
+    const newInvites: Array<{ name: string; email: string; token: string }> = [];
     for (const c of eligible) {
       try {
         const mappedRole = (c.role?.toUpperCase()?.includes("TA") || c.role?.toUpperCase()?.includes("TOUR ACCOUNT"))
@@ -107,21 +108,34 @@ const BunkSidebar = () => {
           : (c.role?.toUpperCase()?.includes("MGMT") || c.role?.toUpperCase()?.includes("MANAGER"))
           ? "MGMT" as const
           : "CREW" as const;
-        await supabase.from("tour_invites").insert({
+        const { data } = await supabase.from("tour_invites").insert({
           tour_id: tourId,
           email: c.email!,
           role: mappedRole,
           created_by: user.id,
           tour_name: tourName,
-        });
-        created++;
+        }).select("token").single();
+        if (data) {
+          created++;
+          newInvites.push({ name: c.name, email: c.email!, token: data.token });
+        }
       } catch { /* skip failures */ }
     }
     await fetchInvites();
     setBulkInviting(false);
-    toast.success(`${created} invite${created !== 1 ? "s" : ""} created`, {
-      description: "Links will be included when you email each contact",
-    });
+    if (created > 0) {
+      // Compose a single mailto with all invites listed in the body
+      const subject = encodeURIComponent(`You're invited to ${tourName} on Condo Bunk`);
+      const bodyLines = newInvites.map(inv =>
+        `${inv.name}: ${window.location.origin}/invite/${inv.token}`
+      ).join("\n");
+      const body = encodeURIComponent(`Hey team,\n\nYou've been invited to join ${tourName} on Condo Bunk. Click your personal link below to sign in and join:\n\n${bodyLines}\n\nEach link expires in 7 days.`);
+      const allEmails = newInvites.map(i => i.email).join(",");
+      window.open(`mailto:${allEmails}?subject=${subject}&body=${body}`, "_self");
+      toast.success(`${created} invite${created !== 1 ? "s" : ""} created`, {
+        description: "Email draft opened with all invite links",
+      });
+    }
   };
 
   useEffect(() => {
