@@ -91,6 +91,12 @@ const BunkSidebar = () => {
     contacts: g.contacts.filter(c => c.appUserId !== user?.id),
   }));
 
+  // Count online team members (excluding self)
+  const onlineTeamCount = filteredTourTeamGroups
+    .flatMap(g => g.contacts)
+    .filter(c => c.appUserId && onlineUsers.has(c.appUserId))
+    .length;
+
   // Get all uninvited contacts with emails across all tour groups
   const getUninvitedContacts = () => {
     const allContacts = filteredTourTeamGroups.flatMap(g => g.contacts);
@@ -202,6 +208,12 @@ const BunkSidebar = () => {
             <ChevronRight className={`h-3 w-3 transition-transform ${tourTeamOpen ? "rotate-90" : ""}`} />
             <Users className="h-3 w-3" />
             Tour Team
+            {onlineTeamCount > 0 && (
+              <span className="flex items-center gap-1 text-[9px] font-bold text-emerald-400 normal-case tracking-normal">
+                <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                {onlineTeamCount}
+              </span>
+            )}
             {totalUnread > 0 && (
               <span className="h-4 min-w-4 px-1 flex items-center justify-center rounded-full bg-primary text-primary-foreground text-[9px] font-bold leading-none">
                 {totalUnread > 99 ? "99+" : totalUnread}
