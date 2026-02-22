@@ -6,6 +6,7 @@ import { useIsMobile } from "@/hooks/use-mobile";
 import { useAuth } from "@/hooks/useAuth";
 import { useTour } from "@/hooks/useTour";
 import { supabase } from "@/integrations/supabase/client";
+import { getInviteUrl } from "@/lib/invite-url";
 import {
   Tooltip,
   TooltipContent,
@@ -180,7 +181,7 @@ const SidebarContactList = ({ contacts, onNavigate, onUpdate, onDelete, onlineUs
     if (!c.email || !tourId || !user) return;
     const existingInvite = activeInvites?.find(i => i.email.toLowerCase() === c.email!.toLowerCase());
     if (existingInvite) {
-      const url = `${window.location.origin}/invite/${existingInvite.token}`;
+      const url = getInviteUrl(existingInvite.token);
       await navigator.clipboard.writeText(url);
       toast.success("Invite link copied!", { description: `${c.name} already has a pending invite` });
       return;
@@ -204,7 +205,7 @@ const SidebarContactList = ({ contacts, onNavigate, onUpdate, onDelete, onlineUs
         .select("token")
         .single();
       if (error) throw error;
-      const inviteUrl = `${window.location.origin}/invite/${data.token}`;
+      const inviteUrl = getInviteUrl(data.token);
       await navigator.clipboard.writeText(inviteUrl);
       const subject = encodeURIComponent(`You're invited to ${tourName} on Condo Bunk`);
       const body = encodeURIComponent(`Hey ${c.name},\n\nYou've been invited to join ${tourName} on Condo Bunk.\n\nClick here to accept: ${inviteUrl}\n\nThis link expires in 7 days.`);

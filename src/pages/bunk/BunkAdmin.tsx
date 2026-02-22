@@ -13,6 +13,7 @@ import { useTour } from "@/hooks/useTour";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+import { getInviteUrl } from "@/lib/invite-url";
 
 type Integration = {
   id: string;
@@ -215,7 +216,7 @@ const BunkAdmin = () => {
     if (error) {
       toast.error(error.message);
     } else {
-      const inviteUrl = `${window.location.origin}/invite/${data.token}`;
+      const inviteUrl = getInviteUrl(data.token);
       await navigator.clipboard.writeText(inviteUrl);
       const subject = encodeURIComponent(`You're invited to ${selectedTour?.name || "the tour"}`);
       const body = encodeURIComponent(`Hey — here's your invite link to join the tour:\n\n${inviteUrl}\n\nIt expires ${new Date(data.expires_at).toLocaleDateString()}.`);
@@ -249,7 +250,7 @@ const BunkAdmin = () => {
       toast.error(error.message);
       return;
     }
-    const inviteUrl = `${window.location.origin}/invite/${data.token}`;
+    const inviteUrl = getInviteUrl(data.token);
     await navigator.clipboard.writeText(inviteUrl);
     const subject = encodeURIComponent(`You're invited to ${selectedTour?.name || "the tour"}`);
     const body = encodeURIComponent(`Hey — here's your invite link to join the tour:\n\n${inviteUrl}\n\nIt expires ${new Date(data.expires_at).toLocaleDateString()}.`);
@@ -259,8 +260,7 @@ const BunkAdmin = () => {
   };
 
   const copyInviteLink = (token: string) => {
-    const inviteUrl = `${window.location.origin}/invite/${token}`;
-    navigator.clipboard.writeText(inviteUrl);
+    navigator.clipboard.writeText(getInviteUrl(token));
     toast.success("Invite link copied!");
   };
 
@@ -339,7 +339,7 @@ const BunkAdmin = () => {
     if (!member.profiles?.email) return;
     const data = await handleQuickInvite(member.profiles.email, member.role);
     if (data) {
-      const inviteUrl = `${window.location.origin}/invite/${data.token}`;
+      const inviteUrl = getInviteUrl(data.token);
       await navigator.clipboard.writeText(inviteUrl);
       toast.success(`Invite link for ${member.profiles.email} copied!`);
       load();
@@ -607,7 +607,7 @@ const BunkAdmin = () => {
                         size="sm"
                         variant="ghost"
                         onClick={() => {
-                          const inviteUrl = `${window.location.origin}/invite/${inv.token}`;
+                          const inviteUrl = getInviteUrl(inv.token);
                           const subject = encodeURIComponent(`You're invited to ${selectedTour?.name || "the tour"}`);
                           const body = encodeURIComponent(`Hey — here's your invite link to join the tour:\n\n${inviteUrl}\n\nIt expires ${new Date(inv.expires_at).toLocaleDateString()}.`);
                           window.open(`mailto:${inv.email}?subject=${subject}&body=${body}`, "_blank");
