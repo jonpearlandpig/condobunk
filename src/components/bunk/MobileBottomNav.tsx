@@ -160,14 +160,8 @@ const MobileBottomNav = ({ avatarUrl, displayName, user, signOut, fileInputRef }
             </div>
           </SheetHeader>
 
-          <div className="overflow-y-auto flex-1 px-3 pb-2 space-y-0">
-            <SidebarProvider defaultOpen={false}>
-              {/* Ask TELA threads */}
-              <CollapsibleSection title="Ask TELA">
-                <SidebarTelaThreads />
-              </CollapsibleSection>
-
-              {/* Tour Team */}
+          <div className="overflow-y-auto flex-1 px-3 pb-2 flex flex-col justify-end">
+              {/* Tour Team — furthest from thumb */}
               <CollapsibleSection title="Tour Team" count={totalTeamContacts}>
                 {filteredTourTeamGroups.map(g => (
                   <SidebarContactList
@@ -183,7 +177,7 @@ const MobileBottomNav = ({ avatarUrl, displayName, user, signOut, fileInputRef }
                 ))}
               </CollapsibleSection>
 
-              {/* Venue Partners */}
+              {/* Venue Partners — middle */}
               {tourVenueGroups.length > 0 && (
                 <CollapsibleSection title="Venue Partners" count={totalVenueContacts}>
                   {tourVenueGroups.map(tvg => (
@@ -200,7 +194,13 @@ const MobileBottomNav = ({ avatarUrl, displayName, user, signOut, fileInputRef }
                   ))}
                 </CollapsibleSection>
               )}
-            </SidebarProvider>
+
+              {/* Ask TELA — closest to thumb */}
+              <CollapsibleSection title="Ask TELA">
+                <SidebarProvider defaultOpen={false}>
+                  <SidebarTelaThreads />
+                </SidebarProvider>
+              </CollapsibleSection>
           </div>
 
           {/* Pinned profile footer */}
