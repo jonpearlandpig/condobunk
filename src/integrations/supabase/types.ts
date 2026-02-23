@@ -1346,6 +1346,10 @@ export type Database = {
       is_tour_admin_or_mgmt: { Args: { _tour_id: string }; Returns: boolean }
       is_tour_member: { Args: { _tour_id: string }; Returns: boolean }
       match_contact_tours: { Args: { _email: string }; Returns: string[] }
+      remove_tour_member: {
+        Args: { _target_user_id: string; _tour_id: string }
+        Returns: boolean
+      }
     }
     Enums: {
       akb_state: "BUILDING" | "SOVEREIGN" | "CONFLICT"
