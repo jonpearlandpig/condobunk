@@ -54,10 +54,10 @@ const CollapsibleSection = ({ title, count, children, nested }: { title: string;
         onClick={() => setOpen(!open)}
         className={`w-full font-mono tracking-[0.2em] text-muted-foreground/60 uppercase py-1.5 px-1 flex items-center gap-1.5 hover:text-muted-foreground transition-colors ${nested ? "text-[9px]" : "text-[10px]"}`}
       >
-        <ChevronRight className={`h-2.5 w-2.5 transition-transform ${open ? "rotate-90" : ""}`} />
-        {title}
+        <ChevronRight className={`h-2.5 w-2.5 shrink-0 transition-transform ${open ? "rotate-90" : ""}`} />
+        <span className="truncate">{title}</span>
         {count !== undefined && count > 0 && (
-          <span className="ml-auto text-muted-foreground/40 normal-case tracking-normal text-[9px]">{count}</span>
+          <span className="ml-auto shrink-0 text-muted-foreground/40 normal-case tracking-normal text-[9px]">{count}</span>
         )}
       </button>
       {open && children}
@@ -160,7 +160,36 @@ const MobileBottomNav = ({ avatarUrl, displayName, user, signOut, fileInputRef }
             </div>
           </SheetHeader>
 
-          <div className="overflow-y-auto flex-1 px-3 pb-2 flex flex-col justify-end min-h-0">
+          <div className="overflow-y-auto flex-1 px-3 pb-2 flex flex-col min-h-0">
+              {/* Contacts with unread messages — always visible at top */}
+              {(() => {
+                const waitingContacts = filteredTourTeamGroups
+                  .flatMap(g => g.contacts)
+                  .filter(c => unreadFrom(c.appUserId) > 0);
+                if (waitingContacts.length === 0) return null;
+                return (
+                  <div className="mb-1">
+                    <p className="font-mono text-[10px] tracking-[0.2em] text-muted-foreground/60 uppercase py-1.5 px-1">
+                      Waiting
+                      <span className="ml-auto float-right text-[9px] text-muted-foreground/40">{waitingContacts.length}</span>
+                    </p>
+                    {waitingContacts.map(c => (
+                      <button
+                        key={c.id}
+                        onClick={() => handleContactTap(c)}
+                        className="w-full flex items-center gap-2 px-4 py-1.5 hover:bg-sidebar-accent/50 rounded-md transition-colors text-left"
+                      >
+                        <span className="h-2 w-2 rounded-full bg-success shrink-0" />
+                        <span className="text-sm text-sidebar-foreground truncate flex-1">{c.name}</span>
+                        <span className="h-4 min-w-4 px-1 flex items-center justify-center rounded-full bg-primary text-primary-foreground text-[9px] font-bold">
+                          {unreadFrom(c.appUserId)}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                );
+              })()}
+
               {/* Tour Team — furthest from thumb */}
               <CollapsibleSection title="Tour Team" count={totalTeamContacts}>
                 {filteredTourTeamGroups.map(g => (
