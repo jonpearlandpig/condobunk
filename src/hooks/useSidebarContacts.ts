@@ -102,6 +102,7 @@ export const useSidebarContacts = () => {
       .from("schedule_events")
       .select("venue, city, event_date, tour_id")
       .in("tour_id", tourIds)
+      .gte("event_date", todayStr)
       .order("event_date");
 
     // Build per-tour venue maps
