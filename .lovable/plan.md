@@ -1,82 +1,53 @@
 
 
-# Fix: Fuzzy VAN Matching for Calendar Events
+# Bottom-Up Mobile Messaging Panel
 
-## Problem
+## Layout Change
 
-The March 5th event at "Allen County War Memorial Coliseum" in "Fort Wayne, IN" has a VAN record, but the calendar can't find it because of name mismatches:
+Anchor all messaging content to the bottom of the sheet so sections grow upward toward the header. Reorder sections so **Ask TELA** is closest to the thumb (bottom), **Venue Partners** in the middle, and **Tour Team** furthest from thumb (top).
 
-| Field | Event | VAN Record |
-|-------|-------|------------|
-| Venue | Allen **County** War Memorial Coliseum | Allen War Memorial Coliseum |
-| City | Fort Wayne, IN | Ft Wayne |
+```text
++------------------+
+| Messages    (99) |  <- header pinned top
+|                  |
+|  (empty space)   |  <- flex grow pushes content down
+|                  |
+| Tour Team ▸      |  <- furthest from thumb
+| Venue Partners ▸ |
+| Ask TELA  ▸      |  <- closest to thumb
++------------------+
+| Avatar  Name     |  <- profile footer pinned bottom
++------------------+
+```
 
-The current lookup uses exact normalized string matching, so `allencountywarmemorialcoliseum` never equals `allenwarmemorialcoliseum`, and `fortwaynein` never equals `ftwayne`.
+## SidebarProvider Problem
 
-## Solution
-
-Add fuzzy/substring matching as a fallback when exact matches fail. This covers common variations like abbreviated names, extra words (County), and city format differences (Ft vs Fort, with/without state).
+`SidebarTelaThreads` calls `useSidebar()` internally (for `setOpenMobile` / `setOpen`), so removing the `SidebarProvider` wrapper would crash it. The fix: wrap **only** `SidebarTelaThreads` in its own minimal `SidebarProvider` instead of wrapping the entire section. This isolates the sidebar context to where it's actually needed and stops the desktop-grid CSS from affecting the whole panel.
 
 ## Technical Changes
 
-### File: `src/pages/bunk/BunkCalendar.tsx`
+### File: `src/components/bunk/MobileBottomNav.tsx`
 
-**1. Add a city normalization helper** (near the existing `normalize` function around line 191):
+1. **Scrollable content div** (line 163): Change from `overflow-y-auto flex-1 px-3 pb-2 space-y-0` to `overflow-y-auto flex-1 px-3 pb-2 flex flex-col justify-end` so collapsed sections cluster at the bottom of available space.
 
-A small function that handles common city abbreviations and strips state suffixes:
-- `Ft` to `fort`, `St` to `saint`, `Mt` to `mount`
-- Strip trailing state codes like `, IN` or `, OH`
+2. **Remove outer SidebarProvider** (lines 164 and 203): Delete the `<SidebarProvider defaultOpen={false}>` wrapper.
 
-```typescript
-const normalizeCity = (s: string | null | undefined) => {
-  let c = (s || "").toLowerCase().trim();
-  c = c.replace(/,?\s*(al|ak|az|ar|ca|co|ct|de|fl|ga|hi|id|il|in|ia|ks|ky|la|me|md|ma|mi|mn|ms|mo|mt|ne|nv|nh|nj|nm|ny|nc|nd|oh|ok|or|pa|ri|sc|sd|tn|tx|ut|vt|va|wa|wv|wi|wy)$/i, "");
-  c = c.replace(/\bft\b/g, "fort").replace(/\bst\b/g, "saint").replace(/\bmt\b/g, "mount");
-  return c.replace(/[^a-z0-9]/g, "");
-};
-```
+3. **Wrap only SidebarTelaThreads** in its own `<SidebarProvider defaultOpen={false}>` so `useSidebar()` inside it doesn't crash. Keep the import.
 
-**2. Update VAN lookup map building** (lines ~196-209):
+4. **Reorder sections** so they render in this order (top to bottom):
+   - Tour Team (furthest from thumb)
+   - Venue Partners (middle)
+   - Ask TELA (closest to thumb / bottom)
 
-Add a normalized-city key alongside the existing keys:
-```typescript
-if (v.city) {
-  const cityKey = `${v.tour_id}::city::${normalizeCity(v.city)}`;
-  // ... existing logic but using normalizeCity
-}
-```
+### No other files modified
 
-**3. Update VAN matching for events** (lines ~286-288):
+The contact list components and thread list work as-is -- only the container layout and order changes.
 
-Use `normalizeCity` for the city fallback key so `Fort Wayne, IN` and `Ft Wayne` both normalize to `fortwayne`.
+## UX Improvement Ideas (for future consideration)
 
-**4. Add substring fallback** when exact venue match fails:
-
-After checking the three existing keys, if no match is found, iterate over the VAN entries for the same tour and check if one venue name contains the other (substring match). This handles "Allen War Memorial Coliseum" being a substring of "Allen County War Memorial Coliseum".
-
-```typescript
-// Substring fallback for venue name mismatches
-if (!hasVan && s.venue) {
-  const eventNorm = normalize(s.venue);
-  const tourVans = vans?.filter(v => v.tour_id === s.tour_id) || [];
-  for (const v of tourVans) {
-    const vanNorm = normalize(v.venue_name);
-    if (eventNorm.includes(vanNorm) || vanNorm.includes(eventNorm)) {
-      const subKey = `substr::${s.id}`;
-      vanLookup[subKey] = [v];
-      // update hasVan and store the key on the entry
-      break;
-    }
-  }
-}
-```
-
-### File: `src/hooks/useTelaActions.ts`
-
-The `update_van` handler already has the upsert logic from the previous fix. Add the same `normalizeCity` treatment to the fallback lookup so that `ilike` queries also match city variations (this is already partially handled by `ilike`, but we should also normalize the `Ft`/`Fort` difference in the query).
-
-## Files Modified
-
-1. `src/pages/bunk/BunkCalendar.tsx` -- Add fuzzy city normalization + substring venue fallback for VAN matching
-2. `src/hooks/useTelaActions.ts` -- Apply city normalization to VAN fallback lookup
+The current collapsible-section pattern works well for a messaging drawer. A few ideas to consider later:
+- **Unread badges on section headers**: Show per-group unread counts (e.g., "Tour Team 3") so users can see at a glance which group has new messages without expanding
+- **Auto-expand the section with unread messages**: When the drawer opens, automatically expand whichever group has unreads
+- **Online-first sorting within groups**: Already implemented -- online contacts sort to the top
+- **Quick-compose FAB**: A floating "new message" button pinned above the profile footer for fast access
 
