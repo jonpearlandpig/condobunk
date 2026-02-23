@@ -83,7 +83,7 @@ const MobileBottomNav = ({ avatarUrl, displayName, user, signOut, fileInputRef }
 
   const { tourTeamGroups, tourVenueGroups, updateContact, deleteContact } = useSidebarContacts();
   const { onlineUsers } = usePresence();
-  const { totalUnread, unreadFrom } = useUnreadDMs();
+  const { totalUnread, unreadFrom, refetch: refetchUnread } = useUnreadDMs();
   const { tours } = useTour();
   const tourId = tours[0]?.id;
 
@@ -140,7 +140,10 @@ const MobileBottomNav = ({ avatarUrl, displayName, user, signOut, fileInputRef }
           tourId={tourId}
           userId={user.id}
           isContactOnline={!!activeDMContact.appUserId && onlineUsers.has(activeDMContact.appUserId)}
-          onClose={() => setActiveDMContact(null)}
+          onClose={() => {
+            setActiveDMContact(null);
+            refetchUnread();
+          }}
         />
       )}
 
@@ -191,7 +194,7 @@ const MobileBottomNav = ({ avatarUrl, displayName, user, signOut, fileInputRef }
               })()}
 
               {/* Tour Team — furthest from thumb */}
-              <CollapsibleSection title="Tour Team" count={totalTeamContacts}>
+              <CollapsibleSection title="Your Crew" count={totalTeamContacts}>
                 {filteredTourTeamGroups.map(g => (
                   <CollapsibleSection key={g.tourId} title={g.tourName} count={g.contacts.length} nested>
                     <SidebarContactList
@@ -209,7 +212,7 @@ const MobileBottomNav = ({ avatarUrl, displayName, user, signOut, fileInputRef }
 
               {/* Venue Partners — middle */}
               {tourVenueGroups.length > 0 && (
-                <CollapsibleSection title="Venue Partners" count={totalVenueContacts}>
+                <CollapsibleSection title="Venues" count={totalVenueContacts}>
                   {tourVenueGroups.map(tvg => (
                     <CollapsibleSection key={tvg.tourId} title={tvg.tourName} count={tvg.totalContacts} nested>
                       <SidebarContactList
