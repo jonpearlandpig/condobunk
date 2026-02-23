@@ -7,6 +7,7 @@ interface Tour {
   name: string;
   akb_state: string;
   status: string;
+  owner_id: string;
 }
 
 interface TourContextType {

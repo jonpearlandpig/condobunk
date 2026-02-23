@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { Phone, Mail, MessageSquare, Pencil, Check, X, Trash2, MessageCircle, Send, ChevronRight, UserPlus } from "lucide-react";
+import { Phone, Mail, MessageSquare, Pencil, Check, X, Trash2, MessageCircle, Send, ChevronRight, UserPlus, UserMinus } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import type { SidebarContact, VenueGroup } from "@/hooks/useSidebarContacts";
 import { useIsMobile } from "@/hooks/use-mobile";
@@ -39,9 +39,13 @@ interface SidebarContactListProps {
   onInviteCreated?: () => void;
   /** Override mobile tap behavior for DM (used by messaging drawer) */
   onContactTap?: (contact: SidebarContact) => void;
+  /** Whether current user is the tour owner */
+  isOwner?: boolean;
+  /** Callback to remove a member from the tour (owner only) */
+  onRemoveMember?: (contact: SidebarContact) => Promise<void>;
 }
 
-const SidebarContactList = ({ contacts, onNavigate, onUpdate, onDelete, onlineUserIds, unreadFrom, grouped, venueGroups, activeInvites, onInviteCreated, onContactTap }: SidebarContactListProps) => {
+const SidebarContactList = ({ contacts, onNavigate, onUpdate, onDelete, onlineUserIds, unreadFrom, grouped, venueGroups, activeInvites, onInviteCreated, onContactTap, isOwner, onRemoveMember }: SidebarContactListProps) => {
   const navigate = useNavigate();
   const isMobile = useIsMobile();
   const { user } = useAuth();
@@ -433,6 +437,21 @@ const SidebarContactList = ({ contacts, onNavigate, onUpdate, onDelete, onlineUs
                   </TooltipContent>
                 </Tooltip>
               )}
+              {/* Remove from tour (owner only, app users only) */}
+              {!showQuickActions && isOwner && c.appUserId && onRemoveMember && (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); onRemoveMember(c); }}
+                      className="p-1 rounded text-muted-foreground hover:text-destructive transition-colors"
+                      aria-label="Remove from tour"
+                    >
+                      <UserMinus className="h-3.5 w-3.5" />
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent side="top" className="text-xs">Remove from tour</TooltipContent>
+                </Tooltip>
+              )}
               {!showQuickActions && (
                 <>
                   {/* TELA: always visible for incomplete, hover for complete */}
@@ -580,6 +599,17 @@ const SidebarContactList = ({ contacts, onNavigate, onUpdate, onDelete, onlineUs
             {onUpdate && (
               <button onClick={() => startEdit(c)} className="p-2 rounded-md bg-muted/50 text-muted-foreground active:bg-muted transition-colors" aria-label="Edit">
                 <Pencil className="h-3.5 w-3.5" />
+              </button>
+            )}
+            {/* Remove from tour (owner only, app users only) */}
+            {isOwner && c.appUserId && onRemoveMember && (
+              <button
+                onClick={(e) => { e.stopPropagation(); onRemoveMember(c); }}
+                className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-md bg-destructive/10 text-destructive text-xs font-mono font-medium active:bg-destructive/20 transition-colors"
+                aria-label="Remove from tour"
+              >
+                <UserMinus className="h-3.5 w-3.5" />
+                REMOVE
               </button>
             )}
           </div>
