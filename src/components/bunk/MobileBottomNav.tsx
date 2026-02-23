@@ -54,20 +54,28 @@ const navItems = [
 /** Long-press popover tooltip for nav items — tap navigates, hold reveals tip */
 const NavTooltip = ({ tip, children }: { tip: string; children: ReactNode }) => {
   const [open, setOpen] = useState(false);
-  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const holdRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const dismissRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const onTouchStart = useCallback(() => {
-    timerRef.current = setTimeout(() => setOpen(true), 400);
+  const clearTimers = useCallback(() => {
+    if (holdRef.current) { clearTimeout(holdRef.current); holdRef.current = null; }
+    if (dismissRef.current) { clearTimeout(dismissRef.current); dismissRef.current = null; }
   }, []);
 
+  const onTouchStart = useCallback(() => {
+    clearTimers();
+    holdRef.current = setTimeout(() => {
+      setOpen(true);
+      dismissRef.current = setTimeout(() => setOpen(false), 1400);
+    }, 400);
+  }, [clearTimers]);
+
   const onTouchEnd = useCallback(() => {
-    if (timerRef.current) clearTimeout(timerRef.current);
-    // Auto-dismiss after a short delay if open
-    if (open) setTimeout(() => setOpen(false), 1200);
-  }, [open]);
+    if (holdRef.current) { clearTimeout(holdRef.current); holdRef.current = null; }
+  }, []);
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
+    <Popover open={open} onOpenChange={(v) => { if (!v) { clearTimers(); setOpen(false); } }}>
       <PopoverTrigger asChild>
         <div onTouchStart={onTouchStart} onTouchEnd={onTouchEnd} onTouchCancel={onTouchEnd}>
           {children}
