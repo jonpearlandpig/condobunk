@@ -12,6 +12,29 @@ Deno.serve(async (req) => {
   }
 
   try {
+    // Auth check
+    const authHeader = req.headers.get("Authorization");
+    if (!authHeader?.startsWith("Bearer ")) {
+      return new Response(JSON.stringify({ error: "Unauthorized" }), {
+        status: 401,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    const userClient = createClient(
+      Deno.env.get("SUPABASE_URL")!,
+      Deno.env.get("SUPABASE_ANON_KEY")!,
+      { global: { headers: { Authorization: authHeader } } }
+    );
+
+    const { data: { user }, error: authError } = await userClient.auth.getUser();
+    if (authError || !user) {
+      return new Response(JSON.stringify({ error: "Unauthorized" }), {
+        status: 401,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, serviceKey);
@@ -20,6 +43,21 @@ Deno.serve(async (req) => {
     if (!tour_id) {
       return new Response(JSON.stringify({ error: "tour_id required" }), {
         status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    // Verify tour membership (TA/MGMT only)
+    const { data: membership } = await supabase
+      .from("tour_members")
+      .select("id, role")
+      .eq("tour_id", tour_id)
+      .eq("user_id", user.id)
+      .single();
+
+    if (!membership || !["TA", "MGMT"].includes(membership.role)) {
+      return new Response(JSON.stringify({ error: "Forbidden" }), {
+        status: 403,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
@@ -79,7 +117,6 @@ Deno.serve(async (req) => {
     const processedIds: string[] = [];
 
     for (const change of changes) {
-      // Calculate days until event
       let daysOut = Infinity;
       if (change.event_date) {
         const eventDate = new Date(change.event_date);
@@ -88,7 +125,6 @@ Deno.serve(async (req) => {
       }
 
       for (const memberId of memberIds) {
-        // Don't notify the user who made the change
         if (memberId === change.user_id) continue;
 
         const prefs = prefsMap[memberId] || tourDefaults || {
@@ -103,14 +139,12 @@ Deno.serve(async (req) => {
           money_always: true,
         };
 
-        // Check if safety/time/money overrides apply
         const forcedBySafety = change.affects_safety && prefs.safety_always;
         const forcedByTime = change.affects_time && prefs.time_always;
         const forcedByMoney = change.affects_money && prefs.money_always;
         const forced = forcedBySafety || forcedByTime || forcedByMoney;
 
         if (!forced) {
-          // Check category preference
           const entityType = change.entity_type;
           const categoryEnabled =
             (entityType === "schedule_event" && prefs.notify_schedule_changes) ||
@@ -120,17 +154,13 @@ Deno.serve(async (req) => {
             (entityType === "finance_line" && prefs.notify_finance_changes);
 
           if (!categoryEnabled) continue;
-
-          // Check day window
           if (daysOut > prefs.day_window && daysOut !== Infinity) continue;
 
-          // Check severity
           const changeSev = SEVERITY_ORDER[change.severity] ?? 0;
           const minSev = SEVERITY_ORDER[prefs.min_severity] ?? 1;
           if (changeSev < minSev) continue;
         }
 
-        // Build message
         let message = "";
         const impactTags: string[] = [];
         if (change.affects_safety) impactTags.push("🛡️ SAFETY");
@@ -152,7 +182,6 @@ Deno.serve(async (req) => {
           message = `[${dayLabel}] ${message}`;
         }
 
-        // Send as Bunk Chat DM
         await supabase.from("direct_messages").insert({
           tour_id: tour_id,
           sender_id: change.user_id,
@@ -165,7 +194,6 @@ Deno.serve(async (req) => {
       processedIds.push(change.id);
     }
 
-    // Mark as notified
     if (processedIds.length > 0) {
       await supabase
         .from("akb_change_log")
@@ -177,7 +205,7 @@ Deno.serve(async (req) => {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (err) {
-    return new Response(JSON.stringify({ error: String(err) }), {
+    return new Response(JSON.stringify({ error: "Something went wrong" }), {
       status: 500,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
