@@ -1,23 +1,33 @@
 
-## Fix: Contact Names Truncated on Desktop
 
-### Problem
-The desktop sidebar shows up to 7 action icons (BUNK, Edit, Invite, Remove, TELA, Call, Email) per contact. These buttons use `opacity-0 group-hover:opacity-100` to show on hover, but `opacity-0` only makes them invisible -- they still occupy horizontal space. This forces names like "Trey" to truncate to "Tr...".
+## Update Login Page with Official Condo Bunk Logo
 
-### Solution
-Change the tour team action buttons container from `opacity-0`/`opacity-100` to actually collapse when not hovered. Replace the opacity approach with a width-collapsing pattern so buttons take zero space until the row is hovered.
+### What Changes
+Replace the current icon + text header on the login page with the official Condo Bunk logo image. The login page has a dark background, so the **white text logo** (`WHITE_TEXT_CONDO_BUNK_LOGO.png`) will be used for best contrast.
+
+### Steps
+
+1. Copy `user-uploads://WHITE_TEXT_CONDO_BUNK_LOGO.png` to `src/assets/WHITE_TEXT_CONDO_BUNK_LOGO.png`
+2. Update `src/pages/Login.tsx`:
+   - Import the logo image
+   - Replace the `Radio` icon + "CONDO BUNK" `h1` block (lines 80-88) with an `<img>` tag showing the logo, sized appropriately (roughly 200px wide)
+   - Keep the tagline text below
 
 ### Technical Details
 
-**File: `src/components/bunk/SidebarContactList.tsx`** (line 371)
+**File: `src/pages/Login.tsx`**
 
-Current:
+Remove:
+- The `Radio` and `Shield` icon imports (Shield is still used on the button, so keep that)
+- The Radio icon + animated dot + h1 "CONDO BUNK" markup
+
+Replace with:
+```tsx
+import logoWhite from "@/assets/WHITE_TEXT_CONDO_BUNK_LOGO.png";
+
+// In the header area:
+<img src={logoWhite} alt="Condo Bunk" className="h-16 w-auto mx-auto mb-2" />
 ```
-className={`... ${showQuickActions ? "" : isMissingContact ? "" : "opacity-0 group-hover:opacity-100"} transition-opacity`}
-```
 
-Change to use `hidden group-hover:flex` for tour team contacts (when `!showQuickActions && !isMissingContact`). This completely removes the buttons from layout until hover, giving the name the full width.
+The tagline "Close the curtain. Get schtuff done!" stays as-is below the logo.
 
-The venue contacts (`showQuickActions`) already show a minimal set of always-visible icons (just text + email), so they remain unchanged.
-
-Additionally, the Edit button on line 432 has its own `opacity-0 group-hover:opacity-100` for venue mode -- that stays as-is since venue buttons are minimal.
