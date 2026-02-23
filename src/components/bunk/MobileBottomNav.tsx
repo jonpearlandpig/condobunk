@@ -46,13 +46,13 @@ const navItems = [
   { title: "Admin", url: "/bunk/admin", icon: Settings },
 ];
 
-const CollapsibleSection = ({ title, count, children }: { title: string; count?: number; children: ReactNode }) => {
+const CollapsibleSection = ({ title, count, children, nested }: { title: string; count?: number; children: ReactNode; nested?: boolean }) => {
   const [open, setOpen] = useState(false);
   return (
-    <div>
+    <div className={nested ? "pl-2" : ""}>
       <button
         onClick={() => setOpen(!open)}
-        className="w-full font-mono text-[10px] tracking-[0.2em] text-muted-foreground/60 uppercase py-1.5 px-1 flex items-center gap-1.5 hover:text-muted-foreground transition-colors"
+        className={`w-full font-mono tracking-[0.2em] text-muted-foreground/60 uppercase py-1.5 px-1 flex items-center gap-1.5 hover:text-muted-foreground transition-colors ${nested ? "text-[9px]" : "text-[10px]"}`}
       >
         <ChevronRight className={`h-2.5 w-2.5 transition-transform ${open ? "rotate-90" : ""}`} />
         {title}
@@ -160,20 +160,21 @@ const MobileBottomNav = ({ avatarUrl, displayName, user, signOut, fileInputRef }
             </div>
           </SheetHeader>
 
-          <div className="overflow-y-auto flex-1 px-3 pb-2 flex flex-col justify-end">
+          <div className="overflow-y-auto flex-1 px-3 pb-2 flex flex-col justify-end min-h-0">
               {/* Tour Team — furthest from thumb */}
               <CollapsibleSection title="Tour Team" count={totalTeamContacts}>
                 {filteredTourTeamGroups.map(g => (
-                  <SidebarContactList
-                    key={g.tourId}
-                    contacts={g.contacts}
-                    onNavigate={() => setDrawerOpen(false)}
-                    onUpdate={updateContact}
-                    onDelete={deleteContact}
-                    onlineUserIds={onlineUsers}
-                    unreadFrom={unreadFrom}
-                    onContactTap={handleContactTap}
-                  />
+                  <CollapsibleSection key={g.tourId} title={g.tourName} count={g.contacts.length} nested>
+                    <SidebarContactList
+                      contacts={g.contacts}
+                      onNavigate={() => setDrawerOpen(false)}
+                      onUpdate={updateContact}
+                      onDelete={deleteContact}
+                      onlineUserIds={onlineUsers}
+                      unreadFrom={unreadFrom}
+                      onContactTap={handleContactTap}
+                    />
+                  </CollapsibleSection>
                 ))}
               </CollapsibleSection>
 
@@ -181,16 +182,17 @@ const MobileBottomNav = ({ avatarUrl, displayName, user, signOut, fileInputRef }
               {tourVenueGroups.length > 0 && (
                 <CollapsibleSection title="Venue Partners" count={totalVenueContacts}>
                   {tourVenueGroups.map(tvg => (
-                    <SidebarContactList
-                      key={tvg.tourId}
-                      contacts={tvg.venueGroups.flatMap(vg => vg.contacts)}
-                      onNavigate={() => setDrawerOpen(false)}
-                      onUpdate={updateContact}
-                      onDelete={deleteContact}
-                      onlineUserIds={onlineUsers}
-                      grouped
-                      venueGroups={tvg.venueGroups}
-                    />
+                    <CollapsibleSection key={tvg.tourId} title={tvg.tourName} count={tvg.totalContacts} nested>
+                      <SidebarContactList
+                        contacts={tvg.venueGroups.flatMap(vg => vg.contacts)}
+                        onNavigate={() => setDrawerOpen(false)}
+                        onUpdate={updateContact}
+                        onDelete={deleteContact}
+                        onlineUserIds={onlineUsers}
+                        grouped
+                        venueGroups={tvg.venueGroups}
+                      />
+                    </CollapsibleSection>
                   ))}
                 </CollapsibleSection>
               )}
