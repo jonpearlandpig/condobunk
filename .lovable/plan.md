@@ -1,51 +1,82 @@
 
 
-# Fix: VAN Record Not Found + Advance Notes Disappearing
+# Fix: Fuzzy VAN Matching for Calendar Events
 
-## Problem 1: "VAN record not found"
+## Problem
 
-The TELA AI generates `update_van` actions referencing a VAN ID, but for venues like "Allen County War Memorial Coliseum" (Fort Wayne, IN), no VAN record exists in the database. The `update_van` handler in `useTelaActions.ts` does a strict lookup by ID and throws "VAN record not found" when there is no match.
+The March 5th event at "Allen County War Memorial Coliseum" in "Fort Wayne, IN" has a VAN record, but the calendar can't find it because of name mismatches:
 
-**Fix:** Convert `update_van` to an upsert. If the VAN record doesn't exist by ID, fall back to matching by `venue_name + city + tour_id`. If still not found, create a new VAN record with the provided fields instead of throwing an error.
+| Field | Event | VAN Record |
+|-------|-------|------------|
+| Venue | Allen **County** War Memorial Coliseum | Allen War Memorial Coliseum |
+| City | Fort Wayne, IN | Ft Wayne |
 
-## Problem 2: Advance Notes Disappearing (Stale Closure)
+The current lookup uses exact normalized string matching, so `allencountywarmemorialcoliseum` never equals `allenwarmemorialcoliseum`, and `fortwaynein` never equals `ftwayne`.
 
-The `loadCalendar` function is defined in the component body and captures `selectedEntry` from the current render. However, event handlers in `useEffect` (realtime subscriptions, `akb-changed` listener) capture a stale version of `loadCalendar` from when the effect was set up. When those handlers call `loadCalendar(true)`, the stale closure has `selectedEntry = null`, so the sync logic on lines 345-348 never runs. Additionally, any scenario that triggers the non-silent `loadCalendar()` call (effect re-run) sets `loading=true`, unmounting the entire UI including the dialog.
+## Solution
 
-**Fix:** Replace the direct `selectedEntry` reference with a functional state updater (`setSelectedEntry(prev => ...)`) so it always reads the CURRENT state, regardless of closure staleness. Also wrap `loadCalendar` in `useCallback` with proper dependencies.
+Add fuzzy/substring matching as a fallback when exact matches fail. This covers common variations like abbreviated names, extra words (County), and city format differences (Ft vs Fort, with/without state).
 
 ## Technical Changes
 
-### File: `src/hooks/useTelaActions.ts`
-
-In the `update_van` case (lines 191-224):
-- Keep the existing lookup by `action.id`
-- If `existingVan` is null, attempt a fallback lookup by `venue_name + city + tour_id` using fields from `action.fields` (e.g., `action.fields.venue_name`, `action.fields.city`) and the `action.tour_id`
-- If still not found, INSERT a new `venue_advance_notes` row with `tour_id`, `venue_name`, `city`, and `van_data` from `action.fields`, then log the change as a CREATE action
-- This converts a hard failure into a graceful upsert
-
 ### File: `src/pages/bunk/BunkCalendar.tsx`
 
-1. Replace the direct `selectedEntry` reference in `loadCalendar` with a functional updater:
-   ```
-   // Before (stale closure):
-   if (selectedEntry) {
-     const updated = merged.find(e => e.id === selectedEntry.id);
-     if (updated) setSelectedEntry(updated);
-   }
+**1. Add a city normalization helper** (near the existing `normalize` function around line 191):
 
-   // After (always reads current state):
-   setSelectedEntry(prev => {
-     if (!prev) return prev;
-     const updated = merged.find(e => e.id === prev.id);
-     return updated || prev;
-   });
-   ```
+A small function that handles common city abbreviations and strips state suffixes:
+- `Ft` to `fort`, `St` to `saint`, `Mt` to `mount`
+- Strip trailing state codes like `, IN` or `, OH`
 
-2. Remove `selectedEntry` dependency from `loadCalendar` entirely -- the functional updater eliminates the need for it.
+```typescript
+const normalizeCity = (s: string | null | undefined) => {
+  let c = (s || "").toLowerCase().trim();
+  c = c.replace(/,?\s*(al|ak|az|ar|ca|co|ct|de|fl|ga|hi|id|il|in|ia|ks|ky|la|me|md|ma|mi|mn|ms|mo|mt|ne|nv|nh|nj|nm|ny|nc|nd|oh|ok|or|pa|ri|sc|sd|tn|tx|ut|vt|va|wa|wv|wi|wy)$/i, "");
+  c = c.replace(/\bft\b/g, "fort").replace(/\bst\b/g, "saint").replace(/\bmt\b/g, "mount");
+  return c.replace(/[^a-z0-9]/g, "");
+};
+```
+
+**2. Update VAN lookup map building** (lines ~196-209):
+
+Add a normalized-city key alongside the existing keys:
+```typescript
+if (v.city) {
+  const cityKey = `${v.tour_id}::city::${normalizeCity(v.city)}`;
+  // ... existing logic but using normalizeCity
+}
+```
+
+**3. Update VAN matching for events** (lines ~286-288):
+
+Use `normalizeCity` for the city fallback key so `Fort Wayne, IN` and `Ft Wayne` both normalize to `fortwayne`.
+
+**4. Add substring fallback** when exact venue match fails:
+
+After checking the three existing keys, if no match is found, iterate over the VAN entries for the same tour and check if one venue name contains the other (substring match). This handles "Allen War Memorial Coliseum" being a substring of "Allen County War Memorial Coliseum".
+
+```typescript
+// Substring fallback for venue name mismatches
+if (!hasVan && s.venue) {
+  const eventNorm = normalize(s.venue);
+  const tourVans = vans?.filter(v => v.tour_id === s.tour_id) || [];
+  for (const v of tourVans) {
+    const vanNorm = normalize(v.venue_name);
+    if (eventNorm.includes(vanNorm) || vanNorm.includes(eventNorm)) {
+      const subKey = `substr::${s.id}`;
+      vanLookup[subKey] = [v];
+      // update hasVan and store the key on the entry
+      break;
+    }
+  }
+}
+```
+
+### File: `src/hooks/useTelaActions.ts`
+
+The `update_van` handler already has the upsert logic from the previous fix. Add the same `normalizeCity` treatment to the fallback lookup so that `ilike` queries also match city variations (this is already partially handled by `ilike`, but we should also normalize the `Ft`/`Fort` difference in the query).
 
 ## Files Modified
 
-1. `src/hooks/useTelaActions.ts` -- Upsert logic for `update_van` (create VAN if not found)
-2. `src/pages/bunk/BunkCalendar.tsx` -- Functional state updater to fix stale closure bug
+1. `src/pages/bunk/BunkCalendar.tsx` -- Add fuzzy city normalization + substring venue fallback for VAN matching
+2. `src/hooks/useTelaActions.ts` -- Apply city normalization to VAN fallback lookup
 
