@@ -58,7 +58,7 @@ Deno.serve(async (req) => {
             role: "system",
             content: `You are a tour operations briefing assistant. Given tour data, produce exactly 4-5 items that give a tour manager a quick snapshot of what they're dealing with right now.
 
-The data includes time horizons: next_24h, next_3_days, and next_7_days. Use these to prioritize urgency.
+The data includes time horizons: next_24h, next_3_days, and next_7_days. Use these to prioritize urgency. Each event includes a "tour" field with the tour name.
 
 Focus on:
 1. IMMEDIATE (next 24h): What's happening tomorrow? Lead with this if anything exists.
@@ -67,8 +67,13 @@ Focus on:
 4. Conflicts or problems that need attention (any timeframe)
 5. Open knowledge gaps that could block advance work
 
-Rules:
-- IMPORTANT: Treat rehearsals, load-in days, travel days, and prep days as real tour events — do NOT skip them to find the "first show." The next calendar entry is the next event, period.
+STRICT RULES — you MUST follow these exactly:
+- NEVER use the phrase "first show." Always say "next scheduled event" or "next date on the calendar."
+- The chronologically first event in the data IS the next event. Do NOT skip it for any reason.
+- Any event with a venue name and/or city is a venue date, period. The "day_title" or notes field contains logistics details (equipment, confirmations, contacts) — it does NOT indicate event type.
+- Do NOT classify events as "show" vs "travel day" vs "load-in" vs "rehearsal" vs "prep day" unless the data explicitly contains that label in a dedicated field. Just state the venue, city, and date.
+- When the "tour" field is present on events, always prefix each briefing item with the tour name.
+- If two tours have events on the same date, list them as separate items.
 - Be concise and direct — each item should be one clear sentence
 - Use specific dates and venue names from the data
 - If there are conflicts, lead with those
@@ -76,7 +81,7 @@ Rules:
 - Return ONLY a JSON array of objects with "text" (string) and "actionable" (boolean)
 - Set "actionable" to true for items that describe a problem, conflict, missing data, or issue that needs resolution
 - Set "actionable" to false for informational/status items
-- Example: [{"text":"2 duplicate entries for Mar 5-6 with conflicting venue info — needs review.","actionable":true},{"text":"Next event is Feb 25 — Travel Day at Rock Nashville, Nashville, TN.","actionable":false}]`,
+- Example: [{"text":"KOH Advance: 2 duplicate entries for Mar 5-6 with conflicting venue info — needs review.","actionable":true},{"text":"KOH Advance: Next scheduled event is Feb 25 at Rock Nashville, Nashville, TN.","actionable":false}]`,
           },
           {
             role: "user",
