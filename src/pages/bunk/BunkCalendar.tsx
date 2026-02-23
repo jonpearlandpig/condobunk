@@ -341,11 +341,12 @@ const BunkCalendar = () => {
     merged.sort((a, b) => a.date.localeCompare(b.date));
     setEntries(merged);
 
-    // If detail dialog is open, refresh selectedEntry with fresh data
-    if (selectedEntry) {
-      const updated = merged.find(e => e.id === selectedEntry.id);
-      if (updated) setSelectedEntry(updated);
-    }
+    // If detail dialog is open, refresh selectedEntry with fresh data (functional updater avoids stale closure)
+    setSelectedEntry(prev => {
+      if (!prev) return prev;
+      const updated = merged.find(e => e.id === prev.id);
+      return updated || prev;
+    });
 
     // Auto-navigate to the first upcoming event (only once)
     if (!hasAutoNavigated && merged.length > 0) {
