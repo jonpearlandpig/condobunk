@@ -203,17 +203,23 @@ export function useTelaActions() {
             existingVan = data;
           }
 
-          // Step 2: Fallback lookup by venue_name + city + tour_id
+          // Step 2: Fallback lookup by venue_name + city + tour_id (with city abbreviation normalization)
           if (!existingVan && action.fields.venue_name) {
             const { data: memberships } = await supabase.from("tour_members").select("tour_id").limit(1);
             const fallbackTourId = memberships?.[0]?.tour_id;
             if (fallbackTourId) {
+              // Normalize city abbreviations for the query (Ft→Fort, St→Saint)
+              let citySearch = action.fields.city ? String(action.fields.city) : null;
+              if (citySearch) {
+                citySearch = citySearch.replace(/\bFt\b/gi, "Fort").replace(/\bSt\b/gi, "Saint").replace(/\bMt\b/gi, "Mount");
+                citySearch = citySearch.replace(/,?\s*(AL|AK|AZ|AR|CA|CO|CT|DE|FL|GA|HI|ID|IL|IN|IA|KS|KY|LA|ME|MD|MA|MI|MN|MS|MO|MT|NE|NV|NH|NJ|NM|NY|NC|ND|OH|OK|OR|PA|RI|SC|SD|TN|TX|UT|VT|VA|WA|WV|WI|WY)$/i, "").trim();
+              }
               let query = supabase
                 .from("venue_advance_notes")
                 .select("id, van_data, tour_id, venue_name")
                 .eq("tour_id", fallbackTourId)
-                .ilike("venue_name", String(action.fields.venue_name));
-              if (action.fields.city) query = query.ilike("city", String(action.fields.city));
+                .ilike("venue_name", `%${String(action.fields.venue_name)}%`);
+              if (citySearch) query = query.ilike("city", `%${citySearch}%`);
               const { data } = await query.maybeSingle();
               existingVan = data;
             }

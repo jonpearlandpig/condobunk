@@ -189,6 +189,12 @@ const BunkCalendar = () => {
     }
 
     const normalize = (s: string | null | undefined) => (s || "").toLowerCase().trim().replace(/[^a-z0-9]/g, "");
+    const normalizeCity = (s: string | null | undefined) => {
+      let c = (s || "").toLowerCase().trim();
+      c = c.replace(/,?\s*(al|ak|az|ar|ca|co|ct|de|fl|ga|hi|id|il|in|ia|ks|ky|la|me|md|ma|mi|mn|ms|mo|mt|ne|nv|nh|nj|nm|ny|nc|nd|oh|ok|or|pa|ri|sc|sd|tn|tx|ut|vt|va|wa|wv|wi|wy)$/i, "");
+      c = c.replace(/\bft\b/g, "fort").replace(/\bst\b/g, "saint").replace(/\bmt\b/g, "mount");
+      return c.replace(/[^a-z0-9]/g, "");
+    };
 
     // Build VAN lookup: normalized venue name → van records
     const vanLookup: Record<string, any[]> = {};
@@ -200,9 +206,9 @@ const BunkCalendar = () => {
         const vKeyVenue = normalize(v.venue_name);
         if (!vanLookup[vKeyVenue]) vanLookup[vKeyVenue] = [];
         vanLookup[vKeyVenue].push(v);
-        // City-based fallback key (tour_id::city) for events without venue names
+        // City-based fallback key using normalizeCity for abbreviation handling
         if (v.city) {
-          const cityKey = `${v.tour_id}::city::${normalize(v.city)}`;
+          const cityKey = `${v.tour_id}::city::${normalizeCity(v.city)}`;
           if (!vanLookup[cityKey]) vanLookup[cityKey] = [];
           vanLookup[cityKey].push(v);
         }
@@ -284,8 +290,24 @@ const BunkCalendar = () => {
         // Check if this venue/city has VANs (with city-based fallback for null venues)
         const vanKeyFull = normalize(s.venue) + "|" + normalize(s.city);
         const vanKeyVenue = normalize(s.venue);
-        const vanKeyCityFallback = s.city ? `${s.tour_id}::city::${normalize(s.city)}` : "";
-        const hasVan = !!(vanLookup[vanKeyFull]?.length || vanLookup[vanKeyVenue]?.length || (vanKeyCityFallback && vanLookup[vanKeyCityFallback]?.length));
+        const vanKeyCityFallback = s.city ? `${s.tour_id}::city::${normalizeCity(s.city)}` : "";
+        let hasVan = !!(vanLookup[vanKeyFull]?.length || vanLookup[vanKeyVenue]?.length || (vanKeyCityFallback && vanLookup[vanKeyCityFallback]?.length));
+
+        // Substring fallback: match when one venue name contains the other
+        if (!hasVan && s.venue && vans) {
+          const eventNorm = normalize(s.venue);
+          for (const v of vans) {
+            if (v.tour_id !== s.tour_id) continue;
+            const vanNorm = normalize(v.venue_name);
+            if (eventNorm.includes(vanNorm) || vanNorm.includes(eventNorm)) {
+              const subKey = `substr::${s.id}`;
+              if (!vanLookup[subKey]) vanLookup[subKey] = [];
+              vanLookup[subKey].push(v);
+              hasVan = true;
+              break;
+            }
+          }
+        }
 
         merged.push({
           id: s.id,
@@ -707,9 +729,17 @@ const BunkCalendar = () => {
                   {/* Advance Notes (VAN) */}
                   {selectedEntry.hasVan && (() => {
                     const n = (s: string | null | undefined) => (s || "").toLowerCase().trim().replace(/[^a-z0-9]/g, "");
+                    const nc = (s: string | null | undefined) => {
+                      let c = (s || "").toLowerCase().trim();
+                      c = c.replace(/,?\s*(al|ak|az|ar|ca|co|ct|de|fl|ga|hi|id|il|in|ia|ks|ky|la|me|md|ma|mi|mn|ms|mo|mt|ne|nv|nh|nj|nm|ny|nc|nd|oh|ok|or|pa|ri|sc|sd|tn|tx|ut|vt|va|wa|wv|wi|wy)$/i, "");
+                      c = c.replace(/\bft\b/g, "fort").replace(/\bst\b/g, "saint").replace(/\bmt\b/g, "mount");
+                      return c.replace(/[^a-z0-9]/g, "");
+                    };
                     const vanKeyFull = n(selectedEntry.title) + "|" + n(selectedEntry.subtitle);
                     const vanKeyVenue = n(selectedEntry.title);
-                    const matchedVans = vanMap[vanKeyFull] || vanMap[vanKeyVenue] || [];
+                    const vanKeyCityFb = selectedEntry.subtitle ? `${selectedEntry.tourId}::city::${nc(selectedEntry.subtitle)}` : "";
+                    const vanKeySubstr = `substr::${selectedEntry.id}`;
+                    const matchedVans = vanMap[vanKeyFull] || vanMap[vanKeyVenue] || (vanKeyCityFb && vanMap[vanKeyCityFb]) || vanMap[vanKeySubstr] || [];
                     if (matchedVans.length === 0) return null;
 
                     const VAN_LABELS: Record<string, string> = {
