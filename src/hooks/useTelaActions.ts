@@ -110,7 +110,7 @@ export function useTelaActions() {
             .eq("id", action.id);
           if (error) throw error;
           // Get tour_id for logging
-          const { data: conflict } = await supabase.from("calendar_conflicts").select("tour_id").eq("id", action.id).single();
+          const { data: conflict } = await supabase.from("calendar_conflicts").select("tour_id").eq("id", action.id).maybeSingle();
           if (conflict) await logChange(conflict.tour_id, "calendar_conflict", action.id, "UPDATE", "Resolved conflict via TELA", reason, impact);
           window.dispatchEvent(new Event("akb-changed"));
           toast({ title: "Conflict resolved", description: "TELA marked this conflict as resolved." });
@@ -122,7 +122,7 @@ export function useTelaActions() {
             .update({ resolved: true })
             .eq("id", action.id);
           if (error) throw error;
-          const { data: gap } = await supabase.from("knowledge_gaps").select("tour_id").eq("id", action.id).single();
+          const { data: gap } = await supabase.from("knowledge_gaps").select("tour_id").eq("id", action.id).maybeSingle();
           if (gap) await logChange(gap.tour_id, "knowledge_gap", action.id, "UPDATE", "Resolved knowledge gap via TELA", reason, impact);
           window.dispatchEvent(new Event("akb-changed"));
           toast({ title: "Gap resolved", description: "TELA marked this knowledge gap as resolved." });
@@ -135,7 +135,7 @@ export function useTelaActions() {
             .update(action.fields)
             .eq("id", action.id);
           if (error) throw error;
-          const { data: evt } = await supabase.from("schedule_events").select("tour_id, venue").eq("id", action.id).single();
+          const { data: evt } = await supabase.from("schedule_events").select("tour_id, venue").eq("id", action.id).maybeSingle();
           if (evt) await logChange(evt.tour_id, "schedule_event", action.id, "UPDATE", `TELA updated ${evt.venue || "event"}`, reason, impact);
           window.dispatchEvent(new Event("akb-changed"));
           toast({ title: "Event updated", description: "TELA updated the schedule event." });
@@ -155,7 +155,7 @@ export function useTelaActions() {
             .update(sanitized)
             .eq("id", action.id);
           if (error) throw error;
-          const { data: contact } = await supabase.from("contacts").select("tour_id, name").eq("id", action.id).single();
+          const { data: contact } = await supabase.from("contacts").select("tour_id, name").eq("id", action.id).maybeSingle();
           if (contact) await logChange(contact.tour_id, "contact", action.id, "UPDATE", `TELA updated contact: ${contact.name}`, reason, impact);
           window.dispatchEvent(new Event("contacts-changed"));
           window.dispatchEvent(new Event("akb-changed"));
@@ -164,11 +164,11 @@ export function useTelaActions() {
         }
         case "create_contact": {
           if (!action.fields || !action.fields.name) throw new Error("Contact name is required");
-          const { data: membership } = await supabase
+          const { data: memberships } = await supabase
             .from("tour_members")
             .select("tour_id")
-            .limit(1)
-            .single();
+            .limit(1);
+          const membership = memberships?.[0] ?? null;
           if (!membership) throw new Error("No active tour found");
           const validFields = ["name", "role", "phone", "email", "scope", "venue"];
           const insert: Record<string, unknown> = { tour_id: membership.tour_id };
@@ -180,7 +180,7 @@ export function useTelaActions() {
             .from("contacts")
             .insert(insert as any)
             .select("id")
-            .single();
+            .maybeSingle();
           if (error) throw error;
           if (newContact) await logChange(membership.tour_id, "contact", newContact.id, "CREATE", `TELA added contact: ${action.fields.name}`, reason, impact);
           window.dispatchEvent(new Event("contacts-changed"));
@@ -196,7 +196,7 @@ export function useTelaActions() {
             .from("venue_advance_notes")
             .select("van_data, tour_id, venue_name")
             .eq("id", action.id)
-            .single();
+            .maybeSingle();
           if (fetchErr) throw fetchErr;
           if (!existingVan) throw new Error("VAN record not found");
           

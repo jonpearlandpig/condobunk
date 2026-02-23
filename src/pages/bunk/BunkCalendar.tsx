@@ -200,6 +200,12 @@ const BunkCalendar = () => {
         const vKeyVenue = normalize(v.venue_name);
         if (!vanLookup[vKeyVenue]) vanLookup[vKeyVenue] = [];
         vanLookup[vKeyVenue].push(v);
+        // City-based fallback key (tour_id::city) for events without venue names
+        if (v.city) {
+          const cityKey = `${v.tour_id}::city::${normalize(v.city)}`;
+          if (!vanLookup[cityKey]) vanLookup[cityKey] = [];
+          vanLookup[cityKey].push(v);
+        }
       }
     }
     setVanMap(vanLookup);
@@ -275,10 +281,11 @@ const BunkCalendar = () => {
           if (identity?.capacity) capacity = String(identity.capacity);
         }
 
-        // Check if this venue/city has VANs
+        // Check if this venue/city has VANs (with city-based fallback for null venues)
         const vanKeyFull = normalize(s.venue) + "|" + normalize(s.city);
         const vanKeyVenue = normalize(s.venue);
-        const hasVan = !!(vanLookup[vanKeyFull]?.length || vanLookup[vanKeyVenue]?.length);
+        const vanKeyCityFallback = s.city ? `${s.tour_id}::city::${normalize(s.city)}` : "";
+        const hasVan = !!(vanLookup[vanKeyFull]?.length || vanLookup[vanKeyVenue]?.length || (vanKeyCityFallback && vanLookup[vanKeyCityFallback]?.length));
 
         merged.push({
           id: s.id,
