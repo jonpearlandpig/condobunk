@@ -53,9 +53,11 @@ interface SidebarContactListProps {
   isOwner?: boolean;
   /** Callback to remove a member from the tour (owner only) */
   onRemoveMember?: (contact: SidebarContact) => Promise<void>;
+  /** Callback to explicitly refetch unread DM counts */
+  onUnreadRefetch?: () => void;
 }
 
-const SidebarContactList = ({ contacts, onNavigate, onUpdate, onDelete, onlineUserIds, unreadFrom, grouped, venueGroups, activeInvites, onInviteCreated, onContactTap, isOwner, onRemoveMember }: SidebarContactListProps) => {
+const SidebarContactList = ({ contacts, onNavigate, onUpdate, onDelete, onlineUserIds, unreadFrom, grouped, venueGroups, activeInvites, onInviteCreated, onContactTap, isOwner, onRemoveMember, onUnreadRefetch }: SidebarContactListProps) => {
   const navigate = useNavigate();
   const isMobile = useIsMobile();
   const { user } = useAuth();
@@ -98,7 +100,7 @@ const SidebarContactList = ({ contacts, onNavigate, onUpdate, onDelete, onlineUs
           .eq("sender_id", c.appUserId)
           .eq("recipient_id", user.id)
           .is("read_at", null)
-          .then(() => {});
+          .then(() => { onUnreadRefetch?.(); });
       }
     } else if (c.appUserId) {
       // Has an app account but is offline — block bunk chat
@@ -278,6 +280,7 @@ const SidebarContactList = ({ contacts, onNavigate, onUpdate, onDelete, onlineUs
   const toggleExpand = (id: string) => {
     setExpandedId(prev => prev === id ? null : id);
     setChattingWith(null);
+    onUnreadRefetch?.();
   };
 
   // Sort: online first, then offline, then no app user
@@ -631,7 +634,7 @@ const SidebarContactList = ({ contacts, onNavigate, onUpdate, onDelete, onlineUs
           <div className="mx-1 mb-1 rounded-md border border-border bg-background/80 overflow-hidden">
             <div className="px-3 py-1.5 border-b border-border bg-muted/30 flex items-center justify-between">
               <span className="text-[10px] font-mono text-muted-foreground tracking-wider">BUNK CHAT</span>
-              <button onClick={() => setChattingWith(null)} className="p-0.5 text-muted-foreground hover:text-foreground"><X className="h-3 w-3" /></button>
+              <button onClick={() => { setChattingWith(null); onUnreadRefetch?.(); }} className="p-0.5 text-muted-foreground hover:text-foreground"><X className="h-3 w-3" /></button>
             </div>
             <div className="max-h-40 overflow-y-auto px-3 py-2 space-y-1.5">
               {chatMessages.length === 0 && (
