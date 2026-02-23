@@ -23,7 +23,7 @@ const DMChatScreen = ({ contact, tourId, userId, isContactOnline, onClose }: DMC
     if (!contact.appUserId) return;
     const recipientUserId = contact.appUserId;
 
-    const loadMessages = async () => {
+    const loadAndMarkRead = async () => {
       const { data } = await supabase
         .from("direct_messages")
         .select("id, sender_id, message_text, created_at")
@@ -32,17 +32,16 @@ const DMChatScreen = ({ contact, tourId, userId, isContactOnline, onClose }: DMC
         .order("created_at", { ascending: true })
         .limit(100);
       setMessages(data || []);
-    };
-    loadMessages();
 
-    // Mark as read
-    supabase
-      .from("direct_messages")
-      .update({ read_at: new Date().toISOString() })
-      .eq("sender_id", recipientUserId)
-      .eq("recipient_id", userId)
-      .is("read_at", null)
-      .then(() => {});
+      // Mark as read
+      await supabase
+        .from("direct_messages")
+        .update({ read_at: new Date().toISOString() })
+        .eq("sender_id", recipientUserId)
+        .eq("recipient_id", userId)
+        .is("read_at", null);
+    };
+    loadAndMarkRead();
 
     const channel = supabase
       .channel(`dm-fullscreen-${contact.id}`)
