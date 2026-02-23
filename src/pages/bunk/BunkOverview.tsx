@@ -155,6 +155,11 @@ const BunkOverview = () => {
       // Also key by venue_name for fallback matching
       const key2 = `${van.tour_id}::${van.venue_name?.toLowerCase().replace(/[^a-z0-9]/g, "")}`;
       if (!vanMap[key2]) vanMap[key2] = van.van_data;
+      // City-based fallback for events without venue names
+      if (van.city) {
+        const cityKey = `${van.tour_id}::city::${van.city.toLowerCase().replace(/[^a-z0-9]/g, "")}`;
+        if (!vanMap[cityKey]) vanMap[cityKey] = van.van_data;
+      }
     }
     setVanData(vanMap);
   };
@@ -594,7 +599,8 @@ const BunkOverview = () => {
                 const color = tourColorMap[evt.tour_id] || "hsl(var(--primary))";
                 // Look up VAN data for this event
                 const venueNorm = evt.venue?.toLowerCase().replace(/[^a-z0-9]/g, "") || "";
-                const van = vanData[`${evt.tour_id}::${venueNorm}`] || null;
+                const cityNorm = evt.city?.toLowerCase().replace(/[^a-z0-9]/g, "") || "";
+                const van = vanData[`${evt.tour_id}::${venueNorm}`] || (cityNorm ? vanData[`${evt.tour_id}::city::${cityNorm}`] : null) || null;
                 
                 // Extract key VAN fields for display
                 const vanHighlights: Array<{ label: string; value: string }> = [];
