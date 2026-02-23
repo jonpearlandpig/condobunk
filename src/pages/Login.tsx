@@ -8,7 +8,8 @@ import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
 import { motion } from "framer-motion";
-import { Radio, Shield } from "lucide-react";
+import { Shield } from "lucide-react";
+import logoWhite from "@/assets/WHITE_TEXT_CONDO_BUNK_LOGO.png";
 
 const Login = () => {
   const [email, setEmail] = useState("");
@@ -77,15 +78,7 @@ const Login = () => {
         className="w-full max-w-md space-y-8 px-6"
       >
         <div className="text-center space-y-3">
-          <div className="flex items-center justify-center gap-3 mb-6">
-            <div className="relative">
-              <Radio className="h-8 w-8 text-primary" />
-              <div className="absolute -top-1 -right-1 h-3 w-3 rounded-full bg-primary animate-pulse-slow" />
-            </div>
-            <h1 className="text-3xl font-bold tracking-tight text-foreground">
-              CONDO BUNK
-            </h1>
-          </div>
+          <img src={logoWhite} alt="Condo Bunk" className="h-16 w-auto mx-auto mb-2" />
           <p className="text-sm text-muted-foreground tracking-wide">
             Close the curtain. Get schtuff done!
           </p>
