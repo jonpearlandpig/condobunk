@@ -146,7 +146,7 @@ const BunkCalendar = () => {
     if (activeTourIds.length > 0) loadCalendar();
 
     // Listen for TELA-triggered changes
-    const handler = () => { if (activeTourIds.length > 0) loadCalendar(); };
+    const handler = () => { if (activeTourIds.length > 0) loadCalendar(true); };
     window.addEventListener("akb-changed", handler);
     return () => window.removeEventListener("akb-changed", handler);
   }, [activeTourIds, tourFilter]);
@@ -156,15 +156,15 @@ const BunkCalendar = () => {
     const channels = activeTourIds.map(tid =>
       supabase
         .channel(`calendar-sync-${tid}`)
-        .on("postgres_changes", { event: "*", schema: "public", table: "schedule_events", filter: `tour_id=eq.${tid}` }, () => loadCalendar())
-        .on("postgres_changes", { event: "*", schema: "public", table: "knowledge_gaps", filter: `tour_id=eq.${tid}` }, () => loadCalendar())
+        .on("postgres_changes", { event: "*", schema: "public", table: "schedule_events", filter: `tour_id=eq.${tid}` }, () => loadCalendar(true))
+        .on("postgres_changes", { event: "*", schema: "public", table: "knowledge_gaps", filter: `tour_id=eq.${tid}` }, () => loadCalendar(true))
         .subscribe()
     );
     return () => { channels.forEach(c => supabase.removeChannel(c)); };
   }, [activeTourIds]);
 
-  const loadCalendar = async () => {
-    setLoading(true);
+  const loadCalendar = async (silent = false) => {
+    if (!silent) setLoading(true);
     const merged: CalendarEntry[] = [];
     const tourIds = tourFilter === "all" ? activeTourIds : [tourFilter];
     if (tourIds.length === 0) { setEntries([]); setLoading(false); return; }
@@ -340,6 +340,12 @@ const BunkCalendar = () => {
 
     merged.sort((a, b) => a.date.localeCompare(b.date));
     setEntries(merged);
+
+    // If detail dialog is open, refresh selectedEntry with fresh data
+    if (selectedEntry) {
+      const updated = merged.find(e => e.id === selectedEntry.id);
+      if (updated) setSelectedEntry(updated);
+    }
 
     // Auto-navigate to the first upcoming event (only once)
     if (!hasAutoNavigated && merged.length > 0) {
@@ -791,7 +797,7 @@ const BunkCalendar = () => {
                       currentNotes={selectedEntry.notes}
                       eventDate={selectedEntry.date}
                       venueName={selectedEntry.title}
-                      onUpdated={() => { loadCalendar(); }}
+                      onUpdated={() => { loadCalendar(true); }}
                     />
                   )}
 
@@ -813,7 +819,7 @@ const BunkCalendar = () => {
         open={addEventOpen}
         onOpenChange={setAddEventOpen}
         defaultDate={addEventDefaultDate}
-        onCreated={() => loadCalendar()}
+        onCreated={() => loadCalendar(true)}
       />
     </div>
     </PullToRefresh>
