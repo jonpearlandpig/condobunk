@@ -103,7 +103,7 @@ const BunkAdmin = () => {
     const [intRes, logRes, memberRes, inviteRes, contactRes] = await Promise.all([
       supabase
         .from("tour_integrations")
-        .select("*")
+        .select("id, tour_id, provider, label, is_active, last_sync_at, last_sync_status, webhook_secret, config, created_at, updated_at")
         .eq("tour_id", selectedTourId)
         .order("created_at", { ascending: false }),
       supabase
