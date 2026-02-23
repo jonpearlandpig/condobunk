@@ -52,12 +52,12 @@ const CollapsibleSection = ({ title, count, children }: { title: string; count?:
     <div>
       <button
         onClick={() => setOpen(!open)}
-        className="w-full font-mono text-[10px] tracking-[0.2em] text-muted-foreground/60 uppercase py-2.5 px-1 flex items-center gap-2 hover:text-muted-foreground transition-colors"
+        className="w-full font-mono text-[10px] tracking-[0.2em] text-muted-foreground/60 uppercase py-1.5 px-1 flex items-center gap-1.5 hover:text-muted-foreground transition-colors"
       >
-        <ChevronRight className={`h-3 w-3 transition-transform ${open ? "rotate-90" : ""}`} />
+        <ChevronRight className={`h-2.5 w-2.5 transition-transform ${open ? "rotate-90" : ""}`} />
         {title}
         {count !== undefined && count > 0 && (
-          <span className="ml-auto text-muted-foreground/40 normal-case tracking-normal">{count}</span>
+          <span className="ml-auto text-muted-foreground/40 normal-case tracking-normal text-[9px]">{count}</span>
         )}
       </button>
       {open && children}
@@ -147,20 +147,20 @@ const MobileBottomNav = ({ avatarUrl, displayName, user, signOut, fileInputRef }
       {/* Messaging Drawer */}
       <Sheet open={drawerOpen} onOpenChange={setDrawerOpen}>
         <SheetContent side={isLeft ? "left" : "right"} className="w-[80vw] max-w-[320px] p-0 flex flex-col">
-          <SheetHeader className="px-4 pt-4 pb-2">
+          <SheetHeader className="px-3 pt-3 pb-1">
             <div className="flex items-center justify-between">
-              <SheetTitle className="font-mono text-xs tracking-[0.2em] uppercase text-muted-foreground/70">
+              <SheetTitle className="font-mono text-[10px] tracking-[0.2em] uppercase text-muted-foreground/70">
                 Messages
               </SheetTitle>
               {totalUnread > 0 && (
-                <span className="h-5 min-w-5 px-1.5 flex items-center justify-center rounded-full bg-primary text-primary-foreground text-[10px] font-bold">
+                <span className="h-4 min-w-4 px-1 flex items-center justify-center rounded-full bg-primary text-primary-foreground text-[9px] font-bold">
                   {totalUnread > 99 ? "99+" : totalUnread}
                 </span>
               )}
             </div>
           </SheetHeader>
 
-          <div className="overflow-y-auto flex-1 px-4 pb-4 space-y-1">
+          <div className="overflow-y-auto flex-1 px-3 pb-2 space-y-0">
             <SidebarProvider defaultOpen={false}>
               {/* Ask TELA threads */}
               <CollapsibleSection title="Ask TELA">
@@ -204,20 +204,17 @@ const MobileBottomNav = ({ avatarUrl, displayName, user, signOut, fileInputRef }
           </div>
 
           {/* Pinned profile footer */}
-          <div className="border-t border-border px-4 py-3 flex items-center gap-3 shrink-0">
-            <div className="h-8 w-8 rounded-full overflow-hidden ring-1 ring-border shrink-0">
+          <div className="border-t border-border px-3 py-2 flex items-center gap-2.5 shrink-0">
+            <div className="h-6 w-6 rounded-full overflow-hidden ring-1 ring-border shrink-0">
               {avatarUrl ? (
                 <img src={avatarUrl} alt={displayName || "Profile"} className="h-full w-full object-cover" referrerPolicy="no-referrer" />
               ) : (
-                <div className="h-full w-full bg-primary/20 flex items-center justify-center text-[10px] font-bold text-primary">
+                <div className="h-full w-full bg-primary/20 flex items-center justify-center text-[8px] font-bold text-primary">
                   {(displayName || "?")[0].toUpperCase()}
                 </div>
               )}
             </div>
-            <div className="min-w-0 flex-1">
-              <p className="text-sm font-medium text-foreground truncate">{displayName}</p>
-              {user?.email && <p className="text-[10px] text-muted-foreground truncate">{user.email}</p>}
-            </div>
+            <p className="text-xs font-medium text-foreground truncate">{displayName}</p>
           </div>
         </SheetContent>
       </Sheet>
