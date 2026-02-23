@@ -1,0 +1,1 @@
+ALTER TABLE public.direct_messages REPLICA IDENTITY FULL;
