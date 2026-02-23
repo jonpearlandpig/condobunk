@@ -52,7 +52,11 @@ const CollapsibleSection = ({ title, count, children, nested }: { title: string;
     <div className={nested ? "pl-2" : ""}>
       <button
         onClick={() => setOpen(!open)}
-        className={`w-full font-mono tracking-[0.2em] text-muted-foreground/60 uppercase py-1.5 px-1 flex items-center gap-1.5 hover:text-muted-foreground transition-colors ${nested ? "text-[9px]" : "text-[10px]"}`}
+        className={`w-full font-mono tracking-[0.2em] uppercase py-1.5 px-1 flex items-center gap-1.5 hover:text-muted-foreground transition-colors ${
+          nested
+            ? "text-[9px] text-muted-foreground/60"
+            : "text-[11px] text-muted-foreground/80 font-semibold"
+        }`}
       >
         <ChevronRight className={`h-2.5 w-2.5 shrink-0 transition-transform ${open ? "rotate-90" : ""}`} />
         <span className="truncate">{title}</span>
@@ -194,7 +198,7 @@ const MobileBottomNav = ({ avatarUrl, displayName, user, signOut, fileInputRef }
               })()}
 
               {/* Tour Team — furthest from thumb */}
-              <CollapsibleSection title="Your Crew" count={totalTeamContacts}>
+              <CollapsibleSection title="Tour Team" count={totalTeamContacts}>
                 {filteredTourTeamGroups.map(g => (
                   <CollapsibleSection key={g.tourId} title={g.tourName} count={g.contacts.length} nested>
                     <SidebarContactList
@@ -212,7 +216,7 @@ const MobileBottomNav = ({ avatarUrl, displayName, user, signOut, fileInputRef }
 
               {/* Venue Partners — middle */}
               {tourVenueGroups.length > 0 && (
-                <CollapsibleSection title="Venues" count={totalVenueContacts}>
+                <CollapsibleSection title="Venue Partners" count={totalVenueContacts}>
                   {tourVenueGroups.map(tvg => (
                     <CollapsibleSection key={tvg.tourId} title={tvg.tourName} count={tvg.totalContacts} nested>
                       <SidebarContactList
