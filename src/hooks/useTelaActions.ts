@@ -190,36 +190,89 @@ export function useTelaActions() {
         }
         case "update_van": {
           if (!action.fields) throw new Error("No fields to update");
-          if (!UUID_RE.test(action.id)) throw new Error("Invalid VAN ID");
           
-          const { data: existingVan, error: fetchErr } = await supabase
-            .from("venue_advance_notes")
-            .select("van_data, tour_id, venue_name")
-            .eq("id", action.id)
-            .maybeSingle();
-          if (fetchErr) throw fetchErr;
-          if (!existingVan) throw new Error("VAN record not found");
-          
-          const currentData = (existingVan.van_data as Record<string, unknown>) || {};
-          const mergedData = { ...currentData };
-          
-          for (const [k, v] of Object.entries(action.fields)) {
-            if (typeof v === "object" && v !== null && !Array.isArray(v)) {
-              mergedData[k] = { ...(mergedData[k] as Record<string, unknown> || {}), ...(v as Record<string, unknown>) };
-            } else {
-              mergedData[k] = v;
+          // Step 1: Try lookup by ID
+          let existingVan: { van_data: unknown; tour_id: string; venue_name: string; id: string } | null = null;
+          if (UUID_RE.test(action.id)) {
+            const { data, error: fetchErr } = await supabase
+              .from("venue_advance_notes")
+              .select("id, van_data, tour_id, venue_name")
+              .eq("id", action.id)
+              .maybeSingle();
+            if (fetchErr) throw fetchErr;
+            existingVan = data;
+          }
+
+          // Step 2: Fallback lookup by venue_name + city + tour_id
+          if (!existingVan && action.fields.venue_name) {
+            const { data: memberships } = await supabase.from("tour_members").select("tour_id").limit(1);
+            const fallbackTourId = memberships?.[0]?.tour_id;
+            if (fallbackTourId) {
+              let query = supabase
+                .from("venue_advance_notes")
+                .select("id, van_data, tour_id, venue_name")
+                .eq("tour_id", fallbackTourId)
+                .ilike("venue_name", String(action.fields.venue_name));
+              if (action.fields.city) query = query.ilike("city", String(action.fields.city));
+              const { data } = await query.maybeSingle();
+              existingVan = data;
             }
           }
-          
-          const { error } = await supabase
+
+          // Step 3: If found, merge and update
+          if (existingVan) {
+            const currentData = (existingVan.van_data as Record<string, unknown>) || {};
+            const mergedData = { ...currentData };
+            for (const [k, v] of Object.entries(action.fields)) {
+              if (k === "venue_name" || k === "city") continue; // metadata, not van_data
+              if (typeof v === "object" && v !== null && !Array.isArray(v)) {
+                mergedData[k] = { ...(mergedData[k] as Record<string, unknown> || {}), ...(v as Record<string, unknown>) };
+              } else {
+                mergedData[k] = v;
+              }
+            }
+            const { error } = await supabase
+              .from("venue_advance_notes")
+              .update({ van_data: mergedData as any })
+              .eq("id", existingVan.id);
+            if (error) throw error;
+            await logChange(existingVan.tour_id, "venue_advance_note", existingVan.id, "UPDATE", `TELA updated advance notes for ${existingVan.venue_name}`, reason, impact);
+            window.dispatchEvent(new Event("van-changed"));
+            window.dispatchEvent(new Event("akb-changed"));
+            toast({ title: "Advance notes updated", description: "TELA updated the venue advance notes." });
+            return true;
+          }
+
+          // Step 4: Create new VAN record
+          if (!action.fields.venue_name) throw new Error("venue_name is required to create a VAN record");
+          const { data: memberships } = await supabase.from("tour_members").select("tour_id").limit(1);
+          const newTourId = memberships?.[0]?.tour_id;
+          if (!newTourId) throw new Error("No active tour found");
+
+          const venueName = String(action.fields.venue_name);
+          const normalizedName = venueName.toLowerCase().trim().replace(/[^a-z0-9]/g, "");
+          const vanData: Record<string, unknown> = {};
+          for (const [k, v] of Object.entries(action.fields)) {
+            if (k === "venue_name" || k === "city") continue;
+            vanData[k] = v;
+          }
+
+          const { data: newVan, error: insertErr } = await supabase
             .from("venue_advance_notes")
-            .update({ van_data: mergedData as any })
-            .eq("id", action.id);
-          if (error) throw error;
-          await logChange(existingVan.tour_id, "venue_advance_note", action.id, "UPDATE", `TELA updated advance notes for ${existingVan.venue_name}`, reason, impact);
+            .insert({
+              tour_id: newTourId,
+              venue_name: venueName,
+              normalized_venue_name: normalizedName,
+              city: action.fields.city ? String(action.fields.city) : null,
+              van_data: vanData as any,
+            } as any)
+            .select("id")
+            .maybeSingle();
+          if (insertErr) throw insertErr;
+          if (newVan) await logChange(newTourId, "venue_advance_note", newVan.id, "CREATE", `TELA created advance notes for ${venueName}`, reason, impact);
           window.dispatchEvent(new Event("van-changed"));
           window.dispatchEvent(new Event("akb-changed"));
-          toast({ title: "Advance notes updated", description: "TELA updated the venue advance notes." });
+          toast({ title: "Advance notes created", description: `TELA created advance notes for ${venueName}.` });
           return true;
         }
         default:
