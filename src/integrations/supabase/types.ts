@@ -404,6 +404,7 @@ export type Database = {
           created_at: string
           display_name: string | null
           email: string | null
+          hand_preference: string | null
           id: string
           phone: string | null
           telauthorium_id: string
@@ -413,6 +414,7 @@ export type Database = {
           created_at?: string
           display_name?: string | null
           email?: string | null
+          hand_preference?: string | null
           id: string
           phone?: string | null
           telauthorium_id?: string
@@ -422,6 +424,7 @@ export type Database = {
           created_at?: string
           display_name?: string | null
           email?: string | null
+          hand_preference?: string | null
           id?: string
           phone?: string | null
           telauthorium_id?: string
