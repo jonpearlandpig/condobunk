@@ -57,8 +57,8 @@ interface SheetContentProps
 
 const closePositionClasses: Record<ClosePosition, string> = {
   "top-right": "right-4 top-4",
-  "bottom-left": "left-4 bottom-4",
-  "bottom-right": "right-4 bottom-4",
+  "bottom-left": "left-4 bottom-14",
+  "bottom-right": "right-4 bottom-14",
 };
 
 const SheetContent = React.forwardRef<React.ElementRef<typeof SheetPrimitive.Content>, SheetContentProps>(
