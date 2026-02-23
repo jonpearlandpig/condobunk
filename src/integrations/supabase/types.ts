@@ -703,6 +703,30 @@ export type Database = {
           },
         ]
       }
+      tldr_cache: {
+        Row: {
+          generated_at: string
+          id: string
+          lines: Json
+          tour_ids: string
+          user_id: string
+        }
+        Insert: {
+          generated_at?: string
+          id?: string
+          lines?: Json
+          tour_ids: string
+          user_id: string
+        }
+        Update: {
+          generated_at?: string
+          id?: string
+          lines?: Json
+          tour_ids?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       tour_integrations: {
         Row: {
           api_key_encrypted: string | null
