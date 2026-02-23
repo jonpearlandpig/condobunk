@@ -75,11 +75,11 @@ const Login = () => {
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.5 }}
-        className="w-full max-w-md space-y-8 px-6"
+        className="w-full max-w-md space-y-6 px-6"
       >
-        <div className="text-center space-y-4 mb-2">
-          <img src={logoWhite} alt="Condo Bunk" className="h-24 w-auto mx-auto" />
-          <p className="text-sm text-muted-foreground tracking-wide">
+        <div className="text-center mb-4">
+          <img src={logoWhite} alt="Condo Bunk" className="w-full max-w-md mx-auto" />
+          <p className="text-sm text-muted-foreground tracking-wide mt-3">
             Close the curtain. Get schtuff done!
           </p>
         </div>
