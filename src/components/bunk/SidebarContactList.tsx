@@ -89,6 +89,7 @@ const SidebarContactList = ({ contacts, onNavigate, onUpdate, onDelete, onlineUs
     }
     if (isContactOnline(c)) {
       setExpandedId(null);
+      setChattingWith(c.id);
       // Mark messages as read
       if (c.appUserId && user) {
         supabase
