@@ -61,7 +61,8 @@ const BunkSidebar = () => {
   const { user } = useAuth();
   const { tours } = useTour();
   const tourId = tours[0]?.id;
-  const { tourContacts, tourTeamGroups, tourVenueGroups, venueContacts, venueGroups, venueLabel, loading, updateContact, deleteContact } = useSidebarContacts();
+  const isOwner = !!user && tours.some(t => t.owner_id === user.id);
+  const { tourContacts, tourTeamGroups, tourVenueGroups, venueContacts, venueGroups, venueLabel, loading, updateContact, deleteContact, refetch } = useSidebarContacts();
   const { onlineUsers } = usePresence();
   const { totalUnread, unreadFrom } = useUnreadDMs();
   const [tourTeamOpen, setTourTeamOpen] = useState(false);
@@ -70,6 +71,24 @@ const BunkSidebar = () => {
   const [expandedVenueTours, setExpandedVenueTours] = useState<Set<string>>(new Set());
   const [activeInvites, setActiveInvites] = useState<ActiveInvite[]>([]);
   const [bulkInviting, setBulkInviting] = useState(false);
+
+  const handleRemoveMember = useCallback(async (contact: import("@/hooks/useSidebarContacts").SidebarContact) => {
+    if (!contact.appUserId || !tourId) return;
+    const confirmed = window.confirm(`Remove ${contact.name} from this tour? They will lose all access immediately.`);
+    if (!confirmed) return;
+    try {
+      const { error } = await supabase.rpc("remove_tour_member", {
+        _tour_id: tourId,
+        _target_user_id: contact.appUserId,
+      });
+      if (error) throw error;
+      toast.success(`${contact.name} removed from tour`);
+      refetch();
+      window.dispatchEvent(new Event("contacts-changed"));
+    } catch (err: any) {
+      toast.error("Failed to remove member", { description: err.message });
+    }
+  }, [tourId, refetch]);
 
   const fetchInvites = useCallback(async () => {
     if (!tourId) return;
@@ -251,7 +270,7 @@ const BunkSidebar = () => {
                   <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground/40" />
                 </div>
               ) : filteredTourTeamGroups.length <= 1 ? (
-                <SidebarContactList contacts={filteredTourTeamGroups[0]?.contacts || []} onNavigate={handleNavClick} onUpdate={updateContact} onDelete={deleteContact} onlineUserIds={onlineUsers} unreadFrom={unreadFrom} activeInvites={activeInvites} onInviteCreated={fetchInvites} />
+                <SidebarContactList contacts={filteredTourTeamGroups[0]?.contacts || []} onNavigate={handleNavClick} onUpdate={updateContact} onDelete={deleteContact} onlineUserIds={onlineUsers} unreadFrom={unreadFrom} activeInvites={activeInvites} onInviteCreated={fetchInvites} isOwner={isOwner} onRemoveMember={handleRemoveMember} />
               ) : (
                 <div className="space-y-0.5">
                   {filteredTourTeamGroups.map((group) => {
@@ -276,7 +295,7 @@ const BunkSidebar = () => {
                         </button>
                         {isExpanded && (
                           <div className="ml-2 border-l border-border/30 pl-1">
-                            <SidebarContactList contacts={group.contacts} onNavigate={handleNavClick} onUpdate={updateContact} onDelete={deleteContact} onlineUserIds={onlineUsers} unreadFrom={unreadFrom} activeInvites={activeInvites} onInviteCreated={fetchInvites} />
+                            <SidebarContactList contacts={group.contacts} onNavigate={handleNavClick} onUpdate={updateContact} onDelete={deleteContact} onlineUserIds={onlineUsers} unreadFrom={unreadFrom} activeInvites={activeInvites} onInviteCreated={fetchInvites} isOwner={isOwner} onRemoveMember={handleRemoveMember} />
                           </div>
                         )}
                       </div>
