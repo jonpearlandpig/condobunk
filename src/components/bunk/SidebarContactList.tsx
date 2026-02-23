@@ -324,7 +324,7 @@ const SidebarContactList = ({ contacts, onNavigate, onUpdate, onDelete, onlineUs
     return (
       <div key={c.id}>
         <div
-          className="group flex items-center justify-between px-4 py-1.5 hover:bg-sidebar-accent/50 rounded-md transition-colors cursor-pointer"
+          className="group flex items-center justify-between px-4 py-2 hover:bg-sidebar-accent/50 rounded-md transition-colors cursor-pointer"
           onClick={() => isMobile && toggleExpand(c.id)}
         >
           <div className="min-w-0 flex-1 flex items-center gap-2">
@@ -510,36 +510,8 @@ const SidebarContactList = ({ contacts, onNavigate, onUpdate, onDelete, onlineUs
             </div>
           )}
 
-          {/* Mobile: quick actions always visible for venue */}
-          {isMobile && showQuickActions && (
-            <div className="flex items-center gap-1 shrink-0 ml-2">
-              {isMissingContact ? (
-                <button
-                  onClick={(e) => { e.stopPropagation(); navigate(`/bunk/chat?scope=tour&q=${encodeURIComponent(telaFixQuery)}`); onNavigate?.(); }}
-                  className="p-1 rounded text-primary"
-                  aria-label="Ask TELA"
-                >
-                  <MessageSquare className="h-3.5 w-3.5" />
-                </button>
-              ) : (
-                <>
-                  {c.phone && (
-                    <a href={`sms:${c.phone}`} className="p-1 rounded text-info" aria-label="Text">
-                      <MessageCircle className="h-3.5 w-3.5" />
-                    </a>
-                  )}
-                  {c.email && (
-                    <a href={`mailto:${c.email}`} className="p-1 rounded text-warning" aria-label="Email">
-                      <Mail className="h-3.5 w-3.5" />
-                    </a>
-                  )}
-                </>
-              )}
-            </div>
-          )}
-
-          {/* Mobile: indicators for non-grouped */}
-          {isMobile && !showQuickActions && (
+          {/* Mobile: minimal indicators — tap to expand for actions */}
+          {isMobile && (
             <div className="flex items-center gap-1 shrink-0 ml-2">
               {isMissingContact ? (
                 <MessageSquare className="h-3 w-3 text-primary/60" />
@@ -556,8 +528,8 @@ const SidebarContactList = ({ contacts, onNavigate, onUpdate, onDelete, onlineUs
           )}
         </div>
 
-        {/* Mobile: expanded action bar (tour team only) */}
-        {isMobile && !showQuickActions && expandedId === c.id && (
+        {/* Mobile: expanded action bar */}
+        {isMobile && expandedId === c.id && (
           <div className="flex items-center gap-1 px-4 py-2 bg-sidebar-accent/30 rounded-b-md mx-1 mb-0.5">
             {!isMissingContact && (c.appUserId || c.phone) && (
               <button
