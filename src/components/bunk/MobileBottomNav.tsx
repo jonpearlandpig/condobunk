@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, ReactNode } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import {
@@ -12,6 +12,7 @@ import {
   Camera,
   LogOut,
   HandMetal,
+  ChevronRight,
 } from "lucide-react";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { useHandPreference } from "@/hooks/useHandPreference";
@@ -38,6 +39,22 @@ const navItems = [
   { title: "AKB's", url: "/bunk/documents", icon: FileText },
   { title: "Admin", url: "/bunk/admin", icon: Settings },
 ];
+
+const CollapsibleSection = ({ title, children }: { title: string; children: ReactNode }) => {
+  const [open, setOpen] = useState(false);
+  return (
+    <div>
+      <button
+        onClick={() => setOpen(!open)}
+        className="w-full font-mono text-[10px] tracking-[0.2em] text-muted-foreground/60 uppercase py-1.5 flex items-center gap-2 hover:text-muted-foreground transition-colors"
+      >
+        <ChevronRight className={`h-3 w-3 transition-transform ${open ? "rotate-90" : ""}`} />
+        {title}
+      </button>
+      {open && children}
+    </div>
+  );
+};
 
 interface MobileBottomNavProps {
   avatarUrl?: string | null;
@@ -104,8 +121,8 @@ const MobileBottomNav = ({ avatarUrl, displayName, user, signOut, fileInputRef }
               style={{ paddingBottom: "env(safe-area-inset-bottom, 0px)" }}
             >
               <SidebarProvider defaultOpen={false}>
-                <div className="p-3 space-y-3">
-                  <div className="flex items-center justify-between">
+                <div className="p-3 space-y-1">
+                  <div className="flex items-center justify-between mb-2">
                     <h3 className="font-mono text-[10px] tracking-[0.2em] text-muted-foreground/60 uppercase">
                       Messages
                     </h3>
@@ -116,14 +133,11 @@ const MobileBottomNav = ({ avatarUrl, displayName, user, signOut, fileInputRef }
                     )}
                   </div>
 
-                  {/* Tela Threads */}
+                  {/* Tela Threads - starts collapsed */}
                   <SidebarTelaThreads />
 
-                  {/* Tour Team contacts */}
-                  <div>
-                    <p className="font-mono text-[10px] tracking-[0.2em] text-muted-foreground/60 uppercase mb-1">
-                      Tour Team
-                    </p>
+                  {/* Tour Team contacts - collapsible, starts collapsed */}
+                  <CollapsibleSection title="Tour Team">
                     {filteredTourTeamGroups.map(g => (
                       <SidebarContactList
                         key={g.tourId}
@@ -135,14 +149,11 @@ const MobileBottomNav = ({ avatarUrl, displayName, user, signOut, fileInputRef }
                         unreadFrom={unreadFrom}
                       />
                     ))}
-                  </div>
+                  </CollapsibleSection>
 
-                  {/* Venue Partners */}
+                  {/* Venue Partners - collapsible, starts collapsed */}
                   {tourVenueGroups.length > 0 && (
-                    <div>
-                      <p className="font-mono text-[10px] tracking-[0.2em] text-muted-foreground/60 uppercase mb-1">
-                        Venue Partners
-                      </p>
+                    <CollapsibleSection title="Venue Partners">
                       {tourVenueGroups.map(tvg => (
                         <SidebarContactList
                           key={tvg.tourId}
@@ -155,7 +166,7 @@ const MobileBottomNav = ({ avatarUrl, displayName, user, signOut, fileInputRef }
                           venueGroups={tvg.venueGroups}
                         />
                       ))}
-                    </div>
+                    </CollapsibleSection>
                   )}
                 </div>
               </SidebarProvider>
