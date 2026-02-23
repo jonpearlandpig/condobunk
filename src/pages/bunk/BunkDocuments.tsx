@@ -57,6 +57,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Input } from "@/components/ui/input";
+import GlossaryTerm from "@/components/bunk/GlossaryTerm";
 
 interface DocRow {
   id: string;
@@ -361,7 +362,7 @@ const BunkDocuments = () => {
     <div className="space-y-4 max-w-4xl w-full overflow-hidden">
       <div className="space-y-3">
         <div>
-          <h1 className="text-xl sm:text-2xl font-bold tracking-tight">AKB Builder</h1>
+          <h1 className="text-xl sm:text-2xl font-bold tracking-tight"><GlossaryTerm term="AKB">AKB</GlossaryTerm> Builder</h1>
           <p className="text-xs sm:text-sm text-muted-foreground font-mono mt-0.5 sm:mt-1">
             Upload documents
           </p>
@@ -417,14 +418,14 @@ const BunkDocuments = () => {
             : "Drop a file or click to upload (.txt, .csv, .md)"}
         </p>
         <p className="text-xs text-muted-foreground/60 font-mono mt-1">
-          TELA will extract and author artifacts from your uploads
+          <GlossaryTerm term="TELA">TELA</GlossaryTerm> will extract and author <GlossaryTerm term="Artifacts">artifacts</GlossaryTerm> from your uploads
         </p>
       </div>
 
       {/* Document List */}
       <div>
         <h2 className="text-sm font-mono text-muted-foreground tracking-wider mb-4">
-          AKB ARTIFACTS ({activeDocuments.length})
+          <GlossaryTerm term="AKB">AKB</GlossaryTerm> <GlossaryTerm term="Artifacts">ARTIFACTS</GlossaryTerm> ({activeDocuments.length})
         </h2>
         {activeDocuments.length === 0 ? (
           <div className="rounded-lg border border-border border-dashed bg-card/50 p-8 text-center">

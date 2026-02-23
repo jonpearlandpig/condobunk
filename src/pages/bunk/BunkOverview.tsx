@@ -62,6 +62,7 @@ import {
 import { ScrollArea } from "@/components/ui/scroll-area";
 import VenueTelaMini from "@/components/bunk/VenueTelaMini";
 import EventNoteEditor from "@/components/bunk/EventNoteEditor";
+import GlossaryTerm from "@/components/bunk/GlossaryTerm";
 const stateColors: Record<string, string> = {
   BUILDING: "text-info",
   SOVEREIGN: "text-success",
@@ -416,7 +417,7 @@ const BunkOverview = () => {
     <div className="space-y-5 sm:space-y-8 max-w-5xl">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl sm:text-2xl font-bold tracking-tight">TELA TL;DR</h1>
+          <h1 className="text-xl sm:text-2xl font-bold tracking-tight"><GlossaryTerm term="TELA">TELA</GlossaryTerm> TL;DR</h1>
           <p className="text-xs sm:text-sm text-muted-foreground font-mono mt-0.5 sm:mt-1">
             Real-time tour intelligence
           </p>
