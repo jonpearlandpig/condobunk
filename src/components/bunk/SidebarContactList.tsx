@@ -368,7 +368,7 @@ const SidebarContactList = ({ contacts, onNavigate, onUpdate, onDelete, onlineUs
 
           {/* Quick actions: always visible for grouped/venue, hover for flat/tour */}
           {!isMobile && (
-            <div className={`flex items-center gap-0.5 shrink-0 ml-2 ${showQuickActions ? "" : isMissingContact ? "" : "opacity-0 group-hover:opacity-100"} transition-opacity`}>
+            <div className={`items-center gap-0.5 shrink-0 ml-2 ${showQuickActions ? "flex" : isMissingContact ? "flex" : "hidden group-hover:flex"}`}>
               {/* Always-visible email & text for venue contacts */}
               {showQuickActions && !isMissingContact && c.phone && (
                 <Tooltip>
