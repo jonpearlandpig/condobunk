@@ -1,33 +1,35 @@
 
 
-## Update Login Page with Official Condo Bunk Logo
+## Fix: Desktop Contact Names Truncated by Too Many Action Buttons
 
-### What Changes
-Replace the current icon + text header on the login page with the official Condo Bunk logo image. The login page has a dark background, so the **white text logo** (`WHITE_TEXT_CONDO_BUNK_LOGO.png`) will be used for best contrast.
+### Root Cause
+Each tour team contact row shows up to 7 action buttons (Message, Edit, Invite/Remove, TELA, Call, Email). Even with `hidden group-hover:flex`, on touch-enabled devices hover states persist, keeping all buttons visible. More fundamentally, 7 small icon buttons simply cannot fit alongside a name in a ~240px sidebar column.
 
-### Steps
+### Solution
+Replace the row of 6-7 individual icon buttons with a **single overflow menu button** (three-dot "..." icon). Hovering the row reveals just one small button; clicking it opens a dropdown with all the actions listed by name. This guarantees the contact name always has nearly full width.
 
-1. Copy `user-uploads://WHITE_TEXT_CONDO_BUNK_LOGO.png` to `src/assets/WHITE_TEXT_CONDO_BUNK_LOGO.png`
-2. Update `src/pages/Login.tsx`:
-   - Import the logo image
-   - Replace the `Radio` icon + "CONDO BUNK" `h1` block (lines 80-88) with an `<img>` tag showing the logo, sized appropriately (roughly 200px wide)
-   - Keep the tagline text below
+### Changes
 
-### Technical Details
+**File: `src/components/bunk/SidebarContactList.tsx`**
 
-**File: `src/pages/Login.tsx`**
+1. Import `DropdownMenu`, `DropdownMenuTrigger`, `DropdownMenuContent`, `DropdownMenuItem` from `@/components/ui/dropdown-menu` and the `MoreHorizontal` icon from `lucide-react`.
 
-Remove:
-- The `Radio` and `Shield` icon imports (Shield is still used on the button, so keep that)
-- The Radio icon + animated dot + h1 "CONDO BUNK" markup
+2. Replace the entire desktop action buttons container (lines 370-511, the `{!isMobile && (...)}` block) with a single overflow menu:
+   - Show a `MoreHorizontal` icon button, hidden by default and visible on `group-hover`
+   - The dropdown menu contains labeled items for each action:
+     - "Bunk Chat" / "Text" (MessageCircle) — if `c.appUserId` or `c.phone`
+     - "Edit" (Pencil) — if `onUpdate`
+     - "Invite to Condo Bunk" (UserPlus) — if `!c.appUserId && c.email`
+     - "Remove from tour" (UserMinus) — if owner and `c.appUserId`
+     - "Ask TELA" (MessageSquare)
+     - "Call" (Phone) — if `c.phone`
+     - "Email" (Mail) — if `c.email`
+   - For `isMissingContact`, show just a visible TELA icon (no overflow needed since there's only 1 action)
+   - For `showQuickActions` (venue contacts), keep existing minimal icons (SMS + Email) since those are only 2 and fit fine
 
-Replace with:
-```tsx
-import logoWhite from "@/assets/WHITE_TEXT_CONDO_BUNK_LOGO.png";
+3. Keep the online status dot and INVITED badge inline with the name (they're small and don't crowd).
 
-// In the header area:
-<img src={logoWhite} alt="Condo Bunk" className="h-16 w-auto mx-auto mb-2" />
-```
-
-The tagline "Close the curtain. Get schtuff done!" stays as-is below the logo.
-
+### Result
+- Contact names like "Trey", "Nathan", "David", "Pip Palmer", "Sidney" will display in full
+- A single "..." button appears on hover; all actions are accessible via dropdown
+- Mobile tap-to-expand behavior is unchanged
