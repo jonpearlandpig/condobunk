@@ -77,8 +77,8 @@ const Login = () => {
         transition={{ duration: 0.5 }}
         className="w-full max-w-md space-y-8 px-6"
       >
-        <div className="text-center space-y-3">
-          <img src={logoWhite} alt="Condo Bunk" className="h-16 w-auto mx-auto mb-2" />
+        <div className="text-center space-y-4 mb-2">
+          <img src={logoWhite} alt="Condo Bunk" className="h-24 w-auto mx-auto" />
           <p className="text-sm text-muted-foreground tracking-wide">
             Close the curtain. Get schtuff done!
           </p>
