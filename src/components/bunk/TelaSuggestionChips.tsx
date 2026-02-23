@@ -1,4 +1,4 @@
-import { ArrowRight, FileText, Users, Calendar, MessageCircle, Upload, Zap, Phone } from "lucide-react";
+import { ArrowRight, FileText, Users, Calendar, MessageCircle, Upload, Radio, Phone } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
 interface TelaSuggestionChipsProps {
@@ -19,7 +19,7 @@ const ICON_MAP = {
   calendar: Calendar,
   chat: MessageCircle,
   upload: Upload,
-  action: Zap,
+  action: Radio,
   phone: Phone,
 };
 

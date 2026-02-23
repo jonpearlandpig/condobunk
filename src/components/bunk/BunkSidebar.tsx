@@ -3,7 +3,7 @@ import { getInviteUrl } from "@/lib/invite-url";
 import {
   LayoutDashboard,
   CalendarDays,
-  MessageSquare,
+  Radio,
   FileText,
   BarChart3,
   Settings,
@@ -49,7 +49,7 @@ import { toast } from "sonner";
 const navItems = [
   { title: "TL;DR", url: "/bunk", icon: LayoutDashboard },
   { title: "CALENDAR", url: "/bunk/calendar", icon: CalendarDays },
-  { title: "ASK TELA", url: "/bunk/chat", icon: MessageSquare },
+  { title: "ASK TELA", url: "/bunk/chat", icon: Radio },
   { title: "TOUR AKB'S", url: "/bunk/documents", icon: FileText },
   { title: "CHANGE LOG", url: "/bunk/changelog", icon: ShieldCheck },
   { title: "ADMIN", url: "/bunk/admin", icon: Settings },

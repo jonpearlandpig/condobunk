@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
-import { Sparkles, ChevronRight, Plus, Pencil, Trash2, Check, X } from "lucide-react";
+import { Radio, ChevronRight, Plus, Pencil, Trash2, Check, X } from "lucide-react";
 import { useSidebar } from "@/components/ui/sidebar";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { useTelaThreads } from "@/hooks/useTelaThreads";
@@ -64,7 +64,7 @@ const SidebarTelaThreads = () => {
         className="w-full font-mono text-[10px] tracking-[0.2em] text-muted-foreground/60 uppercase px-4 py-1.5 flex items-center gap-2 hover:text-muted-foreground transition-colors"
       >
         <ChevronRight className={`h-3 w-3 transition-transform ${open ? "rotate-90" : ""}`} />
-        <Sparkles className="h-3 w-3" />
+        <Radio className="h-3 w-3" />
         Ask TELA
         {threads.length > 0 && (
           <span className="ml-auto text-muted-foreground/40 normal-case tracking-normal">{threads.length}</span>
