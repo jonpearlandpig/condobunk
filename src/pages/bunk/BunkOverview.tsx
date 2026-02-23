@@ -38,6 +38,7 @@ import {
   ClipboardList,
   Copy,
   MessageSquare,
+  RefreshCw,
   Music,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -104,15 +105,15 @@ const BunkOverview = () => {
     loadCounts();
     loadEventDates();
 
-    // Listen for TELA-triggered changes
-    const handler = () => { loadCounts(); loadEventDates(); generateTldr(); };
+    // Listen for TELA-triggered changes — force-refresh cache
+    const handler = () => { loadCounts(); loadEventDates(); generateTldr(true); };
     window.addEventListener("akb-changed", handler);
     return () => window.removeEventListener("akb-changed", handler);
   }, [user, tours]);
 
   useEffect(() => {
     if (tours.length > 0) {
-      generateTldr();
+      generateTldr(false);
     }
   }, [tours, tourEventCounts]);
 
@@ -184,12 +185,35 @@ const BunkOverview = () => {
     setVanLookup(lookup);
   };
 
-  const generateTldr = async () => {
+  const TLDR_CACHE_TTL_MS = 30 * 60 * 1000; // 30 minutes
+
+  const generateTldr = async (forceRefresh = false) => {
     setTldrLoading(true);
     try {
+      const tourIds = tours.map(t => t.id);
+      const cacheKey = [...tourIds].sort().join(",");
+
+      // Check cache first (unless force-refreshing)
+      if (!forceRefresh && user) {
+        const { data: cached } = await supabase
+          .from("tldr_cache")
+          .select("lines, generated_at")
+          .eq("user_id", user.id)
+          .eq("tour_ids", cacheKey)
+          .maybeSingle();
+
+        if (cached && cached.generated_at) {
+          const age = Date.now() - new Date(cached.generated_at).getTime();
+          if (age < TLDR_CACHE_TTL_MS && Array.isArray(cached.lines) && cached.lines.length > 0) {
+            setTldr(cached.lines as Array<{ text: string; actionable: boolean }>);
+            setTldrLoading(false);
+            return;
+          }
+        }
+      }
+
       // Gather data for the briefing
       const today = new Date().toISOString().split("T")[0];
-      const tourIds = tours.map(t => t.id);
 
       const [eventsRes, gapsRes, conflictsRes] = await Promise.all([
         supabase
@@ -267,9 +291,10 @@ const BunkOverview = () => {
         body: { context },
       });
 
+      let items: Array<{ text: string; actionable: boolean }>;
+
       if (resp.data?.lines) {
-        // Handle both formats: structured {text, actionable} or plain strings
-        const items = resp.data.lines.map((item: any) => {
+        items = resp.data.lines.map((item: any) => {
           if (typeof item === "string") {
             return {
               text: item,
@@ -278,7 +303,6 @@ const BunkOverview = () => {
           }
           return item;
         });
-        setTldr(items);
       } else {
         const lines: Array<{ text: string; actionable: boolean }> = [];
         if (upcomingEvents.length > 0) {
@@ -295,7 +319,21 @@ const BunkOverview = () => {
           lines.push({ text: `${upcomingEvents.length} events on the horizon across ${tours.length} tour${tours.length > 1 ? "s" : ""}.`, actionable: false });
         }
         if (lines.length === 0) lines.push({ text: "All clear — no urgent items right now.", actionable: false });
-        setTldr(lines);
+        items = lines;
+      }
+
+      setTldr(items);
+
+      // Upsert cache
+      if (user && items.length > 0) {
+        await supabase
+          .from("tldr_cache")
+          .delete()
+          .eq("user_id", user.id)
+          .eq("tour_ids", cacheKey);
+        await supabase
+          .from("tldr_cache")
+          .insert({ user_id: user.id, tour_ids: cacheKey, lines: items as any });
       }
     } catch (err) {
       console.error("TLDR generation failed:", err);
@@ -409,7 +447,7 @@ const BunkOverview = () => {
   ];
 
   const handleRefresh = useCallback(async () => {
-    await Promise.all([loadCounts(), loadEventDates(), generateTldr()]);
+    await Promise.all([loadCounts(), loadEventDates(), generateTldr(true)]);
   }, [tours]);
 
   return (
@@ -436,11 +474,23 @@ const BunkOverview = () => {
         transition={{ delay: 0.1 }}
         className="rounded-lg border border-primary/20 bg-primary/5 p-3 sm:p-5"
       >
-        <div className="flex items-center gap-2 mb-3">
-          <Zap className="h-4 w-4 text-primary" />
-          <span className="font-mono text-[10px] tracking-[0.15em] text-primary font-semibold">
-            DAILY BRIEFING
-          </span>
+        <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center gap-2">
+            <Zap className="h-4 w-4 text-primary" />
+            <span className="font-mono text-[10px] tracking-[0.15em] text-primary font-semibold">
+              DAILY BRIEFING
+            </span>
+          </div>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-7 w-7 text-primary/60 hover:text-primary"
+            onClick={() => generateTldr(true)}
+            disabled={tldrLoading}
+            title="Refresh briefing"
+          >
+            <RefreshCw className={`h-3.5 w-3.5 ${tldrLoading ? "animate-spin" : ""}`} />
+          </Button>
         </div>
         {tldrLoading ? (
           <div className="flex items-center gap-2 py-2">
