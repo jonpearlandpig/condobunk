@@ -189,6 +189,15 @@ const BunkCalendar = () => {
     }
 
     const normalize = (s: string | null | undefined) => (s || "").toLowerCase().trim().replace(/[^a-z0-9]/g, "");
+    const tokenize = (s: string | null | undefined) => (s || "").toLowerCase().trim().replace(/[^a-z0-9\s]/g, "").split(/\s+/).filter(Boolean);
+    const tokenOverlap = (a: string, b: string): number => {
+      const tokA = new Set(tokenize(a));
+      const tokB = new Set(tokenize(b));
+      if (tokA.size === 0 || tokB.size === 0) return 0;
+      let overlap = 0;
+      for (const t of tokA) if (tokB.has(t)) overlap++;
+      return overlap / Math.max(tokA.size, tokB.size);
+    };
     const normalizeCity = (s: string | null | undefined) => {
       let c = (s || "").toLowerCase().trim();
       c = c.replace(/,?\s*(al|ak|az|ar|ca|co|ct|de|fl|ga|hi|id|il|in|ia|ks|ky|la|me|md|ma|mi|mn|ms|mo|mt|ne|nv|nh|nj|nm|ny|nc|nd|oh|ok|or|pa|ri|sc|sd|tn|tx|ut|vt|va|wa|wv|wi|wy)$/i, "");
@@ -293,13 +302,14 @@ const BunkCalendar = () => {
         const vanKeyCityFallback = s.city ? `${s.tour_id}::city::${normalizeCity(s.city)}` : "";
         let hasVan = !!(vanLookup[vanKeyFull]?.length || vanLookup[vanKeyVenue]?.length || (vanKeyCityFallback && vanLookup[vanKeyCityFallback]?.length));
 
-        // Substring fallback: match when one venue name contains the other
+        // Fuzzy fallback: match by word-token overlap (handles extra words like "County")
         if (!hasVan && s.venue && vans) {
           const eventNorm = normalize(s.venue);
           for (const v of vans) {
             if (v.tour_id !== s.tour_id) continue;
             const vanNorm = normalize(v.venue_name);
-            if (eventNorm.includes(vanNorm) || vanNorm.includes(eventNorm)) {
+            // Exact substring OR high word-token overlap (≥70%)
+            if (eventNorm.includes(vanNorm) || vanNorm.includes(eventNorm) || tokenOverlap(s.venue, v.venue_name) >= 0.7) {
               const subKey = `substr::${s.id}`;
               if (!vanLookup[subKey]) vanLookup[subKey] = [];
               vanLookup[subKey].push(v);
