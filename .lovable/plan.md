@@ -1,31 +1,37 @@
 
 
-## Fix: Desktop Bunk Chat Not Opening
+## Fix: Unread Badge Not Clearing After Reading Messages
 
 ### Root Cause
 
-In `SidebarContactList.tsx`, the `handleMessage` function (line 84-117) has a bug in the online-contact branch. When `isContactOnline(c)` is true and there's no `onContactTap` override (i.e. desktop sidebar), it:
-1. Clears `expandedId`
-2. Marks messages as read
+When you open the inline bunk chat, the code marks messages as read (sets `read_at`) in the database (line 94-101 of SidebarContactList). The `useUnreadDMs` hook listens for realtime changes to `direct_messages` to trigger a refetch of unread counts. However, it checks `payload.new.recipient_id === user.id` to decide whether to refetch.
 
-But it **never calls `setChattingWith(c.id)`**, so the inline chat panel (lines 628-670) never opens. The chat UI is gated on `chattingWith === c.id`, which stays `null`.
+The problem: the `direct_messages` table uses the default replica identity, which means UPDATE events only include the **changed columns** (`read_at`) and the primary key (`id`) in `payload.new` -- **not** `recipient_id` or `sender_id`. So the condition always fails, and `fetchUnread()` never fires after a mark-as-read update.
 
-### Fix
+### Fix (two changes)
 
-**File: `src/components/bunk/SidebarContactList.tsx`** (1 line addition)
+**1. Database migration: Set REPLICA IDENTITY FULL on `direct_messages`**
 
-In the `handleMessage` function, inside the `if (isContactOnline(c))` block (after line 91), add:
+This ensures all columns are included in realtime UPDATE payloads, so the existing `useUnreadDMs` subscription can properly detect mark-as-read changes.
 
-```
-setChattingWith(c.id);
+```sql
+ALTER TABLE public.direct_messages REPLICA IDENTITY FULL;
 ```
 
-This opens the inline bunk chat panel for the clicked contact on desktop. The panel already has the full chat UI -- message history, realtime subscription, and input field -- it just was never being activated.
+**2. Code safety net: Explicitly refetch unread counts when closing the chat**
 
-### Technical Details
+Even with the realtime fix, add a direct `refetch` call as a belt-and-suspenders measure. This guarantees the badge clears immediately when the user closes the chat panel, without waiting for a realtime event.
 
-- Line 90-101: The `isContactOnline(c)` branch currently only calls `setExpandedId(null)` and marks messages read
-- Line 628-670: The inline chat UI already exists and renders when `chattingWith === c.id`
-- Lines 119-165: The `useEffect` that loads DM history and subscribes to realtime already triggers on `chattingWith` changes
-- No other files need changes -- the chat panel, message loading, sending, and realtime subscription all work correctly once `chattingWith` is set
+Changes to `SidebarContactList.tsx`:
+- Add a new prop: `onUnreadRefetch?: () => void`
+- When `setChattingWith(null)` is called (closing the chat), also call `onUnreadRefetch?.()`
+- After the mark-as-read query in `handleMessage` (line 101), chain `.then(() => onUnreadRefetch?.())`
+
+Changes to `BunkSidebar.tsx`:
+- Pass the `refetch` function from `useUnreadDMs` as the `onUnreadRefetch` prop to `SidebarContactList`
+
+### Files to Edit
+- Database migration (1 SQL statement)
+- `src/components/bunk/SidebarContactList.tsx` -- add `onUnreadRefetch` prop, call it on mark-as-read and chat close
+- `src/components/bunk/BunkSidebar.tsx` -- pass `refetch` from `useUnreadDMs` as the new prop
 
