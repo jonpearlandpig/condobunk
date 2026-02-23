@@ -1,54 +1,31 @@
 
 
-## Cache TL;DR Briefing (30-Minute TTL + Manual Refresh)
+## Fix: Desktop Bunk Chat Not Opening
 
-### Step 1: Database Migration -- Create `tldr_cache` table
+### Root Cause
 
-```sql
-CREATE TABLE public.tldr_cache (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id uuid NOT NULL,
-  tour_ids text NOT NULL,
-  lines jsonb NOT NULL DEFAULT '[]',
-  generated_at timestamptz NOT NULL DEFAULT now()
-);
+In `SidebarContactList.tsx`, the `handleMessage` function (line 84-117) has a bug in the online-contact branch. When `isContactOnline(c)` is true and there's no `onContactTap` override (i.e. desktop sidebar), it:
+1. Clears `expandedId`
+2. Marks messages as read
 
-CREATE UNIQUE INDEX idx_tldr_cache_user_tours ON public.tldr_cache (user_id, tour_ids);
+But it **never calls `setChattingWith(c.id)`**, so the inline chat panel (lines 628-670) never opens. The chat UI is gated on `chattingWith === c.id`, which stays `null`.
 
-ALTER TABLE public.tldr_cache ENABLE ROW LEVEL SECURITY;
+### Fix
 
-CREATE POLICY "Users read own cache" ON public.tldr_cache FOR SELECT USING (auth.uid() = user_id);
-CREATE POLICY "Users insert own cache" ON public.tldr_cache FOR INSERT WITH CHECK (auth.uid() = user_id);
-CREATE POLICY "Users update own cache" ON public.tldr_cache FOR UPDATE USING (auth.uid() = user_id);
-CREATE POLICY "Users delete own cache" ON public.tldr_cache FOR DELETE USING (auth.uid() = user_id);
-```
+**File: `src/components/bunk/SidebarContactList.tsx`** (1 line addition)
 
-### Step 2: Update `generateTldr` in `BunkOverview.tsx`
-
-Add a `forceRefresh` parameter to the function. The logic becomes:
+In the `handleMessage` function, inside the `if (isContactOnline(c))` block (after line 91), add:
 
 ```
-1. Build cache key = sorted tour IDs joined by comma
-2. If NOT forceRefresh:
-   a. Query tldr_cache WHERE user_id = current user AND tour_ids = key
-   b. If found AND generated_at is less than 30 minutes old -> use cached lines, return early
-3. Call generate-tldr edge function as before
-4. Upsert result into tldr_cache (DELETE old row, INSERT new)
+setChattingWith(c.id);
 ```
 
-### Step 3: Wire up cache bypass triggers
+This opens the inline bunk chat panel for the clicked contact on desktop. The panel already has the full chat UI -- message history, realtime subscription, and input field -- it just was never being activated.
 
-- **`akb-changed` event**: calls `generateTldr(true)` to force-refresh
-- **Pull-to-refresh**: calls `generateTldr(true)` to force-refresh
-- **Normal page load / tour change**: calls `generateTldr()` which checks cache first
+### Technical Details
 
-### Step 4: Add manual "Refresh" button
-
-Add a small refresh icon button next to the "DAILY BRIEFING" header. Clicking it calls `generateTldr(true)` to bypass cache and get a fresh AI-generated briefing on demand.
-
----
-
-### What This Saves
-
-With a 30-minute cache, if a user visits the overview 10 times in 30 minutes, only the first visit calls the AI. The other 9 serve instantly from the database at zero AI cost.
+- Line 90-101: The `isContactOnline(c)` branch currently only calls `setExpandedId(null)` and marks messages read
+- Line 628-670: The inline chat UI already exists and renders when `chattingWith === c.id`
+- Lines 119-165: The `useEffect` that loads DM history and subscribes to realtime already triggers on `chattingWith` changes
+- No other files need changes -- the chat panel, message loading, sending, and realtime subscription all work correctly once `chattingWith` is set
 
