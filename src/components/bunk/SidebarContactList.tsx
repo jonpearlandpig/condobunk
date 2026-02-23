@@ -37,9 +37,11 @@ interface SidebarContactListProps {
   activeInvites?: ActiveInvite[];
   /** Callback after an invite is created */
   onInviteCreated?: () => void;
+  /** Override mobile tap behavior for DM (used by messaging drawer) */
+  onContactTap?: (contact: SidebarContact) => void;
 }
 
-const SidebarContactList = ({ contacts, onNavigate, onUpdate, onDelete, onlineUserIds, unreadFrom, grouped, venueGroups, activeInvites, onInviteCreated }: SidebarContactListProps) => {
+const SidebarContactList = ({ contacts, onNavigate, onUpdate, onDelete, onlineUserIds, unreadFrom, grouped, venueGroups, activeInvites, onInviteCreated, onContactTap }: SidebarContactListProps) => {
   const navigate = useNavigate();
   const isMobile = useIsMobile();
   const { user } = useAuth();
@@ -66,9 +68,12 @@ const SidebarContactList = ({ contacts, onNavigate, onUpdate, onDelete, onlineUs
   };
 
   const handleMessage = (c: SidebarContact) => {
+    // If parent provides a tap handler (e.g. messaging drawer), delegate to it
+    if (onContactTap) {
+      onContactTap(c);
+      return;
+    }
     if (isContactOnline(c)) {
-      // Open inline bunk chat
-      setChattingWith(prev => prev === c.id ? null : c.id);
       setExpandedId(null);
       // Mark messages as read
       if (c.appUserId && user) {

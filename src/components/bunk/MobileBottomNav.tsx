@@ -1,14 +1,12 @@
 import { useState, ReactNode } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
-import { motion, AnimatePresence } from "framer-motion";
 import {
   LayoutDashboard,
   CalendarDays,
   MessageSquare,
   FileText,
   Settings,
-  Menu,
-  X,
+  MessageCircle,
   Camera,
   LogOut,
   HandMetal,
@@ -16,13 +14,20 @@ import {
 } from "lucide-react";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { useHandPreference } from "@/hooks/useHandPreference";
-import { useSidebarContacts } from "@/hooks/useSidebarContacts";
+import { useSidebarContacts, SidebarContact } from "@/hooks/useSidebarContacts";
 import { usePresence } from "@/hooks/usePresence";
 import { useUnreadDMs } from "@/hooks/useUnreadDMs";
 import { useAuth } from "@/hooks/useAuth";
 import { useTour } from "@/hooks/useTour";
 import SidebarContactList from "@/components/bunk/SidebarContactList";
 import SidebarTelaThreads from "@/components/bunk/SidebarTelaThreads";
+import DMChatScreen from "@/components/bunk/DMChatScreen";
+import {
+  Drawer,
+  DrawerContent,
+  DrawerHeader,
+  DrawerTitle,
+} from "@/components/ui/drawer";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -31,6 +36,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { SidebarProvider } from "@/components/ui/sidebar";
+import { toast } from "sonner";
 
 const navItems = [
   { title: "TL;DR", url: "/bunk", icon: LayoutDashboard, end: true },
@@ -40,16 +46,19 @@ const navItems = [
   { title: "Admin", url: "/bunk/admin", icon: Settings },
 ];
 
-const CollapsibleSection = ({ title, children }: { title: string; children: ReactNode }) => {
+const CollapsibleSection = ({ title, count, children }: { title: string; count?: number; children: ReactNode }) => {
   const [open, setOpen] = useState(false);
   return (
     <div>
       <button
         onClick={() => setOpen(!open)}
-        className="w-full font-mono text-[10px] tracking-[0.2em] text-muted-foreground/60 uppercase py-1.5 flex items-center gap-2 hover:text-muted-foreground transition-colors"
+        className="w-full font-mono text-[10px] tracking-[0.2em] text-muted-foreground/60 uppercase py-2.5 px-1 flex items-center gap-2 hover:text-muted-foreground transition-colors"
       >
         <ChevronRight className={`h-3 w-3 transition-transform ${open ? "rotate-90" : ""}`} />
         {title}
+        {count !== undefined && count > 0 && (
+          <span className="ml-auto text-muted-foreground/40 normal-case tracking-normal">{count}</span>
+        )}
       </button>
       {open && children}
     </div>
@@ -66,15 +75,17 @@ interface MobileBottomNavProps {
 
 const MobileBottomNav = ({ avatarUrl, displayName, user, signOut, fileInputRef }: MobileBottomNavProps) => {
   const isMobile = useIsMobile();
-  const [menuOpen, setMenuOpen] = useState(false);
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [activeDMContact, setActiveDMContact] = useState<SidebarContact | null>(null);
   const { handPreference, setHandPreference } = useHandPreference();
   const navigate = useNavigate();
   const location = useLocation();
 
-  const { tourTeamGroups, tourVenueGroups, venueContacts, loading, updateContact, deleteContact } = useSidebarContacts();
+  const { tourTeamGroups, tourVenueGroups, updateContact, deleteContact } = useSidebarContacts();
   const { onlineUsers } = usePresence();
   const { totalUnread, unreadFrom } = useUnreadDMs();
   const { tours } = useTour();
+  const tourId = tours[0]?.id;
 
   if (!isMobile) return null;
 
@@ -85,9 +96,11 @@ const MobileBottomNav = ({ avatarUrl, displayName, user, signOut, fileInputRef }
     contacts: g.contacts.filter(c => c.appUserId !== user?.id),
   }));
 
+  const totalTeamContacts = filteredTourTeamGroups.reduce((sum, g) => sum + g.contacts.length, 0);
+  const totalVenueContacts = tourVenueGroups.reduce((sum, g) => sum + g.totalContacts, 0);
+
   const handleNavClick = (url: string) => {
     navigate(url);
-    setMenuOpen(false);
   };
 
   const isActive = (url: string, end?: boolean) => {
@@ -95,85 +108,102 @@ const MobileBottomNav = ({ avatarUrl, displayName, user, signOut, fileInputRef }
     return location.pathname.startsWith(url);
   };
 
+  const handleContactTap = (c: SidebarContact) => {
+    const isOnline = c.appUserId && onlineUsers.has(c.appUserId);
+    if (isOnline) {
+      setDrawerOpen(false);
+      // Small delay to let drawer close animation play
+      setTimeout(() => setActiveDMContact(c), 200);
+    } else if (c.appUserId) {
+      toast.info(`${c.name} isn't in their Condo Bunk right now`, {
+        description: c.phone ? "Sending via SMS instead…" : "No phone number on file to fall back to.",
+        duration: 3000,
+      });
+      if (c.phone) {
+        setDrawerOpen(false);
+        setTimeout(() => window.open(`sms:${c.phone}`, "_self"), 600);
+      }
+    } else if (c.phone) {
+      setDrawerOpen(false);
+      window.open(`sms:${c.phone}`, "_self");
+    } else {
+      toast.info("No phone number available for this contact");
+    }
+  };
+
   return (
     <>
-      {/* DM Panel overlay */}
-      <AnimatePresence>
-        {menuOpen && (
-          <>
-            {/* Backdrop */}
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              className="fixed inset-0 bg-background/60 backdrop-blur-sm z-40"
-              onClick={() => setMenuOpen(false)}
-            />
-            {/* DM Panel */}
-            <motion.div
-              initial={{ opacity: 0, y: 100 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: 100 }}
-              transition={{ type: "spring", damping: 25, stiffness: 300 }}
-              className={`fixed bottom-14 z-50 w-72 max-h-[60vh] overflow-y-auto rounded-t-xl border border-border bg-card shadow-2xl ${
-                isLeft ? "left-0 rounded-bl-none" : "right-0 rounded-br-none"
-              }`}
-              style={{ paddingBottom: "env(safe-area-inset-bottom, 0px)" }}
-            >
-              <SidebarProvider defaultOpen={false}>
-                <div className="p-3 space-y-1">
-                  <div className="flex items-center justify-between mb-2">
-                    <h3 className="font-mono text-[10px] tracking-[0.2em] text-muted-foreground/60 uppercase">
-                      Messages
-                    </h3>
-                    {totalUnread > 0 && (
-                      <span className="h-4 min-w-4 px-1 flex items-center justify-center rounded-full bg-primary text-primary-foreground text-[9px] font-bold">
-                        {totalUnread > 99 ? "99+" : totalUnread}
-                      </span>
-                    )}
-                  </div>
+      {/* Full-screen DM chat overlay */}
+      {activeDMContact && tourId && user && (
+        <DMChatScreen
+          contact={activeDMContact}
+          tourId={tourId}
+          userId={user.id}
+          isContactOnline={!!activeDMContact.appUserId && onlineUsers.has(activeDMContact.appUserId)}
+          onClose={() => setActiveDMContact(null)}
+        />
+      )}
 
-                  {/* Tela Threads - starts collapsed */}
-                  <SidebarTelaThreads />
+      {/* Messaging Drawer */}
+      <Drawer open={drawerOpen} onOpenChange={setDrawerOpen}>
+        <DrawerContent className="max-h-[75vh]">
+          <DrawerHeader className="pb-2">
+            <div className="flex items-center justify-between">
+              <DrawerTitle className="font-mono text-xs tracking-[0.2em] uppercase text-muted-foreground/70">
+                Messages
+              </DrawerTitle>
+              {totalUnread > 0 && (
+                <span className="h-5 min-w-5 px-1.5 flex items-center justify-center rounded-full bg-primary text-primary-foreground text-[10px] font-bold">
+                  {totalUnread > 99 ? "99+" : totalUnread}
+                </span>
+              )}
+            </div>
+          </DrawerHeader>
 
-                  {/* Tour Team contacts - collapsible, starts collapsed */}
-                  <CollapsibleSection title="Tour Team">
-                    {filteredTourTeamGroups.map(g => (
-                      <SidebarContactList
-                        key={g.tourId}
-                        contacts={g.contacts}
-                        onNavigate={() => setMenuOpen(false)}
-                        onUpdate={updateContact}
-                        onDelete={deleteContact}
-                        onlineUserIds={onlineUsers}
-                        unreadFrom={unreadFrom}
-                      />
-                    ))}
-                  </CollapsibleSection>
+          <div className="overflow-y-auto px-4 pb-4 space-y-1">
+            <SidebarProvider defaultOpen={false}>
+              {/* Ask TELA threads */}
+              <CollapsibleSection title="Ask TELA">
+                <SidebarTelaThreads />
+              </CollapsibleSection>
 
-                  {/* Venue Partners - collapsible, starts collapsed */}
-                  {tourVenueGroups.length > 0 && (
-                    <CollapsibleSection title="Venue Partners">
-                      {tourVenueGroups.map(tvg => (
-                        <SidebarContactList
-                          key={tvg.tourId}
-                          contacts={tvg.venueGroups.flatMap(vg => vg.contacts)}
-                          onNavigate={() => setMenuOpen(false)}
-                          onUpdate={updateContact}
-                          onDelete={deleteContact}
-                          onlineUserIds={onlineUsers}
-                          grouped
-                          venueGroups={tvg.venueGroups}
-                        />
-                      ))}
-                    </CollapsibleSection>
-                  )}
-                </div>
-              </SidebarProvider>
-            </motion.div>
-          </>
-        )}
-      </AnimatePresence>
+              {/* Tour Team */}
+              <CollapsibleSection title="Tour Team" count={totalTeamContacts}>
+                {filteredTourTeamGroups.map(g => (
+                  <SidebarContactList
+                    key={g.tourId}
+                    contacts={g.contacts}
+                    onNavigate={() => setDrawerOpen(false)}
+                    onUpdate={updateContact}
+                    onDelete={deleteContact}
+                    onlineUserIds={onlineUsers}
+                    unreadFrom={unreadFrom}
+                    onContactTap={handleContactTap}
+                  />
+                ))}
+              </CollapsibleSection>
+
+              {/* Venue Partners */}
+              {tourVenueGroups.length > 0 && (
+                <CollapsibleSection title="Venue Partners" count={totalVenueContacts}>
+                  {tourVenueGroups.map(tvg => (
+                    <SidebarContactList
+                      key={tvg.tourId}
+                      contacts={tvg.venueGroups.flatMap(vg => vg.contacts)}
+                      onNavigate={() => setDrawerOpen(false)}
+                      onUpdate={updateContact}
+                      onDelete={deleteContact}
+                      onlineUserIds={onlineUsers}
+                      grouped
+                      venueGroups={tvg.venueGroups}
+                    />
+                  ))}
+                </CollapsibleSection>
+              )}
+            </SidebarProvider>
+          </div>
+        </DrawerContent>
+      </Drawer>
 
       {/* Bottom bar */}
       <div
@@ -182,26 +212,21 @@ const MobileBottomNav = ({ avatarUrl, displayName, user, signOut, fileInputRef }
         }`}
         style={{ paddingBottom: "env(safe-area-inset-bottom, 0px)" }}
       >
-        {/* Menu button */}
+        {/* Message button */}
         <button
-          onClick={() => setMenuOpen(!menuOpen)}
+          onClick={() => setDrawerOpen(true)}
           className="h-10 w-10 flex items-center justify-center rounded-lg text-foreground hover:bg-accent transition-colors shrink-0 relative"
-          aria-label="Toggle messages"
+          aria-label="Open messages"
         >
-          <motion.div
-            animate={{ rotate: menuOpen ? 90 : 0 }}
-            transition={{ duration: 0.2 }}
-          >
-            {menuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
-          </motion.div>
-          {!menuOpen && totalUnread > 0 && (
+          <MessageCircle className="h-5 w-5" />
+          {totalUnread > 0 && (
             <span className="absolute top-1 right-1 h-2 w-2 rounded-full bg-primary" />
           )}
         </button>
 
         {/* Nav items */}
-        <div className={`flex-1 flex items-center justify-around ${isLeft ? "" : ""}`}>
-          {navItems.map((item, i) => {
+        <div className="flex-1 flex items-center justify-around">
+          {navItems.map((item) => {
             const active = isActive(item.url, item.end);
             return (
               <button
