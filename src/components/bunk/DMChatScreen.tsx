@@ -146,23 +146,37 @@ const DMChatScreen = ({ contact, tourId, userId, isContactOnline, onClose }: DMC
 
       {/* Input bar */}
       <div className="shrink-0 border-t border-border bg-card px-4 py-3" style={{ paddingBottom: "max(env(safe-area-inset-bottom, 0px), 12px)" }}>
-        <div className="flex items-center gap-2 bg-muted/50 rounded-full px-4 py-2">
-          <input
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMessage(); } }}
-            placeholder="Message..."
-            className="flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground/40"
-            autoFocus
-          />
-          <button
-            onClick={sendMessage}
-            disabled={!input.trim() || sending}
-            className="p-1.5 rounded-full bg-primary text-primary-foreground disabled:opacity-30 transition-colors"
-          >
-            <Send className="h-4 w-4" />
-          </button>
-        </div>
+        {isContactOnline ? (
+          <div className="flex items-center gap-2 bg-muted/50 rounded-full px-4 py-2">
+            <input
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMessage(); } }}
+              placeholder="Message..."
+              className="flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground/40"
+              autoFocus
+            />
+            <button
+              onClick={sendMessage}
+              disabled={!input.trim() || sending}
+              className="p-1.5 rounded-full bg-primary text-primary-foreground disabled:opacity-30 transition-colors"
+            >
+              <Send className="h-4 w-4" />
+            </button>
+          </div>
+        ) : (
+          <div className="flex flex-col items-center gap-2">
+            <p className="text-xs text-muted-foreground">{contact.name} isn't online right now</p>
+            {contact.phone && (
+              <button
+                onClick={() => window.open(`sms:${contact.phone}`, "_self")}
+                className="text-xs font-medium text-primary hover:underline"
+              >
+                Reply via SMS →
+              </button>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );

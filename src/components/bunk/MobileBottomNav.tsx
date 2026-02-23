@@ -114,9 +114,11 @@ const MobileBottomNav = ({ avatarUrl, displayName, user, signOut, fileInputRef }
 
   const handleContactTap = (c: SidebarContact) => {
     const isOnline = c.appUserId && onlineUsers.has(c.appUserId);
-    if (isOnline) {
+    const hasUnread = unreadFrom(c.appUserId) > 0;
+
+    // Open DM screen if online OR if there are unread messages to read
+    if (isOnline || hasUnread) {
       setDrawerOpen(false);
-      // Small delay to let drawer close animation play
       setTimeout(() => setActiveDMContact(c), 200);
     } else if (c.appUserId) {
       toast.info(`${c.name} isn't in their Condo Bunk right now`, {
@@ -159,11 +161,6 @@ const MobileBottomNav = ({ avatarUrl, displayName, user, signOut, fileInputRef }
               <SheetTitle className="font-mono text-[10px] tracking-[0.2em] uppercase text-muted-foreground/70">
                 Messages
               </SheetTitle>
-              {totalUnread > 0 && (
-                <span className="h-4 min-w-4 px-1 flex items-center justify-center rounded-full bg-primary text-primary-foreground text-[9px] font-bold">
-                  {totalUnread > 99 ? "99+" : totalUnread}
-                </span>
-              )}
             </div>
           </SheetHeader>
 
