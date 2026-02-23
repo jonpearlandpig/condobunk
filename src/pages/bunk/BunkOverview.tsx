@@ -193,7 +193,7 @@ const BunkOverview = () => {
       const [eventsRes, gapsRes, conflictsRes] = await Promise.all([
         supabase
           .from("schedule_events")
-          .select("event_date, venue, city, notes")
+          .select("event_date, venue, city, notes, tour_id")
           .in("tour_id", tourIds)
           .gte("event_date", today)
           .order("event_date", { ascending: true })
@@ -237,20 +237,27 @@ const BunkOverview = () => {
       const within3 = upcomingEvents.filter(e => e.event_date && e.event_date > fmt(day1) && e.event_date <= fmt(day3));
       const within7 = upcomingEvents.filter(e => e.event_date && e.event_date > fmt(day3) && e.event_date <= fmt(day7));
 
+      // Build tour name map for TL;DR context
+      const tldrTourNames: Record<string, string> = {};
+      tours.forEach(t => { tldrTourNames[t.id] = t.name; });
+
+      const mapEvent = (e: any) => ({
+        tour: tldrTourNames[e.tour_id] || "Unknown",
+        date: e.event_date,
+        venue: e.venue,
+        city: e.city,
+        day_title: e.notes?.split("\n")[0] || null,
+      });
+
       const context = JSON.stringify({
         today,
         tours: tours.map(t => ({ name: t.name, state: t.akb_state })),
         time_horizons: {
-          next_24h: within1.map(e => ({ date: e.event_date, venue: e.venue, city: e.city, day_title: e.notes?.split("\n")[0] || null })),
-          next_3_days: within3.map(e => ({ date: e.event_date, venue: e.venue, city: e.city, day_title: e.notes?.split("\n")[0] || null })),
-          next_7_days: within7.map(e => ({ date: e.event_date, venue: e.venue, city: e.city, day_title: e.notes?.split("\n")[0] || null })),
+          next_24h: within1.map(mapEvent),
+          next_3_days: within3.map(mapEvent),
+          next_7_days: within7.map(mapEvent),
         },
-        upcoming_events: upcomingEvents.map(e => ({
-          date: e.event_date,
-          venue: e.venue,
-          city: e.city,
-          day_title: e.notes?.split("\n")[0] || null,
-        })),
+        upcoming_events: upcomingEvents.map(mapEvent),
         open_gaps: openGaps.map(g => ({ question: g.question?.substring(0, 80), domain: g.domain })),
         open_conflicts: openConflicts.map(c => ({ type: c.conflict_type, severity: c.severity })),
       });
