@@ -1,5 +1,5 @@
 import { useState, useRef, useCallback } from "react";
-import { Send, Loader2, Sparkles } from "lucide-react";
+import { Send, Loader2, Radio } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import { parseTelaActions } from "@/hooks/useTelaActions";
 import TelaActionCard from "@/components/bunk/TelaActionCard";
@@ -116,7 +116,7 @@ const VenueTelaMini = ({ tourId, venueName, eventDate, city }: VenueTelaMiniProp
     <div className="rounded-lg border border-primary/20 bg-primary/5 overflow-hidden">
       {/* Header */}
       <div className="flex items-center gap-2 px-3 py-2 border-b border-primary/10">
-        <Sparkles className="h-3.5 w-3.5 text-primary" />
+        <Radio className="h-3.5 w-3.5 text-primary" />
         <span className="text-[11px] font-mono font-semibold tracking-wider text-primary uppercase">Ask TELA about this venue</span>
       </div>
 

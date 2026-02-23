@@ -476,7 +476,7 @@ const BunkOverview = () => {
       >
         <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-2">
-            <Zap className="h-4 w-4 text-primary" />
+            <Radio className="h-4 w-4 text-primary" />
             <span className="font-mono text-[10px] tracking-[0.15em] text-primary font-semibold">
               DAILY BRIEFING
             </span>

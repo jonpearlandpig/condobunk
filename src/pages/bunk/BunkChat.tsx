@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { ArrowLeft, Send, Loader2, Zap, Globe, Target, Pencil, Trash2, Check, X } from "lucide-react";
+import { ArrowLeft, Send, Loader2, Radio, Globe, Target, Pencil, Trash2, Check, X } from "lucide-react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { SidebarTrigger } from "@/components/ui/sidebar";
 import { useTour } from "@/hooks/useTour";
@@ -327,7 +327,7 @@ const BunkChat = () => {
             <ArrowLeft className="h-5 w-5" />
           </button>
           <div className="flex items-center gap-2">
-            <Zap className="h-4 w-4 text-primary" />
+            <Radio className="h-4 w-4 text-primary" />
             <span className="text-sm md:text-base font-semibold text-foreground tracking-tight">
               TELA
             </span>
@@ -360,7 +360,7 @@ const BunkChat = () => {
         <div className="max-w-2xl md:max-w-3xl mx-auto space-y-6">
           {messages.length === 0 && !isStreaming && (
             <div className="flex flex-col items-center justify-center pt-16 text-center">
-             <Zap className="h-10 w-10 text-primary/30 mb-4" />
+             <Radio className="h-10 w-10 text-primary/30 mb-4" />
                 <h2 className="text-xl font-semibold text-foreground mb-1">
                  <GlossaryTerm term="TELA">TELA</GlossaryTerm>
                 </h2>

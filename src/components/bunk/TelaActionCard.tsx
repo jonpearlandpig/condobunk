@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { CheckCircle, Loader2, Zap } from "lucide-react";
+import { CheckCircle, Loader2, Radio } from "lucide-react";
 import { TelaAction, getActionLabel, useTelaActions } from "@/hooks/useTelaActions";
 import AkbEditSignoff, { type SignoffData } from "./AkbEditSignoff";
 
@@ -40,7 +40,7 @@ const TelaActionCard = ({ action }: TelaActionCardProps) => {
         {state === "loading" ? (
           <Loader2 className="h-4 w-4 animate-spin" />
         ) : (
-          <Zap className="h-4 w-4" />
+          <Radio className="h-4 w-4" />
         )}
         {getActionLabel(action)}
       </button>
