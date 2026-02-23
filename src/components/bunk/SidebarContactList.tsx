@@ -1,5 +1,11 @@
 import { useState, useEffect, useRef } from "react";
-import { Phone, Mail, MessageSquare, Pencil, Check, X, Trash2, MessageCircle, Send, ChevronRight, UserPlus, UserMinus } from "lucide-react";
+import { Phone, Mail, MessageSquare, Pencil, Check, X, Trash2, MessageCircle, Send, ChevronRight, UserPlus, UserMinus, MoreHorizontal } from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+} from "@/components/ui/dropdown-menu";
 import { useNavigate } from "react-router-dom";
 import type { SidebarContact, VenueGroup } from "@/hooks/useSidebarContacts";
 import { useIsMobile } from "@/hooks/use-mobile";
@@ -366,148 +372,92 @@ const SidebarContactList = ({ contacts, onNavigate, onUpdate, onDelete, onlineUs
             </div>
           </div>
 
-          {/* Quick actions: always visible for grouped/venue, hover for flat/tour */}
-          {!isMobile && (
-            <div className={`items-center gap-0.5 shrink-0 ml-2 ${showQuickActions ? "flex" : isMissingContact ? "flex" : "hidden group-hover:flex"}`}>
-              {/* Always-visible email & text for venue contacts */}
-              {showQuickActions && !isMissingContact && c.phone && (
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <a href={`sms:${c.phone}`} className="p-1 rounded text-muted-foreground hover:text-info transition-colors" aria-label="Text">
-                      <MessageCircle className="h-3.5 w-3.5" />
-                    </a>
-                  </TooltipTrigger>
-                  <TooltipContent side="top" className="text-xs">Text {c.phone}</TooltipContent>
-                </Tooltip>
-              )}
-              {showQuickActions && !isMissingContact && c.email && (
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <a href={`mailto:${c.email}`} className="p-1 rounded text-muted-foreground hover:text-warning transition-colors" aria-label="Email">
-                      <Mail className="h-3.5 w-3.5" />
-                    </a>
-                  </TooltipTrigger>
-                  <TooltipContent side="top" className="text-xs">{c.email}</TooltipContent>
-                </Tooltip>
-              )}
-              {/* Incomplete contact in venue mode: always-visible TELA */}
-              {showQuickActions && isMissingContact && (
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <button
-                      onClick={(e) => { e.stopPropagation(); navigate(`/bunk/chat?scope=tour&q=${encodeURIComponent(telaFixQuery)}`); onNavigate?.(); }}
-                      className="p-1 rounded text-primary hover:text-primary/80 transition-colors"
-                      aria-label="Ask TELA for details"
-                    >
-                      <MessageSquare className="h-3.5 w-3.5" />
-                    </button>
-                  </TooltipTrigger>
-                  <TooltipContent side="top" className="text-xs">Ask TELA for contact details</TooltipContent>
-                </Tooltip>
-              )}
-              {/* Standard actions (hover-reveal for venue too) */}
-              {!showQuickActions && !isMissingContact && (c.appUserId || c.phone) && (
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <button
-                      onClick={() => handleMessage(c)}
-                      className={`p-1 rounded transition-colors ${
-                        isContactOnline(c)
-                          ? "text-success hover:text-success/80"
-                          : "text-muted-foreground hover:text-primary"
-                      }`}
-                      aria-label="Message"
-                    >
-                      <MessageCircle className="h-3.5 w-3.5" />
-                    </button>
-                  </TooltipTrigger>
-                  <TooltipContent side="top" className="text-xs">
-                    {isContactOnline(c) ? "Bunk Chat (online)" : c.phone ? "Text (offline)" : "Not available"}
-                  </TooltipContent>
-                </Tooltip>
-              )}
-              {onUpdate && (
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <button onClick={() => startEdit(c)} className={`p-1 rounded text-muted-foreground hover:text-primary transition-colors ${showQuickActions ? "opacity-0 group-hover:opacity-100" : ""}`} aria-label="Edit"><Pencil className="h-3.5 w-3.5" /></button>
-                  </TooltipTrigger>
-                  <TooltipContent side="top" className="text-xs">Edit</TooltipContent>
-                </Tooltip>
-              )}
-              {/* Invite button for non-user contacts with email */}
-              {!showQuickActions && !c.appUserId && c.email && (
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <button
-                      onClick={(e) => { e.stopPropagation(); handleInviteContact(c); }}
-                      className="p-1 rounded text-muted-foreground hover:text-primary transition-colors"
-                      aria-label="Invite to Condo Bunk"
-                    >
-                      <UserPlus className="h-3.5 w-3.5" />
-                    </button>
-                  </TooltipTrigger>
-                  <TooltipContent side="top" className="text-xs">
-                    {getExistingInvite(c) ? "Re-copy invite link" : "Invite to Condo Bunk"}
-                  </TooltipContent>
-                </Tooltip>
-              )}
-              {/* Remove from tour (owner only, app users only) */}
-              {!showQuickActions && isOwner && c.appUserId && onRemoveMember && (
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <button
-                      onClick={(e) => { e.stopPropagation(); setRemovingContact(c); }}
-                      className="p-1 rounded text-muted-foreground hover:text-destructive transition-colors"
-                      aria-label="Remove from tour"
-                    >
-                      <UserMinus className="h-3.5 w-3.5" />
-                    </button>
-                  </TooltipTrigger>
-                  <TooltipContent side="top" className="text-xs">Remove from tour</TooltipContent>
-                </Tooltip>
-              )}
-              {!showQuickActions && (
-                <>
-                  {/* TELA: always visible for incomplete, hover for complete */}
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          if (isMissingContact) {
-                            navigate(`/bunk/chat?scope=tour&q=${encodeURIComponent(telaFixQuery)}`);
-                            onNavigate?.();
-                          } else {
-                            handleChat(c);
-                          }
-                        }}
-                        className={`p-1 rounded transition-colors ${isMissingContact ? "text-primary hover:text-primary/80" : "text-muted-foreground hover:text-primary"}`}
-                        aria-label="Ask TELA"
-                      >
-                        <MessageSquare className="h-3.5 w-3.5" />
-                      </button>
-                    </TooltipTrigger>
-                    <TooltipContent side="top" className="text-xs">{isMissingContact ? "Ask TELA for contact details" : "Ask TELA"}</TooltipContent>
-                  </Tooltip>
-                  {!isMissingContact && c.phone && (
+          {/* Desktop actions */}
+          {!isMobile && !isMissingContact && (
+            <>
+              {/* Venue contacts: keep minimal inline icons (only 2, they fit) */}
+              {showQuickActions ? (
+                <div className="flex items-center gap-0.5 shrink-0 ml-2">
+                  {c.phone && (
                     <Tooltip>
                       <TooltipTrigger asChild>
-                        <a href={`tel:${c.phone}`} className="p-1 rounded text-muted-foreground hover:text-primary transition-colors" aria-label="Call"><Phone className="h-3.5 w-3.5" /></a>
+                        <a href={`sms:${c.phone}`} className="p-1 rounded text-muted-foreground hover:text-info transition-colors" aria-label="Text">
+                          <MessageCircle className="h-3.5 w-3.5" />
+                        </a>
                       </TooltipTrigger>
-                      <TooltipContent side="top" className="text-xs">{c.phone}</TooltipContent>
+                      <TooltipContent side="top" className="text-xs">Text {c.phone}</TooltipContent>
                     </Tooltip>
                   )}
-                  {!isMissingContact && c.email && (
+                  {c.email && (
                     <Tooltip>
                       <TooltipTrigger asChild>
-                        <a href={`mailto:${c.email}`} className="p-1 rounded text-muted-foreground hover:text-primary transition-colors" aria-label="Email"><Mail className="h-3.5 w-3.5" /></a>
+                        <a href={`mailto:${c.email}`} className="p-1 rounded text-muted-foreground hover:text-warning transition-colors" aria-label="Email">
+                          <Mail className="h-3.5 w-3.5" />
+                        </a>
                       </TooltipTrigger>
                       <TooltipContent side="top" className="text-xs">{c.email}</TooltipContent>
                     </Tooltip>
                   )}
-                </>
+                </div>
+              ) : (
+                /* Tour team contacts: single overflow menu */
+                <div className="shrink-0 ml-2 hidden group-hover:flex items-center">
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <button className="p-1 rounded text-muted-foreground hover:text-foreground transition-colors" aria-label="Actions" onClick={(e) => e.stopPropagation()}>
+                        <MoreHorizontal className="h-4 w-4" />
+                      </button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end" className="min-w-[180px]">
+                      {(c.appUserId || c.phone) && (
+                        <DropdownMenuItem onClick={() => handleMessage(c)}>
+                          <MessageCircle className="h-4 w-4 mr-2" />
+                          {isContactOnline(c) ? "Bunk Chat" : "Text"}
+                        </DropdownMenuItem>
+                      )}
+                      {onUpdate && (
+                        <DropdownMenuItem onClick={() => startEdit(c)}>
+                          <Pencil className="h-4 w-4 mr-2" />
+                          Edit
+                        </DropdownMenuItem>
+                      )}
+                      {!c.appUserId && c.email && (
+                        <DropdownMenuItem onClick={() => handleInviteContact(c)}>
+                          <UserPlus className="h-4 w-4 mr-2" />
+                          {getExistingInvite(c) ? "Re-copy invite link" : "Invite to Condo Bunk"}
+                        </DropdownMenuItem>
+                      )}
+                      {isOwner && c.appUserId && onRemoveMember && (
+                        <DropdownMenuItem onClick={() => setRemovingContact(c)} className="text-destructive focus:text-destructive">
+                          <UserMinus className="h-4 w-4 mr-2" />
+                          Remove from tour
+                        </DropdownMenuItem>
+                      )}
+                      <DropdownMenuItem onClick={() => handleChat(c)}>
+                        <MessageSquare className="h-4 w-4 mr-2" />
+                        Ask TELA
+                      </DropdownMenuItem>
+                      {c.phone && (
+                        <DropdownMenuItem asChild>
+                          <a href={`tel:${c.phone}`}>
+                            <Phone className="h-4 w-4 mr-2" />
+                            Call {c.phone}
+                          </a>
+                        </DropdownMenuItem>
+                      )}
+                      {c.email && (
+                        <DropdownMenuItem asChild>
+                          <a href={`mailto:${c.email}`}>
+                            <Mail className="h-4 w-4 mr-2" />
+                            Email
+                          </a>
+                        </DropdownMenuItem>
+                      )}
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </div>
               )}
-            </div>
+            </>
           )}
 
           {/* Mobile: minimal indicators — tap to expand for actions */}
