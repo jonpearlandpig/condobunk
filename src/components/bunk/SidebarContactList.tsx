@@ -15,6 +15,16 @@ import {
 } from "@/components/ui/tooltip";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 export interface ActiveInvite {
   email: string;
@@ -60,7 +70,7 @@ const SidebarContactList = ({ contacts, onNavigate, onUpdate, onDelete, onlineUs
   const [chatInput, setChatInput] = useState("");
   const [sending, setSending] = useState(false);
   const chatEndRef = useRef<HTMLDivElement>(null);
-
+  const [removingContact, setRemovingContact] = useState<SidebarContact | null>(null);
   const handleChat = (contact: SidebarContact) => {
     const q = `What do we have on file for ${contact.name}${contact.role ? ` (${contact.role})` : ""}?`;
     navigate(`/bunk/chat?scope=tour&q=${encodeURIComponent(q)}`);
@@ -442,7 +452,7 @@ const SidebarContactList = ({ contacts, onNavigate, onUpdate, onDelete, onlineUs
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <button
-                      onClick={(e) => { e.stopPropagation(); onRemoveMember(c); }}
+                      onClick={(e) => { e.stopPropagation(); setRemovingContact(c); }}
                       className="p-1 rounded text-muted-foreground hover:text-destructive transition-colors"
                       aria-label="Remove from tour"
                     >
@@ -604,7 +614,7 @@ const SidebarContactList = ({ contacts, onNavigate, onUpdate, onDelete, onlineUs
             {/* Remove from tour (owner only, app users only) */}
             {isOwner && c.appUserId && onRemoveMember && (
               <button
-                onClick={(e) => { e.stopPropagation(); onRemoveMember(c); }}
+                onClick={(e) => { e.stopPropagation(); setRemovingContact(c); }}
                 className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-md bg-destructive/10 text-destructive text-xs font-mono font-medium active:bg-destructive/20 transition-colors"
                 aria-label="Remove from tour"
               >
@@ -662,7 +672,33 @@ const SidebarContactList = ({ contacts, onNavigate, onUpdate, onDelete, onlineUs
     );
   };
 
-  // Expandable venue groups mode (calendar-ordered)
+  const confirmDialog = (
+    <AlertDialog open={!!removingContact} onOpenChange={(open) => { if (!open) setRemovingContact(null); }}>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>Remove {removingContact?.name}?</AlertDialogTitle>
+          <AlertDialogDescription>
+            This will immediately revoke their access to this tour, remove them from the AKB, and cancel any pending invites. They will need a new invite to rejoin.
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel>Cancel</AlertDialogCancel>
+          <AlertDialogAction
+            className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            onClick={() => {
+              if (removingContact && onRemoveMember) {
+                onRemoveMember(removingContact);
+              }
+              setRemovingContact(null);
+            }}
+          >
+            Remove from Tour
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+  );
+
   if (grouped && venueGroups) {
     const toggleVenue = (venue: string) => {
       setExpandedVenues(prev => {
@@ -738,6 +774,7 @@ const SidebarContactList = ({ contacts, onNavigate, onUpdate, onDelete, onlineUs
             );
           })}
         </div>
+        {confirmDialog}
       </TooltipProvider>
     );
   }
@@ -747,6 +784,7 @@ const SidebarContactList = ({ contacts, onNavigate, onUpdate, onDelete, onlineUs
       <div className="space-y-0.5">
         {sorted.map((c) => renderContact(c, false))}
       </div>
+      {confirmDialog}
     </TooltipProvider>
   );
 };

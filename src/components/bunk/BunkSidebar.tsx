@@ -74,8 +74,6 @@ const BunkSidebar = () => {
 
   const handleRemoveMember = useCallback(async (contact: import("@/hooks/useSidebarContacts").SidebarContact) => {
     if (!contact.appUserId || !tourId) return;
-    const confirmed = window.confirm(`Remove ${contact.name} from this tour? They will lose all access immediately.`);
-    if (!confirmed) return;
     try {
       const { error } = await supabase.rpc("remove_tour_member", {
         _tour_id: tourId,

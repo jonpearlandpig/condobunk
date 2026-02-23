@@ -62,7 +62,7 @@ export const useSidebarContacts = () => {
       supabase
         .from("tour_members")
         .select("user_id")
-        .eq("tour_id", tourId),
+        .in("tour_id", tourIds),
     ]);
 
     const memberIds = (membersRes.data || []).map(m => m.user_id);

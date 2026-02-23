@@ -53,6 +53,8 @@ export function usePresence() {
 
   // Subscribe to presence changes
   useEffect(() => {
+    if (!user) return;
+
     // Initial load
     const loadPresence = async () => {
       const cutoff = new Date(Date.now() - ONLINE_THRESHOLD_MS).toISOString();
@@ -65,6 +67,9 @@ export function usePresence() {
     };
 
     loadPresence();
+
+    // Polling fallback every 2 minutes
+    const pollInterval = setInterval(loadPresence, 2 * 60 * 1000);
 
     const channel = supabase
       .channel("presence-changes")
@@ -94,9 +99,10 @@ export function usePresence() {
       .subscribe();
 
     return () => {
+      clearInterval(pollInterval);
       supabase.removeChannel(channel);
     };
-  }, []);
+  }, [user]);
 
   const isOnline = (userId: string) => onlineUsers.has(userId);
 
