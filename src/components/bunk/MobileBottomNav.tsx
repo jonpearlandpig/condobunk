@@ -1,4 +1,4 @@
-import { useState, ReactNode } from "react";
+import { useState, useRef, useCallback, ReactNode } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import {
   LayoutDashboard,
@@ -35,16 +35,50 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import { SidebarProvider } from "@/components/ui/sidebar";
 import { toast } from "sonner";
 
 const navItems = [
-  { title: "TL;DR", url: "/bunk", icon: LayoutDashboard, end: true },
-  { title: "Calendar", url: "/bunk/calendar", icon: CalendarDays },
-  { title: "Ask Tela", url: "/bunk/chat", icon: MessageSquare },
-  { title: "AKB's", url: "/bunk/documents", icon: FileText },
-  { title: "Admin", url: "/bunk/admin", icon: Settings },
+  { title: "TL;DR", url: "/bunk", icon: LayoutDashboard, end: true, tip: "Tour overview" },
+  { title: "Calendar", url: "/bunk/calendar", icon: CalendarDays, tip: "Schedule & events" },
+  { title: "Ask Tela", url: "/bunk/chat", icon: MessageSquare, tip: "AI tour assistant" },
+  { title: "AKB's", url: "/bunk/documents", icon: FileText, tip: "Advance Knowledge Base" },
+  { title: "Admin", url: "/bunk/admin", icon: Settings, tip: "Tour settings & management" },
 ];
+
+/** Long-press popover tooltip for nav items — tap navigates, hold reveals tip */
+const NavTooltip = ({ tip, children }: { tip: string; children: ReactNode }) => {
+  const [open, setOpen] = useState(false);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const onTouchStart = useCallback(() => {
+    timerRef.current = setTimeout(() => setOpen(true), 400);
+  }, []);
+
+  const onTouchEnd = useCallback(() => {
+    if (timerRef.current) clearTimeout(timerRef.current);
+    // Auto-dismiss after a short delay if open
+    if (open) setTimeout(() => setOpen(false), 1200);
+  }, [open]);
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <div onTouchStart={onTouchStart} onTouchEnd={onTouchEnd} onTouchCancel={onTouchEnd}>
+          {children}
+        </div>
+      </PopoverTrigger>
+      <PopoverContent side="top" className="w-auto px-2.5 py-1.5 text-[10px] font-mono tracking-wide">
+        {tip}
+      </PopoverContent>
+    </Popover>
+  );
+};
 
 const CollapsibleSection = ({ title, count, children, nested }: { title: string; count?: number; children: ReactNode; nested?: boolean }) => {
   const [open, setOpen] = useState(false);
@@ -155,7 +189,7 @@ const MobileBottomNav = ({ avatarUrl, displayName, user, signOut, fileInputRef }
 
       {/* Messaging Drawer */}
       <Sheet open={drawerOpen} onOpenChange={setDrawerOpen}>
-        <SheetContent side={isLeft ? "left" : "right"} className="w-[80vw] max-w-[320px] p-0 flex flex-col">
+        <SheetContent side={isLeft ? "left" : "right"} closePosition={isLeft ? "bottom-left" : "bottom-right"} className="w-[80vw] max-w-[320px] p-0 flex flex-col">
           <SheetHeader className="px-3 pt-3 pb-1">
             <div className="flex items-center justify-between">
               <SheetTitle className="font-mono text-[10px] tracking-[0.2em] uppercase text-muted-foreground/70">
@@ -262,36 +296,39 @@ const MobileBottomNav = ({ avatarUrl, displayName, user, signOut, fileInputRef }
         style={{ paddingBottom: "env(safe-area-inset-bottom, 0px)" }}
       >
         {/* Message button */}
-        <button
-          onClick={() => setDrawerOpen(true)}
-          className="h-10 w-10 flex items-center justify-center rounded-lg text-foreground hover:bg-accent transition-colors shrink-0 relative"
-          aria-label="Open messages"
-        >
-          <MessageCircle className="h-5 w-5" />
-          {totalUnread > 0 && (
-            <span className="absolute top-1 right-1 h-2 w-2 rounded-full bg-primary" />
-          )}
-        </button>
+        <NavTooltip tip="Messages">
+          <button
+            onClick={() => setDrawerOpen(true)}
+            className="h-10 w-10 flex items-center justify-center rounded-lg text-foreground hover:bg-accent transition-colors shrink-0 relative"
+            aria-label="Open messages"
+          >
+            <MessageCircle className="h-5 w-5" />
+            {totalUnread > 0 && (
+              <span className="absolute top-1 right-1 h-2 w-2 rounded-full bg-primary" />
+            )}
+          </button>
+        </NavTooltip>
 
         {/* Nav items */}
         <div className="flex-1 flex items-center justify-around">
           {navItems.map((item) => {
             const active = isActive(item.url, item.end);
             return (
-              <button
-                key={item.url}
-                onClick={() => handleNavClick(item.url)}
-                className={`flex flex-col items-center justify-center gap-0.5 py-1 px-1.5 rounded-md transition-colors min-w-0 ${
-                  active
-                    ? "text-primary"
-                    : "text-muted-foreground hover:text-foreground"
-                }`}
-              >
-                <item.icon className="h-4 w-4" />
-                <span className="text-[8px] font-mono tracking-wider leading-none truncate">
-                  {item.title}
-                </span>
-              </button>
+              <NavTooltip key={item.url} tip={item.tip}>
+                <button
+                  onClick={() => handleNavClick(item.url)}
+                  className={`flex flex-col items-center justify-center gap-0.5 py-1 px-1.5 rounded-md transition-colors min-w-0 ${
+                    active
+                      ? "text-primary"
+                      : "text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  <item.icon className="h-4 w-4" />
+                  <span className="text-[8px] font-mono tracking-wider leading-none truncate">
+                    {item.title}
+                  </span>
+                </button>
+              </NavTooltip>
             );
           })}
         </div>
