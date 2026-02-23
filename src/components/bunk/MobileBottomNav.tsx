@@ -80,8 +80,8 @@ const NavTooltip = ({ tip, children }: { tip: string; children: ReactNode }) => 
   );
 };
 
-const CollapsibleSection = ({ title, count, children, nested }: { title: string; count?: number; children: ReactNode; nested?: boolean }) => {
-  const [open, setOpen] = useState(false);
+const CollapsibleSection = ({ title, count, children, nested, defaultOpen = false }: { title: string; count?: number; children: ReactNode; nested?: boolean; defaultOpen?: boolean }) => {
+  const [open, setOpen] = useState(defaultOpen);
   return (
     <div className={nested ? "pl-2" : ""}>
       <button
@@ -229,7 +229,7 @@ const MobileBottomNav = ({ avatarUrl, displayName, user, signOut, fileInputRef }
               })()}
 
               {/* Tour Team — furthest from thumb */}
-              <CollapsibleSection title="Tour Team" count={totalTeamContacts}>
+              <CollapsibleSection title="Tour Team" count={totalTeamContacts} defaultOpen>
                 {filteredTourTeamGroups.map(g => (
                   <CollapsibleSection key={g.tourId} title={g.tourName} count={g.contacts.length} nested>
                     <SidebarContactList
@@ -247,7 +247,7 @@ const MobileBottomNav = ({ avatarUrl, displayName, user, signOut, fileInputRef }
 
               {/* Venue Partners — middle */}
               {tourVenueGroups.length > 0 && (
-                <CollapsibleSection title="Venue Partners" count={totalVenueContacts}>
+                <CollapsibleSection title="Venue Partners" count={totalVenueContacts} defaultOpen>
                   {tourVenueGroups.map(tvg => (
                     <CollapsibleSection key={tvg.tourId} title={tvg.tourName} count={tvg.totalContacts} nested>
                       <SidebarContactList
@@ -265,7 +265,7 @@ const MobileBottomNav = ({ avatarUrl, displayName, user, signOut, fileInputRef }
               )}
 
               {/* Ask TELA — closest to thumb */}
-              <CollapsibleSection title="Ask TELA">
+              <CollapsibleSection title="Ask TELA" defaultOpen>
                 <SidebarProvider defaultOpen={false}>
                   <SidebarTelaThreads />
                 </SidebarProvider>
