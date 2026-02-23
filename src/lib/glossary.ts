@@ -8,7 +8,7 @@ export interface GlossaryEntry {
 export const GLOSSARY: Record<string, GlossaryEntry> = {
   AKB: {
     term: "AKB",
-    short: "Advance Knowledge Base — the structured data layer for a tour containing schedules, contacts, documents, and venue data.",
+    short: "Authoritative Knowledge Base — the structured source of truth for a tour, built from extracted document data.",
     category: "core",
   },
   TELA: {
