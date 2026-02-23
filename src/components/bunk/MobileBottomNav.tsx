@@ -46,7 +46,7 @@ import { toast } from "sonner";
 const navItems = [
   { title: "TL;DR", url: "/bunk", icon: LayoutDashboard, end: true, tip: "Tour overview" },
   { title: "Calendar", url: "/bunk/calendar", icon: CalendarDays, tip: "Schedule & events" },
-  { title: "Ask Tela", url: "/bunk/chat", icon: MessageSquare, tip: "AI tour assistant" },
+  { title: "Ask Tela", url: "/bunk/chat", icon: MessageSquare, tip: "AKB Assistant" },
   { title: "AKB's", url: "/bunk/documents", icon: FileText, tip: "Authoritative Knowledge Base" },
   { title: "Admin", url: "/bunk/admin", icon: Settings, tip: "Tour settings & management" },
 ];
