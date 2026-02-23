@@ -617,7 +617,7 @@ const BunkOverview = () => {
                 const tourName = tourNameMap[evt.tour_id] || "Tour";
                 const color = tourColorMap[evt.tour_id] || "hsl(var(--primary))";
 
-                // VAN matching
+                // VAN matching (with fuzzy token-overlap + substring fallback)
                 const normalize = (s: string | null | undefined) => (s || "").toLowerCase().trim().replace(/[^a-z0-9]/g, "");
                 const normalizeCity = (s: string | null | undefined) => {
                   let c = (s || "").toLowerCase().trim();
@@ -625,10 +625,30 @@ const BunkOverview = () => {
                   c = c.replace(/\bft\b/g, "fort").replace(/\bst\b/g, "saint").replace(/\bmt\b/g, "mount");
                   return c.replace(/[^a-z0-9]/g, "");
                 };
+                const tokenize = (s: string | null | undefined) => (s || "").toLowerCase().trim().replace(/[^a-z0-9\s]/g, "").split(/\s+/).filter(Boolean);
+                const tokenOverlap = (a: string, b: string): number => {
+                  const tokA = new Set(tokenize(a));
+                  const tokB = new Set(tokenize(b));
+                  if (tokA.size === 0 || tokB.size === 0) return 0;
+                  let overlap = 0;
+                  for (const t of tokA) if (tokB.has(t)) overlap++;
+                  return overlap / Math.max(tokA.size, tokB.size);
+                };
                 const venueNorm = normalize(evt.venue);
                 const fullKey = venueNorm + "|" + normalize(evt.city);
                 const cityFbKey = evt.city ? `${evt.tour_id}::city::${normalizeCity(evt.city)}` : "";
-                const matchedVans = vanLookup[fullKey] || vanLookup[venueNorm] || (cityFbKey ? vanLookup[cityFbKey] : null) || [];
+                let matchedVans = vanLookup[fullKey] || vanLookup[venueNorm] || (cityFbKey ? vanLookup[cityFbKey] : null) || [];
+                // Fuzzy fallback: substring or ≥70% token overlap
+                if (matchedVans.length === 0 && evt.venue && vanRecords.length > 0) {
+                  for (const v of vanRecords) {
+                    if (v.tour_id !== evt.tour_id) continue;
+                    const vanNorm = normalize(v.venue_name);
+                    if (venueNorm.includes(vanNorm) || vanNorm.includes(venueNorm) || tokenOverlap(evt.venue, v.venue_name) >= 0.7) {
+                      matchedVans = [v];
+                      break;
+                    }
+                  }
+                }
                 const hasVan = matchedVans.length > 0;
 
                 const VAN_LABELS: Record<string, string> = {
