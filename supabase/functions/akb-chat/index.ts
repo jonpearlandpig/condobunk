@@ -341,7 +341,25 @@ You MUST exhaust ALL sources before saying data is missing. Never stop at VANs a
 - Format responses with clear structure. Use **bold** for key info.
 - Keep responses concise — tour managers are busy.
 - Remember: if TELA can't answer it here, crew texting TourText won't get an answer either. Flag gaps clearly.
-- If you need more info from the user to fix something, ask a specific question — don't leave them guessing.`;
+- If you need more info from the user to fix something, ask a specific question — don't leave them guessing.
+
+## CondoBunk Glossary
+
+When a user asks "What is [term]?" or "What does [term] mean?", answer from this glossary. Keep glossary answers brief (2-3 sentences max) unless the user asks for more detail.
+
+- **AKB**: Advance Knowledge Base — the structured data layer for a tour containing schedules, contacts, documents, and venue data.
+- **TELA**: Tour Efficiency Liaison Assistant — the AI that answers questions from your tour data.
+- **TourText**: The public-facing SMS service (888-340-0564) that crew can text to get AKB answers.
+- **VAN**: Venue Advance Notes — structured per-venue records extracted from the Advance Master covering production contacts, rigging, power, labor, and logistics.
+- **Advance Master**: The highest-authority source document for a tour. Extracted data populates VANs.
+- **Tech Pack**: Venue-provided technical specifications (capacities, rigging points, power). Supplementary to VANs.
+- **Artifacts**: Notes and documents organized by visibility level (TourText, CondoBunk, or Bunk Stash).
+- **Sign-off**: An audit trail gate for AKB edits. Tracks whether changes affect safety, time, or money.
+- **Gaps**: Missing data fields detected in the AKB — e.g., no load-in time for a venue.
+- **Conflicts**: Data inconsistencies detected between sources — e.g., overlapping show times or duplicate contacts.
+- **Presence**: Real-time online/offline status. Routes messages between in-app Bunk Chat and SMS fallback.
+- **Venue Partners**: External venue contacts grouped by upcoming show date in the sidebar.
+- **Telauthorium ID**: A user's unique identifier in the CondoBunk system.`;
 
     const resp = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",

@@ -11,6 +11,7 @@ import TelaSuggestionChips from "@/components/bunk/TelaSuggestionChips";
 import MessageActions from "@/components/bunk/MessageActions";
 import { supabase } from "@/integrations/supabase/client";
 import { useTelaThreads } from "@/hooks/useTelaThreads";
+import GlossaryTerm from "@/components/bunk/GlossaryTerm";
 
 type Msg = { role: "user" | "assistant"; content: string; id?: string };
 
@@ -360,12 +361,12 @@ const BunkChat = () => {
           {messages.length === 0 && !isStreaming && (
             <div className="flex flex-col items-center justify-center pt-16 text-center">
              <Zap className="h-10 w-10 text-primary/30 mb-4" />
-               <h2 className="text-xl font-semibold text-foreground mb-1">
-                TELA
-               </h2>
-               <p className="text-[15px] leading-relaxed text-muted-foreground max-w-md">
-                 Tour Efficiency Liaison Assistant
-              </p>
+                <h2 className="text-xl font-semibold text-foreground mb-1">
+                 <GlossaryTerm term="TELA">TELA</GlossaryTerm>
+                </h2>
+                <p className="text-[15px] leading-relaxed text-muted-foreground max-w-md">
+                  Tour Efficiency Liaison Assistant
+               </p>
               <p className="text-xs text-muted-foreground/60 mt-2 font-mono">
                 {isScoped
                   ? `Locked to: ${scopedTourName || "selected tour"}`
