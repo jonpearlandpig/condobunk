@@ -116,24 +116,26 @@ export const useSidebarContacts = () => {
       }
     }
 
-    // Fetch venue contacts for all tours
-    const allVenueNames = new Set<string>();
-    for (const vm of tourVenueMap.values()) {
-      for (const v of vm.keys()) allVenueNames.add(v);
-    }
-
+    // Fetch ALL venue contacts for these tours (no exact venue filter — fuzzy match below)
     let allVenueContacts: (SidebarContact & { tour_id: string })[] = [];
-    if (allVenueNames.size > 0) {
+    {
       const { data: venueData } = await supabase
         .from("contacts")
         .select("id, name, role, phone, email, scope, venue, tour_id")
         .in("tour_id", tourIds)
         .eq("scope", "VENUE")
-        .in("venue", [...allVenueNames])
         .order("venue")
         .order("name");
       allVenueContacts = (venueData as any[]) || [];
     }
+
+    // Fuzzy venue matcher: handles "Charleston Coliseum" vs "Charleston Coliseum & Convention Center"
+    const venueMatches = (contactVenue: string | null, eventVenue: string): boolean => {
+      if (!contactVenue) return false;
+      const a = contactVenue.toLowerCase().trim();
+      const b = eventVenue.toLowerCase().trim();
+      return a === b || b.includes(a) || a.includes(b);
+    };
 
     // Build per-tour venue groups
     const tvGroups: TourVenueGroup[] = [];
@@ -142,7 +144,7 @@ export const useSidebarContacts = () => {
       if (!venueMap || venueMap.size === 0) continue;
       const tourVenues: VenueGroup[] = [];
       for (const [venue, meta] of venueMap) {
-        const contacts = allVenueContacts.filter(c => c.tour_id === t.id && c.venue === venue);
+        const contacts = allVenueContacts.filter(c => c.tour_id === t.id && venueMatches(c.venue, venue));
         tourVenues.push({ venue, city: meta.city, earliestDate: meta.earliestDate, contacts });
       }
       tvGroups.push({
@@ -169,7 +171,7 @@ export const useSidebarContacts = () => {
           venue,
           city: meta.city,
           earliestDate: meta.earliestDate,
-          contacts: activeVenueContacts.filter(c => c.venue === venue),
+          contacts: activeVenueContacts.filter(c => venueMatches(c.venue, venue)),
         });
       }
     }
