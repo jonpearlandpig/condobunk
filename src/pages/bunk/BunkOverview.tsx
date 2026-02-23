@@ -34,9 +34,13 @@ import {
   MapPin,
   Clock,
   Sparkles,
+  Clipboard,
+  ClipboardList,
+  Copy,
+  MessageSquare,
+  Music,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Clipboard } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import {
   AlertDialog,
@@ -56,6 +60,8 @@ import {
   ResponsiveDialogDescription,
 } from "@/components/ui/responsive-dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import VenueTelaMini from "@/components/bunk/VenueTelaMini";
+import EventNoteEditor from "@/components/bunk/EventNoteEditor";
 const stateColors: Record<string, string> = {
   BUILDING: "text-info",
   SOVEREIGN: "text-success",
@@ -76,8 +82,10 @@ const BunkOverview = () => {
   const [tldr, setTldr] = useState<Array<{ text: string; actionable: boolean }>>([]);
   const [tldrLoading, setTldrLoading] = useState(false);
   const [eventDates, setEventDates] = useState<Array<{ id: string; event_date: string; tour_id: string; venue: string | null; city: string | null; show_time: string | null; load_in: string | null; notes: string | null }>>([]);
-  const [vanData, setVanData] = useState<Record<string, any>>({});
+  const [vanRecords, setVanRecords] = useState<any[]>([]);
+  const [vanLookup, setVanLookup] = useState<Record<string, any[]>>({});
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
   const isMobile = useIsMobile();
 
   // Clear welcome param after initial render so it doesn't persist on refresh
@@ -142,26 +150,37 @@ const BunkOverview = () => {
         .order("event_date"),
       supabase
         .from("venue_advance_notes")
-        .select("venue_name, normalized_venue_name, city, event_date, van_data, tour_id")
+        .select("*")
         .in("tour_id", tourIds),
     ]);
     setEventDates((eventsRes.data || []).filter(d => d.event_date) as typeof eventDates);
     
-    // Build VAN lookup keyed by normalized venue name + tour_id
-    const vanMap: Record<string, any> = {};
-    for (const van of (vansRes.data || [])) {
-      const key = `${van.tour_id}::${van.normalized_venue_name}`;
-      vanMap[key] = van.van_data;
-      // Also key by venue_name for fallback matching
-      const key2 = `${van.tour_id}::${van.venue_name?.toLowerCase().replace(/[^a-z0-9]/g, "")}`;
-      if (!vanMap[key2]) vanMap[key2] = van.van_data;
-      // City-based fallback for events without venue names
+    const allVans = vansRes.data || [];
+    setVanRecords(allVans);
+
+    // Build VAN lookup keyed by multiple strategies
+    const normalize = (s: string | null | undefined) => (s || "").toLowerCase().trim().replace(/[^a-z0-9]/g, "");
+    const normalizeCity = (s: string | null | undefined) => {
+      let c = (s || "").toLowerCase().trim();
+      c = c.replace(/,?\s*(al|ak|az|ar|ca|co|ct|de|fl|ga|hi|id|il|in|ia|ks|ky|la|me|md|ma|mi|mn|ms|mo|mt|ne|nv|nh|nj|nm|ny|nc|nd|oh|ok|or|pa|ri|sc|sd|tn|tx|ut|vt|va|wa|wv|wi|wy)$/i, "");
+      c = c.replace(/\bft\b/g, "fort").replace(/\bst\b/g, "saint").replace(/\bmt\b/g, "mount");
+      return c.replace(/[^a-z0-9]/g, "");
+    };
+    const lookup: Record<string, any[]> = {};
+    for (const van of allVans) {
+      const venueKey = normalize(van.venue_name);
+      const fullKey = venueKey + "|" + normalize(van.city);
+      if (!lookup[fullKey]) lookup[fullKey] = [];
+      lookup[fullKey].push(van);
+      if (!lookup[venueKey]) lookup[venueKey] = [];
+      lookup[venueKey].push(van);
       if (van.city) {
-        const cityKey = `${van.tour_id}::city::${van.city.toLowerCase().replace(/[^a-z0-9]/g, "")}`;
-        if (!vanMap[cityKey]) vanMap[cityKey] = van.van_data;
+        const cityKey = `${van.tour_id}::city::${normalizeCity(van.city)}`;
+        if (!lookup[cityKey]) lookup[cityKey] = [];
+        lookup[cityKey].push(van);
       }
     }
-    setVanData(vanMap);
+    setVanLookup(lookup);
   };
 
   const generateTldr = async () => {
@@ -581,8 +600,8 @@ const BunkOverview = () => {
         </motion.div>
       )}
 
-      {/* Inline Event Card Dialog */}
-      <ResponsiveDialog open={!!selectedDate} onOpenChange={(open) => !open && setSelectedDate(null)}>
+      {/* Inline Event Card Dialog — fully actionable, matching calendar view */}
+      <ResponsiveDialog open={!!selectedDate} onOpenChange={(open) => { if (!open) { setSelectedDate(null); setCopied(false); } }}>
         <ResponsiveDialogContent className="sm:max-w-md">
           <ResponsiveDialogHeader>
             <ResponsiveDialogTitle className="font-mono tracking-wider text-sm">
@@ -592,110 +611,165 @@ const BunkOverview = () => {
               {selectedDateEvents.length} event{selectedDateEvents.length !== 1 ? "s" : ""}
             </ResponsiveDialogDescription>
           </ResponsiveDialogHeader>
-          <ScrollArea className="max-h-[60dvh] overflow-y-auto">
-            <div className="space-y-3 px-1 pb-2">
+          <ScrollArea className="max-h-[70dvh] overflow-y-auto">
+            <div className="space-y-4 px-1 pb-2">
               {selectedDateEvents.map((evt) => {
                 const tourName = tourNameMap[evt.tour_id] || "Tour";
                 const color = tourColorMap[evt.tour_id] || "hsl(var(--primary))";
-                // Look up VAN data for this event
-                const venueNorm = evt.venue?.toLowerCase().replace(/[^a-z0-9]/g, "") || "";
-                const cityNorm = evt.city?.toLowerCase().replace(/[^a-z0-9]/g, "") || "";
-                const van = vanData[`${evt.tour_id}::${venueNorm}`] || (cityNorm ? vanData[`${evt.tour_id}::city::${cityNorm}`] : null) || null;
-                
-                // Extract key VAN fields for display
-                const vanHighlights: Array<{ label: string; value: string }> = [];
-                if (van) {
-                  const extract = (cat: string, field: string) => {
-                    const val = van[cat]?.[field];
-                    if (val && val !== "N/A" && val !== "n/a" && val !== "" && val !== "TBD") return val;
-                    return null;
-                  };
-                  const capacity = extract("Event Details", "Capacity");
-                  if (capacity) vanHighlights.push({ label: "Capacity", value: capacity });
-                  const curfew = extract("Misc", "Curfew");
-                  if (curfew) vanHighlights.push({ label: "Curfew", value: curfew });
-                  const busArrival = extract("Event Details", "Bus Arrival");
-                  if (busArrival) vanHighlights.push({ label: "Bus Arrival", value: busArrival });
-                  const power = extract("Power", "Available Power");
-                  if (power) vanHighlights.push({ label: "Power", value: power });
-                  const union = extract("Labour", "Union");
-                  if (union) vanHighlights.push({ label: "Union", value: union });
-                  const haze = extract("Misc", "Haze Restrictions");
-                  if (haze) vanHighlights.push({ label: "Haze", value: haze });
-                  const spl = extract("Misc", "SPL Restrictions");
-                  if (spl) vanHighlights.push({ label: "SPL", value: spl });
-                  const docks = extract("Dock & Logistics", "Loading Dock");
-                  if (docks) vanHighlights.push({ label: "Dock", value: docks });
-                }
-                
+
+                // VAN matching
+                const normalize = (s: string | null | undefined) => (s || "").toLowerCase().trim().replace(/[^a-z0-9]/g, "");
+                const normalizeCity = (s: string | null | undefined) => {
+                  let c = (s || "").toLowerCase().trim();
+                  c = c.replace(/,?\s*(al|ak|az|ar|ca|co|ct|de|fl|ga|hi|id|il|in|ia|ks|ky|la|me|md|ma|mi|mn|ms|mo|mt|ne|nv|nh|nj|nm|ny|nc|nd|oh|ok|or|pa|ri|sc|sd|tn|tx|ut|vt|va|wa|wv|wi|wy)$/i, "");
+                  c = c.replace(/\bft\b/g, "fort").replace(/\bst\b/g, "saint").replace(/\bmt\b/g, "mount");
+                  return c.replace(/[^a-z0-9]/g, "");
+                };
+                const venueNorm = normalize(evt.venue);
+                const fullKey = venueNorm + "|" + normalize(evt.city);
+                const cityFbKey = evt.city ? `${evt.tour_id}::city::${normalizeCity(evt.city)}` : "";
+                const matchedVans = vanLookup[fullKey] || vanLookup[venueNorm] || (cityFbKey ? vanLookup[cityFbKey] : null) || [];
+                const hasVan = matchedVans.length > 0;
+
+                const VAN_LABELS: Record<string, string> = {
+                  event_details: "Event Details", production_contact: "Production Contact",
+                  house_rigger_contact: "House Rigger Contact", summary: "Summary",
+                  venue_schedule: "Venue Schedule", plant_equipment: "Plant Equipment",
+                  labour: "Labour", dock_logistics: "Dock & Logistics", power: "Power",
+                  staging: "Staging", misc: "Misc", lighting: "Lighting", video: "Video", notes: "Notes",
+                };
+
+                const buildShareText = () => {
+                  const lines: string[] = [];
+                  lines.push(`📍 ${evt.venue || "TBD"}${evt.city ? `, ${evt.city}` : ""}`);
+                  if (selectedDate) lines.push(`📅 ${format(new Date(selectedDate + "T12:00:00"), "EEEE, MMM d, yyyy")}`);
+                  if (evt.show_time) lines.push(`🎤 Show: ${format(new Date(evt.show_time), "h:mm a")}`);
+                  if (evt.load_in) lines.push(`🚪 Load-in: ${format(new Date(evt.load_in), "h:mm a")}`);
+                  if (evt.notes) lines.push(`📝 ${evt.notes}`);
+                  lines.push(`— ${tourName}`);
+                  return lines.join("\n");
+                };
+
                 return (
-                  <div
-                    key={evt.id}
-                    className="rounded-lg border border-border bg-muted/30 p-3 space-y-1.5"
-                  >
+                  <div key={evt.id} className="rounded-lg border border-border bg-muted/30 p-3 space-y-3">
+                    {/* Header: tour + venue */}
                     <div className="flex items-center gap-2">
                       <span className="h-2.5 w-2.5 rounded-full shrink-0" style={{ backgroundColor: color }} />
-                      <span className="font-mono text-[10px] tracking-wider text-muted-foreground uppercase truncate">
-                        {tourName}
-                      </span>
-                      {van && (
-                        <Clipboard className="h-3 w-3 text-primary/60 ml-auto" />
-                      )}
+                      <span className="font-mono text-[10px] tracking-wider text-muted-foreground uppercase truncate">{tourName}</span>
+                      {hasVan && <ClipboardList className="h-3 w-3 text-primary/60 ml-auto" />}
                     </div>
+
+                    {/* Venue + city */}
                     <div className="flex items-start gap-2">
                       <MapPin className="h-3.5 w-3.5 text-muted-foreground shrink-0 mt-0.5" />
                       <div className="min-w-0">
-                        <p className="text-sm font-semibold leading-tight truncate">
-                          {evt.venue || "Venue TBD"}
-                        </p>
-                        {evt.city && (
-                          <p className="text-xs text-muted-foreground">{evt.city}</p>
-                        )}
+                        <p className="text-sm font-semibold leading-tight truncate">{evt.venue || "Venue TBD"}</p>
+                        {evt.city && <p className="text-xs text-muted-foreground">{evt.city}</p>}
                       </div>
                     </div>
+
+                    {/* Times */}
                     {(evt.show_time || evt.load_in) && (
-                      <div className="flex items-center gap-2">
-                        <Clock className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-                        <div className="flex gap-3 text-xs font-mono text-muted-foreground">
-                          {evt.show_time && (
-                            <span>Show: {format(new Date(evt.show_time), "h:mm a")}</span>
-                          )}
-                          {evt.load_in && (
-                            <span>Load-in: {format(new Date(evt.load_in), "h:mm a")}</span>
-                          )}
-                        </div>
-                      </div>
-                    )}
-                    {evt.notes && (
-                      <p className="text-xs text-muted-foreground/80 font-mono line-clamp-2 pl-5">
-                        {evt.notes}
-                      </p>
-                    )}
-                    {vanHighlights.length > 0 && (
-                      <div className="mt-1.5 pt-1.5 border-t border-border/50">
-                        <p className="text-[10px] font-mono tracking-wider text-primary/70 uppercase mb-1">Advance Notes</p>
-                        <div className="grid grid-cols-2 gap-x-3 gap-y-0.5">
-                          {vanHighlights.map((h) => (
-                            <div key={h.label} className="flex items-baseline gap-1 text-[11px] font-mono">
-                              <span className="text-muted-foreground">{h.label}:</span>
-                              <span className="text-foreground/80 truncate">{h.value}</span>
+                      <div className="rounded-lg border border-border bg-muted/30 divide-y divide-border">
+                        {evt.show_time && (
+                          <div className="flex items-center gap-2.5 px-3 py-2">
+                            <Music className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                            <div>
+                              <p className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider mb-0.5">Show Time</p>
+                              <p className="text-sm font-mono text-foreground font-semibold">{format(new Date(evt.show_time), "h:mm a")}</p>
                             </div>
-                          ))}
+                          </div>
+                        )}
+                        {evt.load_in && (
+                          <div className="flex items-center gap-2.5 px-3 py-2">
+                            <Clock className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                            <div>
+                              <p className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider mb-0.5">Load-in</p>
+                              <p className="text-sm font-mono text-foreground">{format(new Date(evt.load_in), "h:mm a")}</p>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Full Advance Notes */}
+                    {hasVan && (
+                      <div className="rounded-lg border border-primary/20 bg-primary/5 overflow-hidden">
+                        <div className="flex items-center gap-2 px-3 py-2 border-b border-primary/10">
+                          <ClipboardList className="h-3.5 w-3.5 text-primary" />
+                          <span className="text-[11px] font-mono font-semibold tracking-wider text-primary uppercase">Advance Notes</span>
+                        </div>
+                        <div className="max-h-64 overflow-y-auto px-3 py-2 space-y-2">
+                          {matchedVans.map((van: any) => {
+                            const data = van.van_data || {};
+                            const sections = Object.entries(data).filter(([_, v]) => v && (typeof v === "string" ? v.trim() : Object.keys(v as any).length > 0));
+                            return (
+                              <div key={van.id} className="space-y-1.5">
+                                {van.city && <p className="text-[10px] font-mono text-muted-foreground">{van.venue_name} — {van.city}</p>}
+                                {sections.map(([key, val]) => (
+                                  <div key={key} className="text-xs">
+                                    <p className="font-mono text-[10px] font-semibold text-primary/80 uppercase tracking-wider">{VAN_LABELS[key] || key.replace(/_/g, " ")}</p>
+                                    {typeof val === "string" ? (
+                                      <p className="text-foreground/80 pl-2">{val}</p>
+                                    ) : (
+                                      <div className="pl-2 space-y-0.5">
+                                        {Object.entries(val as Record<string, any>).map(([k, v]) => (
+                                          <div key={k} className="flex gap-1.5">
+                                            <span className="text-muted-foreground text-[10px] font-mono shrink-0">{k.replace(/_/g, " ")}:</span>
+                                            <span className="text-foreground/80 text-[10px]">{String(v)}</span>
+                                          </div>
+                                        ))}
+                                      </div>
+                                    )}
+                                  </div>
+                                ))}
+                              </div>
+                            );
+                          })}
                         </div>
                       </div>
                     )}
-                    <button
-                      onClick={() => {
-                        const q = `What's the full rundown for ${evt.venue || "the venue"} in ${evt.city || "the city"} on ${selectedDate ? format(new Date(selectedDate + "T12:00:00"), "MMM d") : "that date"}?`;
-                        setSelectedTourId(evt.tour_id);
-                        setSelectedDate(null);
-                        navigate(`/bunk/chat?q=${encodeURIComponent(q)}&scope=tour`);
-                      }}
-                      className="mt-1 inline-flex items-center gap-1.5 text-[11px] font-mono tracking-wider text-primary hover:text-primary/80 transition-colors min-h-[44px] sm:min-h-0 px-2 -mx-2 sm:px-0 sm:mx-0"
-                    >
-                      <Sparkles className="h-3 w-3" />
-                      ASK TELA
-                    </button>
+
+                    {/* Share actions */}
+                    <div className="flex items-center gap-2 pt-1 border-t border-border">
+                      <p className="text-[10px] font-mono text-muted-foreground tracking-wider flex-1">SHARE</p>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-8 sm:h-7 gap-1.5 font-mono text-[10px] tracking-wider min-w-[70px]"
+                        onClick={() => { navigator.clipboard.writeText(buildShareText()); setCopied(true); setTimeout(() => setCopied(false), 2000); }}
+                      >
+                        {copied ? <Check className="h-3 w-3 text-success" /> : <Copy className="h-3 w-3" />}
+                        {copied ? "COPIED" : "COPY"}
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-8 sm:h-7 gap-1.5 font-mono text-[10px] tracking-wider min-w-[60px]"
+                        onClick={() => { const text = encodeURIComponent(buildShareText()); window.open(`sms:?body=${text}`, "_blank"); }}
+                      >
+                        <MessageSquare className="h-3 w-3" />
+                        SMS
+                      </Button>
+                    </div>
+
+                    {/* Editable notes */}
+                    <EventNoteEditor
+                      eventId={evt.id}
+                      tourId={evt.tour_id}
+                      currentNotes={evt.notes || undefined}
+                      eventDate={evt.event_date}
+                      venueName={evt.venue || "TBD"}
+                      onUpdated={() => loadEventDates()}
+                    />
+
+                    {/* Inline TELA */}
+                    <VenueTelaMini
+                      tourId={evt.tour_id}
+                      venueName={evt.venue || "TBD"}
+                      eventDate={evt.event_date}
+                      city={evt.city || undefined}
+                    />
                   </div>
                 );
               })}
