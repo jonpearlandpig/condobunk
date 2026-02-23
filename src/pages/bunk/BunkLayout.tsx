@@ -1,5 +1,6 @@
 import { Outlet, useSearchParams } from "react-router-dom";
 import BunkSidebar from "@/components/bunk/BunkSidebar";
+import MobileBottomNav from "@/components/bunk/MobileBottomNav";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { Radio, LogOut, Camera } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
@@ -107,7 +108,7 @@ const BunkLayout = () => {
             }}
           />
           <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
-            <header className="h-10 md:h-12 flex items-center justify-between border-b border-border px-3 md:px-4 bg-card/50">
+            <header className="hidden md:flex h-12 items-center justify-between border-b border-border px-4 bg-card/50">
               <div className="flex items-center gap-2 md:gap-3">
                 <SidebarTrigger />
                 <div className="flex items-center gap-2">
@@ -156,9 +157,16 @@ const BunkLayout = () => {
                 onChange={handleAvatarUpload}
               />
             </header>
-            <main className="flex-1 p-3 sm:p-6 overflow-auto min-w-0">
+            <main className="flex-1 p-3 sm:p-6 pb-16 md:pb-6 overflow-auto min-w-0">
               <Outlet />
             </main>
+            <MobileBottomNav
+              avatarUrl={avatarUrl}
+              displayName={displayName}
+              user={user}
+              signOut={signOut}
+              fileInputRef={fileInputRef}
+            />
           </div>
         </div>
       </SidebarProvider>
