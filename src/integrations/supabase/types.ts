@@ -181,6 +181,36 @@ export type Database = {
           },
         ]
       }
+      demo_activations: {
+        Row: {
+          activated_at: string
+          deactivated_at: string | null
+          expires_at: string
+          id: string
+          user_email: string | null
+          user_id: string
+          user_name: string | null
+        }
+        Insert: {
+          activated_at?: string
+          deactivated_at?: string | null
+          expires_at?: string
+          id?: string
+          user_email?: string | null
+          user_id: string
+          user_name?: string | null
+        }
+        Update: {
+          activated_at?: string
+          deactivated_at?: string | null
+          expires_at?: string
+          id?: string
+          user_email?: string | null
+          user_id?: string
+          user_name?: string | null
+        }
+        Relationships: []
+      }
       direct_messages: {
         Row: {
           created_at: string
@@ -1347,6 +1377,7 @@ export type Database = {
     Functions: {
       accept_tour_invite: { Args: { _token: string }; Returns: Json }
       activate_demo_mode: { Args: never; Returns: Json }
+      cleanup_expired_demos: { Args: never; Returns: undefined }
       deactivate_demo_mode: { Args: never; Returns: boolean }
       is_tour_admin_or_mgmt: { Args: { _tour_id: string }; Returns: boolean }
       is_tour_member: { Args: { _tour_id: string }; Returns: boolean }
