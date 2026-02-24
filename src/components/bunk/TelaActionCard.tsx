@@ -2,6 +2,7 @@ import { useState } from "react";
 import { CheckCircle, Loader2, Radio } from "lucide-react";
 import { TelaAction, getActionLabel, useTelaActions } from "@/hooks/useTelaActions";
 import AkbEditSignoff, { type SignoffData } from "./AkbEditSignoff";
+import { useTour } from "@/hooks/useTour";
 
 interface TelaActionCardProps {
   action: TelaAction;
@@ -9,6 +10,7 @@ interface TelaActionCardProps {
 
 const TelaActionCard = ({ action }: TelaActionCardProps) => {
   const { executeAction } = useTelaActions();
+  const { selectedTourId } = useTour();
   const [state, setState] = useState<"idle" | "signoff" | "loading" | "done">("idle");
 
   const handleClick = () => {
@@ -17,7 +19,7 @@ const TelaActionCard = ({ action }: TelaActionCardProps) => {
 
   const handleCommit = async (signoff: SignoffData) => {
     setState("loading");
-    const ok = await executeAction(action, signoff.reason, signoff);
+    const ok = await executeAction(action, signoff.reason, signoff, selectedTourId);
     setState(ok ? "done" : "idle");
   };
 
