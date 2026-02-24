@@ -20,7 +20,7 @@ const AKB_CHAT_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/akb-chat
 const BunkChat = () => {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
-  const { tours, selectedTourId, selectedTour } = useTour();
+  const { tours, selectedTourId, selectedTour, isDemoMode } = useTour();
   const { user } = useAuth();
   const { createThread, touchThread } = useTelaThreads();
   const [messages, setMessages] = useState<Msg[]>([]);
@@ -438,7 +438,7 @@ const BunkChat = () => {
                 <MessageActions content={msg.content} role={msg.role} />
 
                 {/* Edit/Delete controls */}
-                {!isStreaming && editingIdx === null && (
+                {!isStreaming && editingIdx === null && !isDemoMode && (
                   <div className="hidden group-hover/msg:flex absolute -top-3 right-2 gap-0.5 bg-background border border-border rounded-md shadow-sm px-1 py-0.5">
                     {msg.role === "user" && (
                       <button
@@ -475,30 +475,36 @@ const BunkChat = () => {
       {/* Input bar */}
       <div className="shrink-0 border-t border-border bg-background px-3 md:px-4 py-2 md:py-3 pb-safe">
         <div className="max-w-2xl md:max-w-3xl mx-auto">
-          <div className="flex items-end gap-2 bg-card rounded-2xl border border-border px-3 py-2 md:px-4 md:py-3">
-            <textarea
-              ref={textareaRef}
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={handleKeyDown}
-              placeholder={hasTours ? "Ask TELA..." : "No active tour"}
-              disabled={!hasTours || isStreaming}
-              rows={1}
-              className="flex-1 bg-transparent text-[15px] md:text-base text-foreground placeholder:text-muted-foreground/50 resize-none outline-none py-1.5 min-h-[28px] max-h-32 leading-snug disabled:opacity-50"
-              style={{ fontFamily: "var(--font-display)" }}
-            />
-            <button
-              onClick={handleSubmit}
-              disabled={!input.trim() || !hasTours || isStreaming}
-              className={`shrink-0 h-9 w-9 md:h-8 md:w-8 flex items-center justify-center rounded-full transition-colors ${
-                input.trim() && hasTours && !isStreaming
-                  ? "bg-foreground text-background hover:bg-foreground/90"
-                  : "bg-muted text-muted-foreground"
-              }`}
-            >
-              <Send className="h-4 w-4" />
-            </button>
-          </div>
+          {isDemoMode ? (
+            <div className="flex items-center justify-center py-2 text-xs font-mono text-muted-foreground tracking-wider">
+              TELA is read-only in demo mode
+            </div>
+          ) : (
+            <div className="flex items-end gap-2 bg-card rounded-2xl border border-border px-3 py-2 md:px-4 md:py-3">
+              <textarea
+                ref={textareaRef}
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                onKeyDown={handleKeyDown}
+                placeholder={hasTours ? "Ask TELA..." : "No active tour"}
+                disabled={!hasTours || isStreaming}
+                rows={1}
+                className="flex-1 bg-transparent text-[15px] md:text-base text-foreground placeholder:text-muted-foreground/50 resize-none outline-none py-1.5 min-h-[28px] max-h-32 leading-snug disabled:opacity-50"
+                style={{ fontFamily: "var(--font-display)" }}
+              />
+              <button
+                onClick={handleSubmit}
+                disabled={!input.trim() || !hasTours || isStreaming}
+                className={`shrink-0 h-9 w-9 md:h-8 md:w-8 flex items-center justify-center rounded-full transition-colors ${
+                  input.trim() && hasTours && !isStreaming
+                    ? "bg-foreground text-background hover:bg-foreground/90"
+                    : "bg-muted text-muted-foreground"
+                }`}
+              >
+                <Send className="h-4 w-4" />
+              </button>
+            </div>
+          )}
         </div>
       </div>
     </div>

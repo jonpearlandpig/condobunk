@@ -73,7 +73,7 @@ const roleBadgeVariant = (role: string) => {
 };
 
 const BunkAdmin = () => {
-  const { selectedTourId, selectedTour } = useTour();
+  const { selectedTourId, selectedTour, isDemoMode } = useTour();
   const { user } = useAuth();
   const [integrations, setIntegrations] = useState<Integration[]>([]);
   const [syncLogs, setSyncLogs] = useState<SyncLog[]>([]);
@@ -351,6 +351,19 @@ const BunkAdmin = () => {
       <div className="space-y-6 max-w-4xl">
         <h1 className="text-2xl font-bold tracking-tight">Admin</h1>
         <p className="text-sm text-muted-foreground font-mono">Select a tour first</p>
+      </div>
+    );
+  }
+
+  if (isDemoMode) {
+    return (
+      <div className="space-y-6 max-w-4xl">
+        <h1 className="text-2xl font-bold tracking-tight">Admin</h1>
+        <Card className="p-8 text-center border-dashed">
+          <Settings className="h-10 w-10 text-muted-foreground/30 mx-auto mb-3" />
+          <p className="text-sm font-mono text-muted-foreground">Admin is disabled in demo mode</p>
+          <p className="text-xs text-muted-foreground/60 mt-1">Team management, integrations, and invites are read-only.</p>
+        </Card>
       </div>
     );
   }

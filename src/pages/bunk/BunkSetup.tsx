@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { invokeWithTimeout } from "@/lib/invoke-with-timeout";
@@ -34,9 +34,14 @@ const STEPS: { key: Step; label: string; number: number }[] = [
 
 const BunkSetup = () => {
   const { user } = useAuth();
-  const { reload, setSelectedTourId } = useTour();
+  const { reload, setSelectedTourId, isDemoMode } = useTour();
   const navigate = useNavigate();
   const { toast } = useToast();
+
+  // Redirect demo users away from setup
+  useEffect(() => {
+    if (isDemoMode) navigate("/bunk", { replace: true });
+  }, [isDemoMode, navigate]);
 
   const [step, setStep] = useState<Step>("upload");
   const [tourId, setTourId] = useState<string | null>(null);

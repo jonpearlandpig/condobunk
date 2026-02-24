@@ -60,7 +60,7 @@ const BunkSidebar = () => {
   const { setOpenMobile, setOpen } = useSidebar();
   const isMobile = useIsMobile();
   const { user } = useAuth();
-  const { tours } = useTour();
+  const { tours, isDemoMode } = useTour();
   const tourId = tours[0]?.id;
   const isOwner = !!user && tours.some(t => t.owner_id === user.id);
   const { tourContacts, tourTeamGroups, tourVenueGroups, venueContacts, venueGroups, venueLabel, loading, updateContact, deleteContact, refetch } = useSidebarContacts();
@@ -245,7 +245,7 @@ const BunkSidebar = () => {
           {tourTeamOpen && (
             <SidebarGroupContent>
               {/* Bulk invite button */}
-              {!loading && getUninvitedContacts().length > 0 && (
+              {!loading && !isDemoMode && getUninvitedContacts().length > 0 && (
                 <TooltipProvider delayDuration={300}>
                   <Tooltip>
                     <TooltipTrigger asChild>
