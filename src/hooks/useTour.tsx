@@ -17,6 +17,8 @@ interface TourContextType {
   selectedTour: Tour | undefined;
   loading: boolean;
   reload: () => void;
+  isDemoMode: boolean;
+  exitDemo: () => Promise<void>;
 }
 
 const TourContext = createContext<TourContextType>({
@@ -26,6 +28,8 @@ const TourContext = createContext<TourContextType>({
   selectedTour: undefined,
   loading: true,
   reload: () => {},
+  isDemoMode: false,
+  exitDemo: async () => {},
 });
 
 export const useTour = () => useContext(TourContext);
@@ -35,22 +39,20 @@ export const TourProvider = ({ children }: { children: React.ReactNode }) => {
   const [tours, setTours] = useState<Tour[]>([]);
   const [selectedTourId, setSelectedTourId] = useState("");
   const [loading, setLoading] = useState(true);
+  const [isDemoMode, setIsDemoMode] = useState(false);
 
   const autoMatchContacts = async () => {
     if (!user?.email) return;
-    // Use security definer function to bypass RLS chicken-and-egg
     const { data: matches } = await supabase
       .rpc("match_contact_tours", { _email: user.email });
     if (!matches || matches.length === 0) return;
 
-    // Check existing memberships
     const { data: existing } = await supabase
       .from("tour_members")
       .select("tour_id")
       .eq("user_id", user.id);
     const existingTourIds = new Set((existing || []).map(m => m.tour_id));
 
-    // Add missing memberships — matches is uuid[] from RPC
     const toInsert = (matches || [])
       .filter((tourId: string) => !existingTourIds.has(tourId))
       .map((tourId: string) => ({ tour_id: tourId, user_id: user.id, role: "CREW" as const }));
@@ -59,11 +61,28 @@ export const TourProvider = ({ children }: { children: React.ReactNode }) => {
     }
   };
 
+  const checkDemoMode = async (tourIds: string[]) => {
+    if (!user || tourIds.length === 0) {
+      setIsDemoMode(false);
+      return;
+    }
+    const { data: memberships } = await supabase
+      .from("tour_members")
+      .select("role")
+      .eq("user_id", user.id)
+      .in("tour_id", tourIds);
+    if (memberships && memberships.length > 0) {
+      const allDemo = memberships.every(m => m.role === "DEMO");
+      setIsDemoMode(allDemo);
+    } else {
+      setIsDemoMode(false);
+    }
+  };
+
   const loadTours = async () => {
     if (!user) return;
     setLoading(true);
 
-    // Auto-match on every load (idempotent)
     await autoMatchContacts();
 
     const { data } = await supabase
@@ -75,8 +94,21 @@ export const TourProvider = ({ children }: { children: React.ReactNode }) => {
       if (!selectedTourId && data.length > 0) {
         setSelectedTourId(data[0].id);
       }
+      await checkDemoMode(data.map(t => t.id));
     }
     setLoading(false);
+  };
+
+  const exitDemo = async () => {
+    try {
+      await supabase.rpc("deactivate_demo_mode" as any);
+      setIsDemoMode(false);
+      setTours([]);
+      setSelectedTourId("");
+      await loadTours();
+    } catch (err) {
+      console.error("Failed to exit demo:", err);
+    }
   };
 
   useEffect(() => {
@@ -94,6 +126,8 @@ export const TourProvider = ({ children }: { children: React.ReactNode }) => {
         selectedTour,
         loading,
         reload: loadTours,
+        isDemoMode,
+        exitDemo,
       }}
     >
       {children}

@@ -63,6 +63,7 @@ const ArtifactCard = ({
   a,
   isOwner,
   creatorName,
+  readOnly,
   onEdit,
   onDelete,
   onCopy,
@@ -72,6 +73,7 @@ const ArtifactCard = ({
   a: Artifact;
   isOwner: boolean;
   creatorName?: string;
+  readOnly?: boolean;
   onEdit: (a: Artifact) => void;
   onDelete: (id: string) => void;
   onCopy: (a: Artifact) => void;
@@ -102,7 +104,7 @@ const ArtifactCard = ({
           <Button size="sm" variant="ghost" onClick={() => onSend(a)} title="Email">
             <Send className="h-4 w-4" />
           </Button>
-          {isOwner && (
+          {isOwner && !readOnly && (
             <>
               <Button size="sm" variant="ghost" onClick={() => onEdit(a)} title="Edit">
                 <Edit2 className="h-4 w-4" />
@@ -134,7 +136,7 @@ const ArtifactCard = ({
 /* ─── Main ─── */
 const BunkArtifacts = () => {
   const { user } = useAuth();
-  const { selectedTourId } = useTour();
+  const { selectedTourId, isDemoMode } = useTour();
   const [artifacts, setArtifacts] = useState<Artifact[]>([]);
   const [profiles, setProfiles] = useState<Record<string, Profile>>({});
   const [loading, setLoading] = useState(true);
@@ -293,14 +295,16 @@ const BunkArtifacts = () => {
             Tour info, team notes, and your private stash
           </p>
         </div>
-        <Button
-          size="sm"
-          variant="outline"
-          onClick={() => { setCreating(true); setNewVisibility(activeTab); setUserOverrodeVis(false); }}
-          disabled={creating}
-        >
-          <Plus className="h-4 w-4 mr-1" /> New Artifact
-        </Button>
+        {!isDemoMode && (
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => { setCreating(true); setNewVisibility(activeTab); setUserOverrodeVis(false); }}
+            disabled={creating}
+          >
+            <Plus className="h-4 w-4 mr-1" /> New Artifact
+          </Button>
+        )}
       </div>
 
       {/* Create form */}
@@ -439,6 +443,7 @@ const BunkArtifacts = () => {
                       a={a}
                       isOwner={isOwner}
                       creatorName={creatorName}
+                      readOnly={isDemoMode}
                       onEdit={startEdit}
                       onDelete={handleDelete}
                       onCopy={handleCopy}

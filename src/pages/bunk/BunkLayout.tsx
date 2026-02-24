@@ -5,7 +5,7 @@ import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { LogOut, Camera } from "lucide-react";
 import whiteBunks from "@/assets/WHITE_BUNKS.png";
 import { useAuth } from "@/hooks/useAuth";
-import { TourProvider } from "@/hooks/useTour";
+import { TourProvider, useTour } from "@/hooks/useTour";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
@@ -20,7 +20,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 
-const BunkLayout = () => {
+const BunkLayoutInner = () => {
   const { user, signOut } = useAuth();
   const [searchParams] = useSearchParams();
   const isWelcome = searchParams.get("welcome") === "1";
@@ -28,6 +28,7 @@ const BunkLayout = () => {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const { isDemoMode, exitDemo } = useTour();
 
   // Real-time CRITICAL AKB change alerts
   useAkbAlerts();
@@ -91,86 +92,104 @@ const BunkLayout = () => {
     queryClient.invalidateQueries({ queryKey: ["profile-avatar", user.id] });
     toast({ title: "Avatar updated!" });
 
-    // Reset input
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
   return (
-    <TourProvider>
-      <SidebarProvider defaultOpen={isWelcome}>
-        <div className="h-dvh flex w-full overflow-hidden">
-          <BunkSidebar />
-          {/* Invisible hover zone to open sidebar on desktop */}
-          <div
-            className="hidden md:block fixed left-0 top-0 h-full w-3 z-40"
-            onMouseEnter={() => {
-              const event = new CustomEvent("sidebar-hover-open");
-              window.dispatchEvent(event);
-            }}
-          />
-          <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
-            <header className="hidden md:flex h-12 items-center justify-between border-b border-border px-4 bg-card/50">
-              <div className="flex items-center gap-2 md:gap-3">
-                <SidebarTrigger />
-                <div className="flex items-center gap-2">
-                  <img src={whiteBunks} alt="Condo Bunk" className="h-5 w-5 object-contain" />
-                  <span className="font-mono text-xs text-muted-foreground tracking-widest hidden md:inline">
-                    CONDO BUNK
-                  </span>
-                </div>
+    <SidebarProvider defaultOpen={isWelcome}>
+      <div className="h-dvh flex w-full overflow-hidden">
+        <BunkSidebar />
+        {/* Invisible hover zone to open sidebar on desktop */}
+        <div
+          className="hidden md:block fixed left-0 top-0 h-full w-3 z-40"
+          onMouseEnter={() => {
+            const event = new CustomEvent("sidebar-hover-open");
+            window.dispatchEvent(event);
+          }}
+        />
+        <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
+          <header className="hidden md:flex h-12 items-center justify-between border-b border-border px-4 bg-card/50">
+            <div className="flex items-center gap-2 md:gap-3">
+              <SidebarTrigger />
+              <div className="flex items-center gap-2">
+                <img src={whiteBunks} alt="Condo Bunk" className="h-5 w-5 object-contain" />
+                <span className="font-mono text-xs text-muted-foreground tracking-widest hidden md:inline">
+                  CONDO BUNK
+                </span>
               </div>
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <button className="h-7 w-7 rounded-full overflow-hidden ring-1 ring-border hover:ring-primary transition-all focus:outline-none focus:ring-2 focus:ring-primary" aria-label="Account menu">
-                    {avatarUrl ? (
-                      <img src={avatarUrl} alt={displayName || "Profile"} className="h-full w-full object-cover" referrerPolicy="no-referrer" />
-                    ) : (
-                      <div className="h-full w-full bg-primary/20 flex items-center justify-center text-xs font-bold text-primary">
-                        {(displayName || "?")[0].toUpperCase()}
-                      </div>
-                    )}
-                  </button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-48">
-                  <div className="px-2 py-1.5 border-b border-border mb-1">
-                    <p className="text-sm font-medium text-foreground truncate">{displayName}</p>
-                    {(profile as any)?.telauthorium_id && (
-                      <p className="text-[10px] font-mono text-primary tracking-wider">{(profile as any).telauthorium_id}</p>
-                    )}
-                    {user?.email && <p className="text-[10px] text-muted-foreground truncate">{user.email}</p>}
-                  </div>
-                  <DropdownMenuItem onClick={() => fileInputRef.current?.click()} className="cursor-pointer">
-                    <Camera className="h-3.5 w-3.5 mr-2" />
-                    Change photo
-                  </DropdownMenuItem>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem onClick={signOut} className="text-destructive focus:text-destructive cursor-pointer">
-                    <LogOut className="h-3.5 w-3.5 mr-2" />
-                    Sign out
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept="image/*"
-                className="hidden"
-                onChange={handleAvatarUpload}
-              />
-            </header>
-            <main className="flex-1 p-3 sm:p-6 pb-16 md:pb-6 overflow-auto min-w-0">
-              <Outlet />
-            </main>
-            <MobileBottomNav
-              avatarUrl={avatarUrl}
-              displayName={displayName}
-              user={user}
-              signOut={signOut}
-              fileInputRef={fileInputRef}
+            </div>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button className="h-7 w-7 rounded-full overflow-hidden ring-1 ring-border hover:ring-primary transition-all focus:outline-none focus:ring-2 focus:ring-primary" aria-label="Account menu">
+                  {avatarUrl ? (
+                    <img src={avatarUrl} alt={displayName || "Profile"} className="h-full w-full object-cover" referrerPolicy="no-referrer" />
+                  ) : (
+                    <div className="h-full w-full bg-primary/20 flex items-center justify-center text-xs font-bold text-primary">
+                      {(displayName || "?")[0].toUpperCase()}
+                    </div>
+                  )}
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-48">
+                <div className="px-2 py-1.5 border-b border-border mb-1">
+                  <p className="text-sm font-medium text-foreground truncate">{displayName}</p>
+                  {(profile as any)?.telauthorium_id && (
+                    <p className="text-[10px] font-mono text-primary tracking-wider">{(profile as any).telauthorium_id}</p>
+                  )}
+                  {user?.email && <p className="text-[10px] text-muted-foreground truncate">{user.email}</p>}
+                </div>
+                <DropdownMenuItem onClick={() => fileInputRef.current?.click()} className="cursor-pointer">
+                  <Camera className="h-3.5 w-3.5 mr-2" />
+                  Change photo
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={signOut} className="text-destructive focus:text-destructive cursor-pointer">
+                  <LogOut className="h-3.5 w-3.5 mr-2" />
+                  Sign out
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={handleAvatarUpload}
             />
-          </div>
+          </header>
+          {isDemoMode && (
+            <div className="bg-warning/10 border-b border-warning/30 px-4 py-1.5 flex items-center justify-between">
+              <span className="text-[10px] font-mono tracking-wider text-warning font-semibold">
+                DEMO MODE — Viewing live tour data (read-only)
+              </span>
+              <button
+                onClick={exitDemo}
+                className="text-[10px] font-mono tracking-wider text-warning hover:text-warning/80 underline underline-offset-2 transition-colors"
+              >
+                EXIT DEMO
+              </button>
+            </div>
+          )}
+          <main className="flex-1 p-3 sm:p-6 pb-16 md:pb-6 overflow-auto min-w-0">
+            <Outlet />
+          </main>
+          <MobileBottomNav
+            avatarUrl={avatarUrl}
+            displayName={displayName}
+            user={user}
+            signOut={signOut}
+            fileInputRef={fileInputRef}
+          />
         </div>
-      </SidebarProvider>
+      </div>
+    </SidebarProvider>
+  );
+};
+
+const BunkLayout = () => {
+  return (
+    <TourProvider>
+      <BunkLayoutInner />
     </TourProvider>
   );
 };

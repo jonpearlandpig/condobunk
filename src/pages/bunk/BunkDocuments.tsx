@@ -84,7 +84,7 @@ const DOC_TYPE_COLORS: Record<string, string> = {
 
 const BunkDocuments = () => {
   const { user } = useAuth();
-  const { tours, selectedTourId, setSelectedTourId, selectedTour } = useTour();
+  const { tours, selectedTourId, setSelectedTourId, selectedTour, isDemoMode } = useTour();
   const navigate = useNavigate();
   const { toast } = useToast();
   const [documents, setDocuments] = useState<DocRow[]>([]);
@@ -397,30 +397,32 @@ const BunkDocuments = () => {
       </div>
 
       {/* Upload Zone */}
-      <div className="rounded-lg border border-dashed border-border bg-card/50 p-4 sm:p-8 text-center relative">
-        <input
-          type="file"
-          accept=".txt,.csv,.tsv,.md,.doc,.docx,.pdf,.xlsx,.xls"
-          onChange={handleFileUpload}
-          disabled={uploading || !selectedTourId}
-          className="absolute inset-0 w-full h-full opacity-0 cursor-pointer disabled:cursor-not-allowed"
-        />
-        {uploading ? (
-          <Loader2 className="h-8 w-8 text-primary mx-auto mb-3 animate-spin" />
-        ) : (
-          <Upload className="h-8 w-8 text-muted-foreground/40 mx-auto mb-3" />
-        )}
-        <p className="text-sm text-muted-foreground font-mono">
-          {uploading
-            ? "Uploading..."
-            : !selectedTourId
-            ? "Select a tour first"
-            : "Drop a file or click to upload (.txt, .csv, .md)"}
-        </p>
-        <p className="text-xs text-muted-foreground/60 font-mono mt-1">
-          <GlossaryTerm term="TELA">TELA</GlossaryTerm> will extract and author <GlossaryTerm term="Artifacts">artifacts</GlossaryTerm> from your uploads
-        </p>
-      </div>
+      {!isDemoMode && (
+        <div className="rounded-lg border border-dashed border-border bg-card/50 p-4 sm:p-8 text-center relative">
+          <input
+            type="file"
+            accept=".txt,.csv,.tsv,.md,.doc,.docx,.pdf,.xlsx,.xls"
+            onChange={handleFileUpload}
+            disabled={uploading || !selectedTourId}
+            className="absolute inset-0 w-full h-full opacity-0 cursor-pointer disabled:cursor-not-allowed"
+          />
+          {uploading ? (
+            <Loader2 className="h-8 w-8 text-primary mx-auto mb-3 animate-spin" />
+          ) : (
+            <Upload className="h-8 w-8 text-muted-foreground/40 mx-auto mb-3" />
+          )}
+          <p className="text-sm text-muted-foreground font-mono">
+            {uploading
+              ? "Uploading..."
+              : !selectedTourId
+              ? "Select a tour first"
+              : "Drop a file or click to upload (.txt, .csv, .md)"}
+          </p>
+          <p className="text-xs text-muted-foreground/60 font-mono mt-1">
+            <GlossaryTerm term="TELA">TELA</GlossaryTerm> will extract and author <GlossaryTerm term="Artifacts">artifacts</GlossaryTerm> from your uploads
+          </p>
+        </div>
+      )}
 
       {/* Document List */}
       <div>
@@ -468,21 +470,23 @@ const BunkDocuments = () => {
                             </div>
                           </div>
                           <div className="flex items-center gap-1 shrink-0">
-                            <DropdownMenu>
-                              <DropdownMenuTrigger asChild>
-                                <Button size="sm" variant="ghost" className="h-7 w-7 p-0">
-                                  <MoreVertical className="h-3 w-3" />
-                                </Button>
-                              </DropdownMenuTrigger>
-                              <DropdownMenuContent align="end">
-                                <DropdownMenuItem onClick={() => { setRenameTarget(doc); setRenameValue(doc.filename || ""); }}>
-                                  <Pencil className="h-3 w-3 mr-2" /> Rename
-                                </DropdownMenuItem>
-                                <DropdownMenuItem className="text-destructive" onClick={() => setDeleteTarget(doc)}>
-                                  <Archive className="h-3 w-3 mr-2" /> Archive
-                                </DropdownMenuItem>
-                              </DropdownMenuContent>
-                            </DropdownMenu>
+                            {!isDemoMode && (
+                              <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                  <Button size="sm" variant="ghost" className="h-7 w-7 p-0">
+                                    <MoreVertical className="h-3 w-3" />
+                                  </Button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent align="end">
+                                  <DropdownMenuItem onClick={() => { setRenameTarget(doc); setRenameValue(doc.filename || ""); }}>
+                                    <Pencil className="h-3 w-3 mr-2" /> Rename
+                                  </DropdownMenuItem>
+                                  <DropdownMenuItem className="text-destructive" onClick={() => setDeleteTarget(doc)}>
+                                    <Archive className="h-3 w-3 mr-2" /> Archive
+                                  </DropdownMenuItem>
+                                </DropdownMenuContent>
+                              </DropdownMenu>
+                            )}
                             <CollapsibleTrigger asChild>
                               <Button size="sm" variant="ghost" className="h-7 w-7 p-0">
                                 <ChevronDown className={`h-3 w-3 transition-transform ${expandedDoc === doc.id ? "rotate-180" : ""}`} />

@@ -1346,6 +1346,8 @@ export type Database = {
     }
     Functions: {
       accept_tour_invite: { Args: { _token: string }; Returns: Json }
+      activate_demo_mode: { Args: never; Returns: Json }
+      deactivate_demo_mode: { Args: never; Returns: boolean }
       is_tour_admin_or_mgmt: { Args: { _tour_id: string }; Returns: boolean }
       is_tour_member: { Args: { _tour_id: string }; Returns: boolean }
       match_contact_tours: { Args: { _email: string }; Returns: string[] }
@@ -1382,7 +1384,7 @@ export type Database = {
       risk_severity: "LOW" | "MEDIUM" | "HIGH" | "CRITICAL"
       sms_status: "queued" | "sent" | "failed"
       sync_status: "IDLE" | "SYNCING" | "SUCCESS" | "FAILED"
-      tour_role: "TA" | "MGMT" | "CREW"
+      tour_role: "TA" | "MGMT" | "CREW" | "DEMO"
       tour_status: "ACTIVE" | "ARCHIVED"
     }
     CompositeTypes: {
@@ -1540,7 +1542,7 @@ export const Constants = {
       risk_severity: ["LOW", "MEDIUM", "HIGH", "CRITICAL"],
       sms_status: ["queued", "sent", "failed"],
       sync_status: ["IDLE", "SYNCING", "SUCCESS", "FAILED"],
-      tour_role: ["TA", "MGMT", "CREW"],
+      tour_role: ["TA", "MGMT", "CREW", "DEMO"],
       tour_status: ["ACTIVE", "ARCHIVED"],
     },
   },

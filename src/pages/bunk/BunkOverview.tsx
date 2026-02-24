@@ -73,7 +73,8 @@ const stateColors: Record<string, string> = {
 
 const BunkOverview = () => {
   const { user } = useAuth();
-  const { tours, setSelectedTourId, reload } = useTour();
+  const { tours, setSelectedTourId, reload, isDemoMode } = useTour();
+  const [activatingDemo, setActivatingDemo] = useState(false);
   const navigate = useNavigate();
   const { toast } = useToast();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -461,12 +462,58 @@ const BunkOverview = () => {
             Real-time tour intelligence
           </p>
         </div>
-        <Button size="sm" className="font-mono text-xs tracking-wider" onClick={() => navigate("/bunk/setup")}>
-          <Plus className="mr-1 sm:mr-2 h-3 w-3" />
-          <span className="hidden sm:inline">NEW TOUR</span>
-          <span className="sm:hidden">NEW</span>
-        </Button>
+        {!isDemoMode && (
+          <Button size="sm" className="font-mono text-xs tracking-wider" onClick={() => navigate("/bunk/setup")}>
+            <Plus className="mr-1 sm:mr-2 h-3 w-3" />
+            <span className="hidden sm:inline">NEW TOUR</span>
+            <span className="sm:hidden">NEW</span>
+          </Button>
+        )}
       </div>
+
+      {/* Empty state with demo option */}
+      {tours.length === 0 && !isDemoMode && (
+        <motion.div
+          initial={{ opacity: 0, y: 12 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="rounded-lg border border-border bg-card p-8 sm:p-12 text-center space-y-4"
+        >
+          <Music className="h-12 w-12 text-muted-foreground/30 mx-auto" />
+          <div>
+            <h2 className="text-lg font-bold">No active tours</h2>
+            <p className="text-sm text-muted-foreground font-mono mt-1">
+              Create your first tour or try a live demo
+            </p>
+          </div>
+          <div className="flex flex-col sm:flex-row gap-3 justify-center">
+            <Button className="font-mono text-xs tracking-wider" onClick={() => navigate("/bunk/setup")}>
+              <Plus className="mr-2 h-3 w-3" />
+              CREATE TOUR
+            </Button>
+            <Button
+              variant="outline"
+              className="font-mono text-xs tracking-wider"
+              disabled={activatingDemo}
+              onClick={async () => {
+                setActivatingDemo(true);
+                try {
+                  const { error } = await supabase.rpc("activate_demo_mode" as any);
+                  if (error) throw error;
+                  toast({ title: "Demo mode activated", description: "Viewing live tour data (read-only)" });
+                  reload();
+                } catch (err: any) {
+                  toast({ title: "Failed to activate demo", description: err.message, variant: "destructive" });
+                } finally {
+                  setActivatingDemo(false);
+                }
+              }}
+            >
+              {activatingDemo ? <Loader2 className="mr-2 h-3 w-3 animate-spin" /> : <Sparkles className="mr-2 h-3 w-3" />}
+              TRY DEMO
+            </Button>
+          </div>
+        </motion.div>
+      )}
 
       {/* TLDR Briefing */}
       <motion.div
