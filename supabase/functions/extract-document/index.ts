@@ -563,6 +563,103 @@ CRITICAL RULES:
 - Return ONLY valid JSON, no markdown formatting, no code blocks.
 - ZERO DATA LOSS. If you can read it, it must appear in the output.`;
 
+// ─── Deterministic Date Parser for VAN text fields ───
+
+interface ParsedDateEntry {
+  date: string;
+  type: string;
+  show_time: string | null;
+}
+
+function parseDatesFromVanText(text: string | null | undefined): ParsedDateEntry[] {
+  if (!text) return [];
+
+  const results: ParsedDateEntry[] = [];
+  // Match all YYYY-MM-DD dates with surrounding context
+  const dateRegex = /(\d{4}-\d{2}-\d{2})/g;
+  let match: RegExpExecArray | null;
+
+  while ((match = dateRegex.exec(text)) !== null) {
+    const dateStr = match[1];
+    const pos = match.index;
+    // Look at the ~60 chars before and after the date for context
+    const before = text.substring(Math.max(0, pos - 60), pos).toLowerCase();
+    const after = text.substring(pos + 10, Math.min(text.length, pos + 60)).toLowerCase();
+
+    // Classify date type based on surrounding text
+    let type = "SHOW";
+    if (/load[- ]?in/.test(before)) {
+      type = "LOAD_IN";
+    } else if (/travel/.test(before)) {
+      type = "TRAVEL";
+    } else if (/off\b|day off/.test(before)) {
+      type = "OFF";
+    } else if (/rehearsal/.test(before)) {
+      type = "REHEARSAL";
+    }
+
+    // Extract show time from patterns like "@ 7:30 PM" or "@ 7:30PM"
+    let showTime: string | null = null;
+    const timeMatch = after.match(/@?\s*(\d{1,2}):(\d{2})\s*(am|pm)/i);
+    if (timeMatch) {
+      let h = parseInt(timeMatch[1], 10);
+      const m = parseInt(timeMatch[2], 10);
+      const isPM = timeMatch[3].toLowerCase() === "pm";
+      if (isPM && h < 12) h += 12;
+      if (!isPM && h === 12) h = 0;
+      showTime = `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+    }
+
+    results.push({ date: dateStr, type, show_time: showTime });
+  }
+
+  return results;
+}
+
+// Also parse "Month DD" style dates when no YYYY-MM-DD found (e.g. "March 12 & 13")
+function parseFuzzyDatesFromText(text: string | null | undefined, yearHint: number = 2026): ParsedDateEntry[] {
+  if (!text) return [];
+  // Only use this if no ISO dates found
+  if (/\d{4}-\d{2}-\d{2}/.test(text)) return [];
+
+  const results: ParsedDateEntry[] = [];
+  const months: Record<string, number> = {
+    january: 1, february: 2, march: 3, april: 4, may: 5, june: 6,
+    july: 7, august: 8, september: 9, october: 10, november: 11, december: 12,
+  };
+
+  // Match "March 12 & 13" or "March 12, 13" patterns
+  const pattern = /\b(january|february|march|april|may|june|july|august|september|october|november|december)\s+(\d{1,2})(?:\s*[&,]\s*(\d{1,2}))?/gi;
+  let m: RegExpExecArray | null;
+  while ((m = pattern.exec(text)) !== null) {
+    const month = months[m[1].toLowerCase()];
+    const day1 = parseInt(m[2], 10);
+    const d1 = `${yearHint}-${String(month).padStart(2, "0")}-${String(day1).padStart(2, "0")}`;
+    results.push({ date: d1, type: "SHOW", show_time: null });
+    if (m[3]) {
+      const day2 = parseInt(m[3], 10);
+      const d2 = `${yearHint}-${String(month).padStart(2, "0")}-${String(day2).padStart(2, "0")}`;
+      results.push({ date: d2, type: "SHOW", show_time: null });
+    }
+  }
+
+  // Try to extract show time
+  const timeMatch = text.match(/(\d{1,2}):(\d{2})\s*(am|pm)/i);
+  if (timeMatch && results.length > 0) {
+    let h = parseInt(timeMatch[1], 10);
+    const min = parseInt(timeMatch[2], 10);
+    const isPM = timeMatch[3].toLowerCase() === "pm";
+    if (isPM && h < 12) h += 12;
+    if (!isPM && h === 12) h = 0;
+    const t = `${String(h).padStart(2, "0")}:${String(min).padStart(2, "0")}`;
+    for (const r of results) {
+      if (r.type === "SHOW") r.show_time = t;
+    }
+  }
+
+  return results;
+}
+
 // ─── Advance Master VAN Extraction Prompt ───
 
 const ADVANCE_MASTER_VAN_PROMPT = `You are the Advance Master extraction engine for the live touring industry. This document is a columnar spreadsheet where CITIES are across the header row and CATEGORIES run down the left column. Your job is to extract ALL advance notes for EVERY venue/city into structured Venue Advance Notes (VANs).
@@ -1315,8 +1412,40 @@ Deno.serve(async (req) => {
             }
 
             // Insert/update schedule events (supports multiple dates per venue)
-            const eventDates = (v.event_dates as Array<{ date?: string; type?: string; show_time?: string }>) || [];
-            // Backward compat: if no event_dates array, fall back to single event_date
+            let eventDates = (v.event_dates as Array<{ date?: string; type?: string; show_time?: string }>) || [];
+
+            // ── Deterministic date fallback: parse dates from day_and_date text ──
+            if (!eventDates || eventDates.filter(ed => ed.date).length === 0) {
+              const dayAndDateText = ((v.event_details as Record<string, string | null>)?.day_and_date) || null;
+              const showTimesText = ((v.venue_schedule as Record<string, string | null>)?.show_times) || null;
+
+              // Try ISO dates first (YYYY-MM-DD), then fuzzy month names
+              let parsed = parseDatesFromVanText(dayAndDateText);
+              if (parsed.length === 0) {
+                parsed = parseFuzzyDatesFromText(showTimesText);
+              }
+              if (parsed.length === 0) {
+                parsed = parseFuzzyDatesFromText(dayAndDateText);
+              }
+
+              if (parsed.length > 0) {
+                console.log(`[extract] Deterministic parser found ${parsed.length} dates for ${venueName} from VAN text`);
+                eventDates = parsed;
+
+                // Also backfill event_date on the VAN if it was null
+                if (!eventDate) {
+                  const firstShow = parsed.find(p => p.type === "SHOW") || parsed[0];
+                  if (firstShow) {
+                    await adminClient.from("venue_advance_notes")
+                      .update({ event_date: firstShow.date })
+                      .eq("tour_id", doc.tour_id)
+                      .eq("normalized_venue_name", normalizedName);
+                  }
+                }
+              }
+            }
+
+            // Backward compat: if still no event_dates, fall back to single event_date
             const datesToInsert = eventDates.length > 0
               ? eventDates.filter(ed => ed.date)
               : (eventDate ? [{ date: eventDate, type: "SHOW" as string, show_time: null as string | null }] : []);
