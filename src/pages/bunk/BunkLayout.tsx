@@ -10,7 +10,7 @@ import { useIsMobile } from "@/hooks/use-mobile";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
-import { useRef } from "react";
+import { useRef, useState, useEffect } from "react";
 import { useAkbAlerts } from "@/hooks/useAkbAlerts";
 import {
   DropdownMenu,
@@ -28,7 +28,23 @@ const BunkLayoutInner = () => {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const { isDemoMode, exitDemo } = useTour();
+  const { isDemoMode, exitDemo, demoExpiresAt } = useTour();
+
+  // Countdown timer for demo mode
+  const [countdown, setCountdown] = useState("");
+  useEffect(() => {
+    if (!isDemoMode || !demoExpiresAt) { setCountdown(""); return; }
+    const tick = () => {
+      const diff = new Date(demoExpiresAt).getTime() - Date.now();
+      if (diff <= 0) { setCountdown("Expired"); return; }
+      const h = Math.floor(diff / 3600000);
+      const m = Math.floor((diff % 3600000) / 60000);
+      setCountdown(`${h}h ${m}m`);
+    };
+    tick();
+    const interval = setInterval(tick, 60000);
+    return () => clearInterval(interval);
+  }, [isDemoMode, demoExpiresAt]);
 
   // Real-time CRITICAL AKB change alerts
   useAkbAlerts();
@@ -160,7 +176,7 @@ const BunkLayoutInner = () => {
           {isDemoMode && (
             <div className="bg-warning/10 border-b border-warning/30 px-4 py-1.5 flex items-center justify-between">
               <span className="text-[10px] font-mono tracking-wider text-warning font-semibold">
-                DEMO MODE — Viewing live tour data (read-only)
+                DEMO MODE — {countdown ? `Expires in ${countdown}` : "Viewing live tour data"} (read-only)
               </span>
               <button
                 onClick={exitDemo}
