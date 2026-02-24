@@ -139,10 +139,31 @@ Return a JSON object with these fields (include only what you find, omit empty a
   "contacts": [
     {
       "name": "Full Name",
+      "first_name": "First Name or null",
+      "last_name": "Last Name or null",
+      "preferred_name": "Preferred/Nickname or null",
       "role": "ROLE TITLE",
       "phone": "phone number",
       "email": "email@domain.com",
-      "category": "TOUR_TEAM" or "TOUR_CREW" or "VENUE_STAFF"
+      "category": "TOUR_TEAM" or "TOUR_CREW" or "CAST" or "VENUE_STAFF",
+      "bus_number": "Bus # or null",
+      "dob": "YYYY-MM-DD or null",
+      "age": number or null,
+      "jacket_size": "size or null",
+      "pants_size": "size or null",
+      "sweatshirt_size": "size or null",
+      "tshirt_size": "size or null",
+      "contract": "status or null",
+      "caps": "status or null",
+      "mvr": "status or null",
+      "drivers_release": "status or null",
+      "confirmed_wc": "status or null",
+      "address": "street address or null",
+      "city": "city or null",
+      "state": "state or null",
+      "zip": "zip code or null",
+      "arrival_date": "YYYY-MM-DD or null",
+      "special_notes": "dietary restrictions, allergies, notes or null"
     }
   ],
   "travel": [
@@ -1884,6 +1905,19 @@ Deno.serve(async (req) => {
           role = "Cast";
         }
 
+        // Build metadata from extended crew/cast fields
+        const metadata: Record<string, unknown> = {};
+        const metaFields = [
+          'bus_number','first_name','last_name','preferred_name',
+          'dob','age','jacket_size','pants_size','sweatshirt_size',
+          'tshirt_size','contract','caps','mvr','drivers_release',
+          'confirmed_wc','address','city','state','zip',
+          'arrival_date','special_notes'
+        ];
+        for (const f of metaFields) {
+          if ((c as any)[f] != null && (c as any)[f] !== "") metadata[f] = (c as any)[f];
+        }
+
         return {
           tour_id: doc.tour_id,
           name: c.name,
@@ -1895,6 +1929,7 @@ Deno.serve(async (req) => {
           venue: (isVenueDoc || isVenueStaff)
             ? ((c as any).venue || aiResult?.venues?.[0]?.name || filename.replace(/\.[^.]+$/, ""))
             : null,
+          metadata: Object.keys(metadata).length > 0 ? metadata : {},
         };
       });
 

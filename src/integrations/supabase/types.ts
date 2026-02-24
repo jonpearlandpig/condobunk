@@ -129,6 +129,7 @@ export type Database = {
           created_at: string
           email: string | null
           id: string
+          metadata: Json | null
           name: string
           phone: string | null
           role: string | null
@@ -141,6 +142,7 @@ export type Database = {
           created_at?: string
           email?: string | null
           id?: string
+          metadata?: Json | null
           name: string
           phone?: string | null
           role?: string | null
@@ -153,6 +155,7 @@ export type Database = {
           created_at?: string
           email?: string | null
           id?: string
+          metadata?: Json | null
           name?: string
           phone?: string | null
           role?: string | null
