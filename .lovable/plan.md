@@ -1,46 +1,72 @@
 
 
-## Fix: Venue Partners Not Showing When No Schedule Events Exist
+## Fix: Schedule Events Not Created from Advance Master
 
 ### Root Cause
 
-The Keepers PAC Tour actually **has 60 venue contacts** in the database (Belk Theater, Proctors Theatre, etc.) -- they were successfully extracted. The problem is they're invisible in the sidebar.
+The Keepers Advance Master PDF has **multiple dates per venue** (load-in Wednesday, show Thursday, show Friday). But the extraction prompt (`ADVANCE_MASTER_VAN_PROMPT`) only asks for a single `event_date` field per venue. The AI couldn't pick just one, so it returned `null` for all 35 venues. Since schedule event creation is gated by `if (eventDate)` (line 1293), zero events were created.
 
-The sidebar filtering logic in `useSidebarContacts.ts` works like this:
-1. Fetch schedule events with future dates
-2. Build a venue map from those events
-3. Only show contacts that fuzzy-match a venue from that map
+The 70 contacts and 71 VANs were extracted successfully -- only the schedule is missing.
 
-The Keepers tour has **zero schedule events**, so step 2 produces an empty map, and step 3 shows nothing. The "0" count is correct from the sidebar's perspective, but misleading -- the contacts exist, they just can't be displayed.
+### Fix (Two Parts)
 
-### Fix
+#### Part 1: Update `ADVANCE_MASTER_VAN_PROMPT` to capture multiple dates
 
-Update `useSidebarContacts.ts` to show venue contacts even when no schedule events exist by falling back to grouping contacts by their `venue` field directly.
+Change the prompt schema from:
+```
+"event_date": "YYYY-MM-DD" or null
+```
+to:
+```
+"event_dates": [
+  {"date": "YYYY-MM-DD", "type": "LOAD_IN" | "SHOW" | "TRAVEL" | "OFF" | "REHEARSAL", "show_time": "HH:MM" or null}
+]
+```
 
-**File: `src/hooks/useSidebarContacts.ts`**
+Add a rule: "Each venue may have multiple dates (load-in, show days, travel days). Extract ALL dates into the event_dates array. If only one date is mentioned, still use the array format."
 
-After the schedule-event-based venue grouping logic, add a fallback: if the event-based venue map is empty (or doesn't cover all contacts), group remaining VENUE-scoped contacts by their `contact.venue` field. This ensures contacts extracted from advance masters appear in the sidebar regardless of whether schedule events have been created.
+**File:** `supabase/functions/extract-document/index.ts` (ADVANCE_MASTER_VAN_PROMPT, around line 547-665)
 
-For each tour:
-1. After building `tourVenues` from schedule events, collect any VENUE contacts for that tour whose `venue` field doesn't fuzzy-match any event venue
-2. Group those "orphan" contacts by their own `contact.venue` value
-3. Append those groups to `tourVenues` (sorted alphabetically, after the date-sorted event venues)
+#### Part 2: Update the schedule event insertion logic for advance masters
 
-This way:
-- Contacts tied to schedule events still appear in chronological order
-- Contacts from advance masters without matching events appear alphabetically after, with their venue name as the group label
-- The count badge shows the real total
+Currently (lines 1292-1336), the code does:
+```typescript
+if (eventDate) { /* insert one event */ }
+```
+
+Change to handle the new `event_dates` array:
+1. Read `v.event_dates` as an array
+2. Fall back to the single `v.event_date` for backward compatibility
+3. Loop through all dates and insert one `schedule_events` row per date
+4. Set appropriate notes per event type (e.g., "Load-In Day" vs "Show Day")
+5. Dedup by tour_id + event_date before inserting
+
+**File:** `supabase/functions/extract-document/index.ts` (around lines 1292-1336)
 
 ### Technical Details
 
-**Single file change:** `src/hooks/useSidebarContacts.ts`
+**Single file changed:** `supabase/functions/extract-document/index.ts`
 
-In the per-tour venue group building loop (around line 120-140), after filtering contacts by event venues:
-- Collect all venue contacts for the tour
-- Find contacts not already included in an event-based group
-- Group them by `contact.venue`
-- Append as additional `VenueGroup` entries with `city: null` and `earliestDate: "9999-12-31"` (sorts to end)
-- Recalculate `totalContacts` to include these orphan contacts
+**Prompt changes (ADVANCE_MASTER_VAN_PROMPT):**
+- Replace `"event_date": "YYYY-MM-DD" or null` with `"event_dates": [{"date": "YYYY-MM-DD", "type": "LOAD_IN|SHOW|TRAVEL|OFF|REHEARSAL", "show_time": "HH:MM or null"}]`
+- Keep `"event_date"` in the schema as a convenience alias (first show date) for VAN storage
+- Add extraction rule: "CRITICAL: Most venues have multiple dates (load-in day + show days). Extract ALL dates into the event_dates array. Do NOT collapse multiple dates into one."
 
-No database changes needed. No edge function changes needed.
+**Insertion logic changes:**
+- After VAN insertion, read `v.event_dates` array (or fall back to `[{date: v.event_date, type: "SHOW"}]`)
+- For each date entry, insert a `schedule_events` row with:
+  - `event_date` = the date
+  - `venue` = venue name
+  - `city` = city
+  - `show_time` = parsed from the entry's `show_time` field (for SHOW type) or null
+  - `notes` = include the event type (e.g., "Load-In Day" or "Show Day 1")
+  - `source_doc_id` = document_id
+- Dedup: delete existing events for same tour_id + event_date before inserting
+- Increment `totalEvents` for each successfully inserted row
+
+**Expected result for Keepers tour:** ~105 schedule events (35 venues x 3 dates each: 1 load-in + 2 shows)
+
+**No database migration needed.** The `schedule_events` table already supports all required fields.
+
+After deploying, the user would need to re-extract the Keepers document (archive and re-upload, or we could add a "re-extract" button) to populate the schedule.
 
