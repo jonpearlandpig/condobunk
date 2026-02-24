@@ -28,7 +28,8 @@ const BunkLayoutInner = () => {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const { isDemoMode, exitDemo, demoExpiresAt } = useTour();
+  const { isDemoMode, exitDemo, demoExpiresAt, requestUpgrade, upgradeRequested } = useTour();
+  const [requestingUpgrade, setRequestingUpgrade] = useState(false);
 
   // Countdown timer for demo mode
   const [countdown, setCountdown] = useState("");
@@ -178,12 +179,35 @@ const BunkLayoutInner = () => {
               <span className="text-[10px] font-mono tracking-wider text-warning font-semibold">
                 DEMO MODE — {countdown ? `Expires in ${countdown}` : "Viewing live tour data"} (read-only)
               </span>
-              <button
-                onClick={exitDemo}
-                className="text-[10px] font-mono tracking-wider text-warning hover:text-warning/80 underline underline-offset-2 transition-colors"
-              >
-                EXIT DEMO
-              </button>
+              <div className="flex items-center gap-3">
+                {upgradeRequested ? (
+                  <span className="text-[10px] font-mono tracking-wider text-primary font-semibold">
+                    ✓ ACCESS REQUESTED
+                  </span>
+                ) : (
+                  <button
+                    onClick={async () => {
+                      setRequestingUpgrade(true);
+                      const ok = await requestUpgrade();
+                      setRequestingUpgrade(false);
+                      if (ok) {
+                        const { toast } = await import("sonner");
+                        toast.success("Full access requested! You'll be notified when approved.");
+                      }
+                    }}
+                    disabled={requestingUpgrade}
+                    className="text-[10px] font-mono tracking-wider text-primary hover:text-primary/80 underline underline-offset-2 transition-colors font-semibold"
+                  >
+                    {requestingUpgrade ? "REQUESTING…" : "REQUEST FULL ACCESS"}
+                  </button>
+                )}
+                <button
+                  onClick={exitDemo}
+                  className="text-[10px] font-mono tracking-wider text-warning hover:text-warning/80 underline underline-offset-2 transition-colors"
+                >
+                  EXIT DEMO
+                </button>
+              </div>
             </div>
           )}
           <main className="flex-1 p-3 sm:p-6 pb-16 md:pb-6 overflow-auto min-w-0">
