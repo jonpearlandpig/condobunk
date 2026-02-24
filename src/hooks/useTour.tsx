@@ -18,7 +18,9 @@ interface TourContextType {
   loading: boolean;
   reload: () => void;
   isDemoMode: boolean;
+  demoExpiresAt: string | null;
   exitDemo: () => Promise<void>;
+  activateDemo: () => Promise<boolean>;
 }
 
 const TourContext = createContext<TourContextType>({
@@ -29,7 +31,9 @@ const TourContext = createContext<TourContextType>({
   loading: true,
   reload: () => {},
   isDemoMode: false,
+  demoExpiresAt: null,
   exitDemo: async () => {},
+  activateDemo: async () => false,
 });
 
 export const useTour = () => useContext(TourContext);
@@ -40,6 +44,7 @@ export const TourProvider = ({ children }: { children: React.ReactNode }) => {
   const [selectedTourId, setSelectedTourId] = useState("");
   const [loading, setLoading] = useState(true);
   const [isDemoMode, setIsDemoMode] = useState(false);
+  const [demoExpiresAt, setDemoExpiresAt] = useState<string | null>(null);
 
   const autoMatchContacts = async () => {
     if (!user?.email) return;
@@ -64,6 +69,7 @@ export const TourProvider = ({ children }: { children: React.ReactNode }) => {
   const checkDemoMode = async (tourIds: string[]) => {
     if (!user || tourIds.length === 0) {
       setIsDemoMode(false);
+      setDemoExpiresAt(null);
       return;
     }
     const { data: memberships } = await supabase
@@ -74,8 +80,24 @@ export const TourProvider = ({ children }: { children: React.ReactNode }) => {
     if (memberships && memberships.length > 0) {
       const allDemo = memberships.every(m => m.role === "DEMO");
       setIsDemoMode(allDemo);
+      if (allDemo) {
+        // Fetch expiry from demo_activations
+        const { data: activation } = await supabase
+          .from("demo_activations" as any)
+          .select("expires_at")
+          .eq("user_id", user.id)
+          .is("deactivated_at", null)
+          .gt("expires_at", new Date().toISOString())
+          .order("activated_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        setDemoExpiresAt((activation as any)?.expires_at || null);
+      } else {
+        setDemoExpiresAt(null);
+      }
     } else {
       setIsDemoMode(false);
+      setDemoExpiresAt(null);
     }
   };
 
@@ -99,10 +121,36 @@ export const TourProvider = ({ children }: { children: React.ReactNode }) => {
     setLoading(false);
   };
 
+  const activateDemo = async (): Promise<boolean> => {
+    try {
+      const { data, error } = await supabase.rpc("activate_demo_mode" as any);
+      if (error) throw error;
+      const result = data as any;
+
+      // Send notification to jonathan (fire-and-forget)
+      if (!result.already_active) {
+        supabase.functions.invoke("notify-demo-activation", {
+          body: {
+            user_email: result.user_email || user?.email,
+            user_name: result.user_name || user?.user_metadata?.full_name,
+            expires_at: result.expires_at,
+          },
+        }).catch(console.error);
+      }
+
+      await loadTours();
+      return true;
+    } catch (err) {
+      console.error("Failed to activate demo:", err);
+      return false;
+    }
+  };
+
   const exitDemo = async () => {
     try {
       await supabase.rpc("deactivate_demo_mode" as any);
       setIsDemoMode(false);
+      setDemoExpiresAt(null);
       setTours([]);
       setSelectedTourId("");
       await loadTours();
@@ -127,7 +175,9 @@ export const TourProvider = ({ children }: { children: React.ReactNode }) => {
         loading,
         reload: loadTours,
         isDemoMode,
+        demoExpiresAt,
         exitDemo,
+        activateDemo,
       }}
     >
       {children}

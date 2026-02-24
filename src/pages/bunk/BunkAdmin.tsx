@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-import { Settings, RefreshCw, Plus, Trash2, Copy, CheckCircle, XCircle, Clock, Loader2, Users, Mail, Link, UserPlus, Send } from "lucide-react";
+import { Settings, RefreshCw, Plus, Trash2, Copy, CheckCircle, XCircle, Clock, Loader2, Users, Mail, Link, UserPlus, Send, Eye } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -790,6 +790,80 @@ const BunkAdmin = () => {
               </div>
             ))}
           </div>
+        </div>
+      )}
+      {/* Demo Users Section — only visible to tour owner */}
+      {selectedTour && user && selectedTour.owner_id === user.id && (
+        <DemoUsersSection />
+      )}
+    </div>
+  );
+};
+
+const DemoUsersSection = () => {
+  const [demoUsers, setDemoUsers] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const load = async () => {
+      setLoading(true);
+      const { data } = await supabase
+        .from("demo_activations" as any)
+        .select("*")
+        .order("activated_at", { ascending: false })
+        .limit(50);
+      setDemoUsers((data as any[]) || []);
+      setLoading(false);
+    };
+    load();
+  }, []);
+
+  const getStatus = (row: any) => {
+    if (row.deactivated_at) return "exited";
+    if (new Date(row.expires_at) < new Date()) return "expired";
+    return "active";
+  };
+
+  const statusBadge = (status: string) => {
+    if (status === "active") return <Badge className="bg-primary/20 text-primary text-[10px]">ACTIVE</Badge>;
+    if (status === "expired") return <Badge variant="outline" className="text-[10px] text-muted-foreground">EXPIRED</Badge>;
+    return <Badge variant="outline" className="text-[10px] text-muted-foreground">EXITED</Badge>;
+  };
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center gap-2">
+        <Eye className="h-5 w-5 text-primary" />
+        <h2 className="text-lg font-semibold">Demo Users</h2>
+        <Badge variant="secondary" className="font-mono text-xs">{demoUsers.length}</Badge>
+      </div>
+      {loading ? (
+        <div className="flex items-center gap-2 text-sm text-muted-foreground py-4">
+          <Loader2 className="h-4 w-4 animate-spin" /> Loading…
+        </div>
+      ) : demoUsers.length === 0 ? (
+        <p className="text-sm text-muted-foreground font-mono py-4">No demo activations yet.</p>
+      ) : (
+        <div className="space-y-2">
+          {demoUsers.map((d: any) => (
+            <Card key={d.id} className="p-3 flex items-center justify-between">
+              <div className="min-w-0">
+                <p className="text-sm font-medium truncate">{d.user_name || "Unknown"}</p>
+                <p className="text-[10px] text-muted-foreground font-mono truncate">{d.user_email || "no email"}</p>
+              </div>
+              <div className="flex items-center gap-3 flex-shrink-0">
+                <div className="text-right">
+                  <p className="text-[10px] text-muted-foreground font-mono">
+                    {new Date(d.activated_at).toLocaleDateString()}
+                  </p>
+                  <p className="text-[10px] text-muted-foreground/60 font-mono">
+                    expires {new Date(d.expires_at).toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}
+                  </p>
+                </div>
+                {statusBadge(getStatus(d))}
+              </div>
+            </Card>
+          ))}
         </div>
       )}
     </div>

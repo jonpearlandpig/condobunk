@@ -73,7 +73,7 @@ const stateColors: Record<string, string> = {
 
 const BunkOverview = () => {
   const { user } = useAuth();
-  const { tours, setSelectedTourId, reload, isDemoMode } = useTour();
+  const { tours, setSelectedTourId, reload, isDemoMode, activateDemo } = useTour();
   const [activatingDemo, setActivatingDemo] = useState(false);
   const navigate = useNavigate();
   const { toast } = useToast();
@@ -496,16 +496,13 @@ const BunkOverview = () => {
               disabled={activatingDemo}
               onClick={async () => {
                 setActivatingDemo(true);
-                try {
-                  const { error } = await supabase.rpc("activate_demo_mode" as any);
-                  if (error) throw error;
-                  toast({ title: "Demo mode activated", description: "Viewing live tour data (read-only)" });
-                  reload();
-                } catch (err: any) {
-                  toast({ title: "Failed to activate demo", description: err.message, variant: "destructive" });
-                } finally {
-                  setActivatingDemo(false);
+                const success = await activateDemo();
+                if (success) {
+                  toast({ title: "Demo mode activated", description: "Viewing live tour data (read-only) — expires in 24 hours" });
+                } else {
+                  toast({ title: "Failed to activate demo", variant: "destructive" });
                 }
+                setActivatingDemo(false);
               }}
             >
               {activatingDemo ? <Loader2 className="mr-2 h-3 w-3 animate-spin" /> : <Sparkles className="mr-2 h-3 w-3" />}
