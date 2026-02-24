@@ -11,7 +11,10 @@ export type TelaActionType =
   | "update_event"
   | "update_contact"
   | "create_contact"
-  | "update_van";
+  | "update_van"
+  | "delete_event"
+  | "delete_contact"
+  | "create_event";
 
 export interface TelaAction {
   type: TelaActionType;
@@ -58,6 +61,12 @@ export function getActionLabel(action: TelaAction): string {
       return "Add Contact";
     case "update_van":
       return "Update Advance Notes";
+    case "delete_event":
+      return "Remove Event";
+    case "delete_contact":
+      return "Remove Contact";
+    case "create_event":
+      return "Add Event";
     default:
       return "Apply Fix";
   }
@@ -303,6 +312,69 @@ export function useTelaActions() {
           window.dispatchEvent(new Event("van-changed"));
           window.dispatchEvent(new Event("akb-changed"));
           toast({ title: "Advance notes created", description: `${venueName} created in ${vanCreateTourName}.` });
+          return true;
+        }
+        case "delete_event": {
+          if (!UUID_RE.test(action.id)) throw new Error("Invalid event ID");
+          // Fetch event details before deleting for the log
+          const { data: evtToDelete } = await supabase
+            .from("schedule_events")
+            .select("tour_id, venue, city, event_date")
+            .eq("id", action.id)
+            .maybeSingle();
+          if (!evtToDelete) throw new Error("Event not found");
+          const { error } = await supabase
+            .from("schedule_events")
+            .delete()
+            .eq("id", action.id);
+          if (error) throw error;
+          await logChange(evtToDelete.tour_id, "schedule_event", action.id, "DELETE", `TELA removed ${evtToDelete.venue || "event"} on ${evtToDelete.event_date || "unknown date"}`, reason, impact);
+          window.dispatchEvent(new Event("akb-changed"));
+          const delEvtTourName = await getTourName(evtToDelete.tour_id);
+          toast({ title: "Event removed", description: `${evtToDelete.venue || "Event"} removed from ${delEvtTourName}.` });
+          return true;
+        }
+        case "delete_contact": {
+          if (!UUID_RE.test(action.id)) throw new Error("Invalid contact ID");
+          const { data: contactToDelete } = await supabase
+            .from("contacts")
+            .select("tour_id, name")
+            .eq("id", action.id)
+            .maybeSingle();
+          if (!contactToDelete) throw new Error("Contact not found");
+          const { error } = await supabase
+            .from("contacts")
+            .delete()
+            .eq("id", action.id);
+          if (error) throw error;
+          await logChange(contactToDelete.tour_id, "contact", action.id, "DELETE", `TELA removed contact: ${contactToDelete.name}`, reason, impact);
+          window.dispatchEvent(new Event("contacts-changed"));
+          window.dispatchEvent(new Event("akb-changed"));
+          const delContactTourName = await getTourName(contactToDelete.tour_id);
+          toast({ title: "Contact removed", description: `${contactToDelete.name} removed from ${delContactTourName}.` });
+          return true;
+        }
+        case "create_event": {
+          if (!action.fields || !action.fields.event_date) throw new Error("event_date is required");
+          const createEvtTourId = await resolveTourId(action, callerTourId);
+          const validEventFields = ["venue", "city", "event_date", "notes", "load_in", "show_time", "end_time"];
+          const evtInsert: Record<string, unknown> = {
+            tour_id: createEvtTourId,
+            created_by: user!.id,
+          };
+          for (const [k, v] of Object.entries(action.fields)) {
+            if (validEventFields.includes(k)) evtInsert[k] = v;
+          }
+          const { data: newEvt, error } = await supabase
+            .from("schedule_events")
+            .insert(evtInsert as any)
+            .select("id")
+            .maybeSingle();
+          if (error) throw error;
+          if (newEvt) await logChange(createEvtTourId, "schedule_event", newEvt.id, "CREATE", `TELA added ${action.fields.venue || "event"} on ${action.fields.event_date}`, reason, impact);
+          window.dispatchEvent(new Event("akb-changed"));
+          const createEvtTourName = await getTourName(createEvtTourId);
+          toast({ title: "Event added", description: `${action.fields.venue || "Event"} added to ${createEvtTourName}.` });
           return true;
         }
         default:
