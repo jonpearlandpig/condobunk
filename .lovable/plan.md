@@ -1,29 +1,36 @@
 
 
-## Fix Tour Team Contact Overflow Menu
+## Fix Venue Partners Count Mismatch
 
 ### Problem
-When clicking the three-dot menu on a tour team contact, two things go wrong:
-1. The menu trigger disappears because it relies on CSS hover (`hidden group-hover:flex`), and once focus moves to the dropdown content, the row loses its hover state.
-2. The sidebar/drawer closes, leaving the dropdown floating over the main content with no way to see the result of the action.
+The "Venue Partners" header badge in BunkSidebar shows **41** — the number of upcoming *venues* — but the expanded list shows contacts grouped by venue, and PW2026 has **zero** venue-scoped contacts. The user reasonably reads "41" as "41 contacts" and sees nothing.
+
+### Root Cause
+- **BunkSidebar.tsx line 317**: `tourVenueGroups.reduce((sum, g) => sum + g.venueGroups.length, 0)` counts venue *groups*, not contacts.
+- **MobileBottomNav.tsx line 146**: Already uses the correct metric: `tourVenueGroups.reduce((sum, g) => sum + g.totalContacts, 0)` — so mobile is fine, desktop is wrong.
 
 ### Solution
-Replace the CSS hover-only visibility with a combined approach: show the three-dot button on hover **OR** when the dropdown is open. This keeps the trigger visible while the menu is active and prevents the jarring disappearance.
+Two changes to make the count honest and the empty state useful:
+
+**1. Fix the count badge (BunkSidebar.tsx line 317)**
+
+Change from venue count to contact count, matching what MobileBottomNav already does:
+
+```text
+Before:  tourVenueGroups.reduce((sum, g) => sum + g.venueGroups.length, 0)
+After:   tourVenueGroups.reduce((sum, g) => sum + g.totalContacts, 0)
+```
+
+This way, if there are 0 venue contacts, the badge shows "0" (or we hide it when zero). When contacts are added, the count will be accurate.
+
+**2. Show venue count as secondary context (optional but recommended)**
+
+Add a subtle sub-label like "41 venues" below the contact count so the user knows there *are* venues on the schedule — they just don't have contacts yet. This encourages them to populate contacts via TELA or manual entry.
 
 ### Technical Changes
 
-**File: `src/components/bunk/SidebarContactList.tsx`**
+**File: `src/components/bunk/BunkSidebar.tsx`**
+- Line 317: Replace `g.venueGroups.length` with `g.totalContacts`
+- Optionally add a secondary "(41 venues)" indicator when contact count is 0
 
-1. Add a `openMenuId` state to track which contact's dropdown is currently open.
-2. On the wrapper div (line 404), change `hidden group-hover:flex` to a conditional class that shows the button when either the row is hovered OR the dropdown for that contact is open.
-3. Add `modal={false}` to the `DropdownMenuContent` so it doesn't steal focus from the sidebar and cause it to close.
-4. Use `onOpenChange` on the `DropdownMenu` to update `openMenuId`.
-
-The key changes:
-- Line 404: `hidden group-hover:flex` becomes a dynamic class using the new state
-- Add state: `const [openMenuId, setOpenMenuId] = useState<string | null>(null);`
-- The DropdownMenu gets `open` and `onOpenChange` props tied to the state
-- The wrapper div visibility becomes: `opacity-0 group-hover:opacity-100` combined with forced visibility when `openMenuId === c.id`
-
-This is a minimal, clean fix that keeps the existing UI pattern but prevents the disappearing trigger problem.
-
+This is a one-line fix that aligns desktop behavior with what mobile already does correctly.
