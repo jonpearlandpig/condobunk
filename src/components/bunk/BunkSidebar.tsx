@@ -244,32 +244,6 @@ const BunkSidebar = () => {
           </button>
           {tourTeamOpen && (
             <SidebarGroupContent>
-              {/* Online Now section */}
-              {(() => {
-                const onlineContacts = filteredTourTeamGroups
-                  .flatMap(g => g.contacts)
-                  .filter(c => c.appUserId && onlineUsers.has(c.appUserId))
-                  .filter((c, i, arr) => arr.findIndex(x => x.appUserId === c.appUserId) === i);
-                if (onlineContacts.length === 0) return null;
-                return (
-                  <div className="mx-2 mb-1.5 rounded-md bg-success/5 border border-success/10 py-1">
-                    <p className="px-3 py-1 text-[9px] font-mono tracking-[0.15em] text-success/80 uppercase">Online Now</p>
-                    <SidebarContactList
-                      contacts={onlineContacts}
-                      onNavigate={handleNavClick}
-                      onUpdate={updateContact}
-                      onDelete={deleteContact}
-                      onlineUserIds={onlineUsers}
-                      unreadFrom={unreadFrom}
-                      activeInvites={activeInvites}
-                      onInviteCreated={fetchInvites}
-                      isOwner={isOwner}
-                      onRemoveMember={handleRemoveMember}
-                      onUnreadRefetch={refetchUnread}
-                    />
-                  </div>
-                );
-              })()}
               {/* Bulk invite button */}
               {!loading && getUninvitedContacts().length > 0 && (
                 <TooltipProvider delayDuration={300}>
@@ -316,6 +290,9 @@ const BunkSidebar = () => {
                         >
                           <ChevronRight className={`h-3 w-3 text-muted-foreground/50 shrink-0 transition-transform ${isExpanded ? "rotate-90" : ""}`} />
                           <span className="text-xs font-medium text-sidebar-foreground truncate">{group.tourName}</span>
+                          {group.contacts.some(c => c.appUserId && onlineUsers.has(c.appUserId)) && (
+                            <span className="h-2 w-2 rounded-full bg-success shrink-0 animate-pulse" />
+                          )}
                           <span className="ml-auto text-[10px] font-mono text-muted-foreground/40">{group.contacts.length}</span>
                         </button>
                         {isExpanded && (
