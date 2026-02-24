@@ -70,6 +70,7 @@ const SidebarContactList = ({ contacts, onNavigate, onUpdate, onDelete, onlineUs
   const { tours } = useTour();
   const tourId = tours[0]?.id;
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [expandedVenues, setExpandedVenues] = useState<Set<string>>(new Set());
   const [editForm, setEditForm] = useState({ name: "", role: "", phone: "", email: "" });
@@ -401,8 +402,8 @@ const SidebarContactList = ({ contacts, onNavigate, onUpdate, onDelete, onlineUs
                 </div>
               ) : (
                 /* Tour team contacts: single overflow menu */
-                <div className="shrink-0 ml-2 hidden group-hover:flex items-center">
-                  <DropdownMenu>
+                <div className={`shrink-0 ml-2 items-center ${openMenuId === c.id ? "flex" : "hidden group-hover:flex"}`}>
+                  <DropdownMenu open={openMenuId === c.id} onOpenChange={(open) => setOpenMenuId(open ? c.id : null)} modal={false}>
                     <DropdownMenuTrigger asChild>
                       <button className="p-1 rounded text-muted-foreground hover:text-foreground transition-colors" aria-label="Actions" onClick={(e) => e.stopPropagation()}>
                         <MoreHorizontal className="h-4 w-4" />
