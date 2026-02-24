@@ -3,7 +3,7 @@ import BunkSidebar from "@/components/bunk/BunkSidebar";
 import MobileBottomNav from "@/components/bunk/MobileBottomNav";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { LogOut, Camera } from "lucide-react";
-import whiteBunks from "@/assets/WHITE_BUNKS.png";
+import whiteBunks from "@/assets/white_condobunks.png";
 import { useAuth } from "@/hooks/useAuth";
 import { TourProvider, useTour } from "@/hooks/useTour";
 import { useIsMobile } from "@/hooks/use-mobile";
