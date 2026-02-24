@@ -126,15 +126,14 @@ const BunkLayoutInner = () => {
         />
         <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
           <header className="hidden md:flex h-12 items-center justify-between border-b border-border px-4 bg-card/50">
-            <div className="flex items-center gap-2 md:gap-3">
-              <SidebarTrigger />
-              <div className="flex items-center gap-2">
+            <SidebarTrigger asChild>
+              <button className="flex items-center gap-2 px-2 py-1 rounded-md hover:bg-accent/50 cursor-pointer transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
                 <img src={whiteBunks} alt="Condo Bunk" className="h-5 w-5 object-contain" />
                 <span className="font-mono text-xs text-muted-foreground tracking-widest hidden md:inline">
                   CONDO BUNK
                 </span>
-              </div>
-            </div>
+              </button>
+            </SidebarTrigger>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <button className="h-7 w-7 rounded-full overflow-hidden ring-1 ring-border hover:ring-primary transition-all focus:outline-none focus:ring-2 focus:ring-primary" aria-label="Account menu">
