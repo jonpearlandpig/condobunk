@@ -82,6 +82,17 @@ const Login = () => {
           <p className="text-sm text-muted-foreground tracking-wide mt-3">
             Close the curtain. Get schtuff done!
           </p>
+          <div className="mt-5 max-w-sm mx-auto space-y-2 text-left">
+            <p className="text-sm font-semibold text-foreground">
+              One source of truth for your tour.
+            </p>
+            <p className="text-xs text-muted-foreground/70 leading-relaxed">
+              CondoBunk extracts venue advances, tech packs, and contacts into a structured knowledge base — then makes it searchable for your entire crew via text message or in-app AI.
+            </p>
+            <p className="text-xs text-muted-foreground/50 italic">
+              No more digging through email threads. No more outdated spreadsheets.
+            </p>
+          </div>
         </div>
 
         <div className="rounded-lg border border-border bg-card p-6 shadow-lg" style={{ boxShadow: 'var(--shadow-card)' }}>
