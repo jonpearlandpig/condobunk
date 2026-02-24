@@ -141,12 +141,33 @@ export const useSidebarContacts = () => {
     const tvGroups: TourVenueGroup[] = [];
     for (const t of tours) {
       const venueMap = tourVenueMap.get(t.id);
-      if (!venueMap || venueMap.size === 0) continue;
       const tourVenues: VenueGroup[] = [];
-      for (const [venue, meta] of venueMap) {
-        const contacts = allVenueContacts.filter(c => c.tour_id === t.id && venueMatches(c.venue, venue));
-        tourVenues.push({ venue, city: meta.city, earliestDate: meta.earliestDate, contacts });
+      const matchedContactIds = new Set<string>();
+
+      // Event-based venue groups (chronological)
+      if (venueMap && venueMap.size > 0) {
+        for (const [venue, meta] of venueMap) {
+          const contacts = allVenueContacts.filter(c => c.tour_id === t.id && venueMatches(c.venue, venue));
+          contacts.forEach(c => matchedContactIds.add(c.id));
+          tourVenues.push({ venue, city: meta.city, earliestDate: meta.earliestDate, contacts });
+        }
       }
+
+      // Fallback: orphan contacts not matched to any event venue
+      const orphans = allVenueContacts.filter(c => c.tour_id === t.id && !matchedContactIds.has(c.id) && c.venue);
+      const orphanMap = new Map<string, SidebarContact[]>();
+      for (const c of orphans) {
+        const key = c.venue!;
+        if (!orphanMap.has(key)) orphanMap.set(key, []);
+        orphanMap.get(key)!.push(c);
+      }
+      const sortedOrphanVenues = [...orphanMap.keys()].sort((a, b) => a.localeCompare(b));
+      for (const venueName of sortedOrphanVenues) {
+        tourVenues.push({ venue: venueName, city: null, earliestDate: "9999-12-31", contacts: orphanMap.get(venueName)! });
+      }
+
+      if (tourVenues.length === 0) continue;
+
       tvGroups.push({
         tourId: t.id,
         tourName: t.name,
