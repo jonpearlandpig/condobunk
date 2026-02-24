@@ -1,66 +1,42 @@
 
 
-## Demo Mode: Hide Contact Info and Block Outbound Actions
+## Add Product Summary to Login Page
 
-### Problem
-Demo users can currently see phone numbers, email addresses, and access messaging/editing actions on contacts. They should only see names and roles -- no PII, no outbound communication.
+### What Changes
 
-### Changes
+Below the tagline ("Close the curtain. Get schtuff done!"), add a concise 3-part product summary that explains what CondoBunk is, how it works, and what makes it different. The copy will be styled to fit the dark mission-control aesthetic -- small, muted text that doesn't compete with the logo or login form.
 
-#### 1. SidebarContactList.tsx -- Hide contact details and block actions for demo users
+### Proposed Copy
 
-- Accept `isDemoMode` as a new prop (passed from parent components)
-- When `isDemoMode` is true:
-  - Hide phone numbers and email addresses everywhere (tooltips, action labels, expanded mobile bars)
-  - Hide all action buttons: SMS, Call, Email, Bunk Chat, Edit, Delete, Invite, Remove
-  - Remove the "ASK TELA FOR DETAILS" button (which prompts finding contact info)
-  - Keep visible: name, role, online status indicator, unread badge
-  - On desktop hover row: show nothing (no overflow menu, no quick-action icons)
-  - On mobile expand: show only "TELA" button (Ask TELA about this person, but not for contact details)
-  - Disable the `handleMessage` click handler so tapping a contact does not open SMS or DM
+Something along these lines (can be refined):
 
-#### 2. DMChatScreen.tsx -- Block message sending for demo users
+> **One source of truth for your tour.**
+> CondoBunk extracts venue advances, tech packs, and contacts into a structured knowledge base -- then makes it searchable for your entire crew via text message or in-app AI.
+> No more digging through email threads. No more outdated spreadsheets.
 
-- Accept `isDemoMode` prop
-- When true: hide the input bar entirely, replace with a read-only notice ("Demo mode -- messaging disabled")
-- Existing messages can still be viewed (read-only)
-
-#### 3. BunkSidebar.tsx -- Pass isDemoMode to contact lists
-
-- Thread `isDemoMode` from `useTour()` down to all `SidebarContactList` instances rendered in the sidebar
-
-#### 4. Any other messaging drawer or contact display components
-
-- Audit `BunkChat.tsx` and the messaging drawer to ensure demo users cannot compose or send DMs
-- The sidebar's `onContactTap` handler should be blocked for demo users
-
-#### 5. BunkAdmin.tsx -- Already handled
-
-- The admin page already shows a "Demo Mode" read-only notice and blocks all admin actions. No changes needed.
-
-### What Demo Users Will See
+### Layout
 
 ```text
-Contacts Sidebar:
-  John Smith
-  Tour Manager
+[  CONDO BUNK LOGO  ]
+Close the curtain. Get schtuff done!
 
-  Sarah Jones  [green dot]
-  Lighting Designer
+One source of truth for your tour.
+CondoBunk extracts venue advances, tech packs,
+and contacts into a structured knowledge base --
+then makes it searchable for your entire crew
+via text message or in-app AI.
+No more digging through email threads.
+No more outdated spreadsheets.
 
-  (no phone, email, edit, call, text, or invite actions visible)
+[========= LOGIN FORM =========]
 ```
 
-### Files to Modify
+### Technical Detail
 
-| File | Change |
-|------|--------|
-| `src/components/bunk/SidebarContactList.tsx` | Add `isDemoMode` prop; conditionally hide PII and all outbound action buttons |
-| `src/components/bunk/DMChatScreen.tsx` | Add `isDemoMode` prop; hide send input when true |
-| `src/components/bunk/BunkSidebar.tsx` | Pass `isDemoMode` to SidebarContactList instances |
-| Any parent rendering SidebarContactList or DMChatScreen | Pass the `isDemoMode` prop through |
+**File: `src/pages/Login.tsx`** (lines 80-85)
 
-### Security Note
-
-This is a UI-level enforcement. The database already blocks demo users from INSERT/UPDATE via RLS (DEMO role is excluded from `is_tour_admin_or_mgmt`). Demo users can SELECT contacts (names, roles) through `is_tour_member`, which is correct -- they need to see who is on the tour. The phone/email data is visible at the DB level but hidden in the UI. For stricter protection, a database view excluding phone/email for DEMO users could be added as a follow-up, but the UI gate combined with existing write-blocking RLS provides practical protection.
+- Add a new `<div>` block after the tagline `<p>` and before the closing `</div>` of the text-center section
+- Use `text-xs text-muted-foreground/70` styling for the body text and `text-sm font-semibold text-foreground` for the headline
+- Keep the max width constrained so it reads well on mobile
+- No new components or dependencies needed -- just a few lines of JSX
 
