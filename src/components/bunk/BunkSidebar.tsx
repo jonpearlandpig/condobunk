@@ -317,18 +317,9 @@ const BunkSidebar = () => {
             <ChevronRight className={`h-3 w-3 transition-transform ${venuePartnersOpen ? "rotate-90" : ""}`} />
             <Building2 className="h-3 w-3" />
             Venue Partners
-            {(() => {
-              const contactCount = tourVenueGroups.reduce((sum, g) => sum + g.totalContacts, 0);
-              const venueCount = tourVenueGroups.reduce((sum, g) => sum + g.venueGroups.length, 0);
-              return (
-                <span className="ml-auto flex items-center gap-1.5 normal-case tracking-normal">
-                  <span className="text-muted-foreground/40">{contactCount}</span>
-                  {contactCount === 0 && venueCount > 0 && (
-                    <span className="text-[8px] text-muted-foreground/30">{venueCount} venues</span>
-                  )}
-                </span>
-              );
-            })()}
+            <span className="ml-auto text-muted-foreground/40 normal-case tracking-normal">
+              {tourVenueGroups.reduce((sum, g) => sum + g.totalContacts, 0)}
+            </span>
           </button>
           {venuePartnersOpen && (
             <SidebarGroupContent>
@@ -362,7 +353,7 @@ const BunkSidebar = () => {
                         >
                           <ChevronRight className={`h-3 w-3 text-muted-foreground/50 shrink-0 transition-transform ${isExpanded ? "rotate-90" : ""}`} />
                           <span className="text-xs font-medium text-sidebar-foreground truncate">{tvg.tourName}</span>
-                          <span className="ml-auto text-[10px] font-mono text-muted-foreground/40">{tvg.venueGroups.length}</span>
+                          <span className="ml-auto text-[10px] font-mono text-muted-foreground/40">{tvg.totalContacts}</span>
                         </button>
                         {isExpanded && (
                           <div className="ml-2 border-l border-border/30 pl-1">
