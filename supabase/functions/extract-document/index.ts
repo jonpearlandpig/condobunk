@@ -1865,36 +1865,44 @@ Deno.serve(async (req) => {
     const isVenueDoc = ["TECH", "VENUE"].includes(finalDocType);
     const isContactsDoc = finalDocType === "CONTACTS";
     if (contacts.length > 0) {
-      // For CONTACTS-type docs, only insert TOUR_TEAM contacts (skip crew & venue staff)
-      const filteredContacts = isContactsDoc
-        ? contacts.filter(c => {
-            const cat = (c as any).category?.toUpperCase?.() || "";
-            // Default to TOUR_TEAM if no category (backward compat)
-            return cat === "TOUR_TEAM" || cat === "";
-          })
-        : contacts;
+      // Insert ALL contacts — crew, cast, management, venue staff
+      const rows = contacts.map(c => {
+        const cat = (c as any).category?.toUpperCase?.() || "";
+        // VENUE_STAFF → VENUE scope; everything else → TOUR scope (unless venue doc)
+        const isVenueStaff = cat === "VENUE_STAFF";
+        const scope = isVenueDoc || isVenueStaff ? "VENUE" : "TOUR";
 
-      const skipped = contacts.length - filteredContacts.length;
-      if (skipped > 0) {
-        console.log(`[extract] Filtered out ${skipped} non-TOUR_TEAM contacts from CONTACTS doc`);
-      }
+        // Prefix role with category for crew/cast so they're distinguishable in sidebar
+        let role = c.role || null;
+        if (cat === "TOUR_CREW" && role) {
+          role = `Crew | ${role}`;
+        } else if (cat === "TOUR_CREW" && !role) {
+          role = "Crew";
+        } else if (cat === "CAST" && role) {
+          role = `Cast | ${role}`;
+        } else if (cat === "CAST" && !role) {
+          role = "Cast";
+        }
 
-      if (filteredContacts.length > 0) {
-        const rows = filteredContacts.map(c => ({
+        return {
           tour_id: doc.tour_id,
           name: c.name,
           phone: c.phone || null,
           email: c.email || null,
-          role: c.role || null,
+          role,
           source_doc_id: document_id,
-          scope: isVenueDoc ? "VENUE" : "TOUR",
-          venue: isVenueDoc ? (aiResult?.venues?.[0]?.name || filename.replace(/\.[^.]+$/, "")) : null,
-        }));
+          scope,
+          venue: (isVenueDoc || isVenueStaff)
+            ? ((c as any).venue || aiResult?.venues?.[0]?.name || filename.replace(/\.[^.]+$/, ""))
+            : null,
+        };
+      });
 
+      if (rows.length > 0) {
         const { error: cErr } = await adminClient.from("contacts").insert(rows);
         if (cErr) console.error("[extract] contacts insert error:", cErr);
-        else console.log("[extract] Inserted", filteredContacts.length, "contacts (scope:", isVenueDoc ? "VENUE" : "TOUR", ")");
-        totalExtracted += filteredContacts.length;
+        else console.log("[extract] Inserted", rows.length, "contacts");
+        totalExtracted += rows.length;
       }
     }
 
