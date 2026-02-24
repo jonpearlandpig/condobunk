@@ -53,7 +53,7 @@ export const TourProvider = ({ children }: { children: React.ReactNode }) => {
     // Add missing memberships — matches is uuid[] from RPC
     const toInsert = (matches || [])
       .filter((tourId: string) => !existingTourIds.has(tourId))
-      .map((tourId: string) => ({ tour_id: tourId, user_id: user.id, role: "MGMT" as const }));
+      .map((tourId: string) => ({ tour_id: tourId, user_id: user.id, role: "CREW" as const }));
     if (toInsert.length > 0) {
       await supabase.from("tour_members").insert(toInsert);
     }
