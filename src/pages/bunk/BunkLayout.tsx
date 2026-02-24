@@ -2,7 +2,8 @@ import { Outlet, useSearchParams } from "react-router-dom";
 import BunkSidebar from "@/components/bunk/BunkSidebar";
 import MobileBottomNav from "@/components/bunk/MobileBottomNav";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
-import { Radio, LogOut, Camera } from "lucide-react";
+import { LogOut, Camera } from "lucide-react";
+import whiteBunks from "@/assets/WHITE_BUNKS.png";
 import { useAuth } from "@/hooks/useAuth";
 import { TourProvider } from "@/hooks/useTour";
 import { useIsMobile } from "@/hooks/use-mobile";
@@ -112,7 +113,7 @@ const BunkLayout = () => {
               <div className="flex items-center gap-2 md:gap-3">
                 <SidebarTrigger />
                 <div className="flex items-center gap-2">
-                  <Radio className="h-4 w-4 text-primary" />
+                  <img src={whiteBunks} alt="Condo Bunk" className="h-5 w-5 object-contain" />
                   <span className="font-mono text-xs text-muted-foreground tracking-widest hidden md:inline">
                     CONDO BUNK
                   </span>
