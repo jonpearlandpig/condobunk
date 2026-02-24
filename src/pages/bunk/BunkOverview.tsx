@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback, useMemo } from "react";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
@@ -472,54 +473,58 @@ const BunkOverview = () => {
         initial={{ opacity: 0, y: 12 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.1 }}
-        className="rounded-lg border border-primary/20 bg-primary/5 p-3 sm:p-5"
       >
-        <div className="flex items-center justify-between mb-3">
-          <div className="flex items-center gap-2">
-            <Radio className="h-4 w-4 text-primary" />
-            <span className="font-mono text-[10px] tracking-[0.15em] text-primary font-semibold">
-              DAILY BRIEFING
-            </span>
+        <Collapsible defaultOpen className="rounded-lg border border-primary/20 bg-primary/5 p-3 sm:p-5">
+          <div className="flex items-center justify-between">
+            <CollapsibleTrigger className="flex items-center gap-2 hover:opacity-80 transition-opacity">
+              <Radio className="h-4 w-4 text-primary" />
+              <span className="font-mono text-[10px] tracking-[0.15em] text-primary font-semibold">
+                DAILY BRIEFING
+              </span>
+              <ChevronRight className="h-3 w-3 text-primary/60 transition-transform duration-200 [[data-state=open]>&]:rotate-90" />
+            </CollapsibleTrigger>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7 text-primary/60 hover:text-primary"
+              onClick={() => generateTldr(true)}
+              disabled={tldrLoading}
+              title="Refresh briefing"
+            >
+              <RefreshCw className={`h-3.5 w-3.5 ${tldrLoading ? "animate-spin" : ""}`} />
+            </Button>
           </div>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-7 w-7 text-primary/60 hover:text-primary"
-            onClick={() => generateTldr(true)}
-            disabled={tldrLoading}
-            title="Refresh briefing"
-          >
-            <RefreshCw className={`h-3.5 w-3.5 ${tldrLoading ? "animate-spin" : ""}`} />
-          </Button>
-        </div>
-        {tldrLoading ? (
-          <div className="flex items-center gap-2 py-2">
-            <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />
-            <span className="text-xs text-muted-foreground font-mono">Generating briefing...</span>
-          </div>
-        ) : (
-          <div className="space-y-2.5">
-            {tldr.map((item, i) => (
-              <div key={i} className="flex items-start gap-2 group">
-                <span className="text-primary/60 mt-0.5 shrink-0">▸</span>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm text-foreground/90 leading-relaxed font-mono">
-                    {item.text}
-                  </p>
-                  {item.actionable && (
-                     <button
-                      onClick={() => navigate(`/bunk/chat?q=${encodeURIComponent(item.text)}`)}
-                      className="mt-1 inline-flex items-center gap-1.5 text-[11px] font-mono tracking-wider text-primary hover:text-primary/80 transition-colors min-h-[44px] sm:min-h-0 px-2 -mx-2 sm:px-0 sm:mx-0"
-                    >
-                      <ChevronRight className="h-3 w-3" />
-                      ASK TELA
-                    </button>
-                  )}
-                </div>
+          <CollapsibleContent className="mt-3">
+            {tldrLoading ? (
+              <div className="flex items-center gap-2 py-2">
+                <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />
+                <span className="text-xs text-muted-foreground font-mono">Generating briefing...</span>
               </div>
-            ))}
-          </div>
-        )}
+            ) : (
+              <div className="space-y-2.5">
+                {tldr.map((item, i) => (
+                  <div key={i} className="flex items-start gap-2 group">
+                    <span className="text-primary/60 mt-0.5 shrink-0">▸</span>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm text-foreground/90 leading-relaxed font-mono">
+                        {item.text}
+                      </p>
+                      {item.actionable && (
+                         <button
+                          onClick={() => navigate(`/bunk/chat?q=${encodeURIComponent(item.text)}`)}
+                          className="mt-1 inline-flex items-center gap-1.5 text-[11px] font-mono tracking-wider text-primary hover:text-primary/80 transition-colors min-h-[44px] sm:min-h-0 px-2 -mx-2 sm:px-0 sm:mx-0"
+                        >
+                          <ChevronRight className="h-3 w-3" />
+                          ASK TELA
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </CollapsibleContent>
+        </Collapsible>
       </motion.div>
 
       {/* Welcome Quick Actions for new invitees */}
