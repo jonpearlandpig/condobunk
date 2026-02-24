@@ -1014,6 +1014,50 @@ export type Database = {
           },
         ]
       }
+      upgrade_requests: {
+        Row: {
+          id: string
+          requested_at: string
+          resolved_at: string | null
+          resolved_by: string | null
+          status: string
+          tour_id: string
+          user_email: string | null
+          user_id: string
+          user_name: string | null
+        }
+        Insert: {
+          id?: string
+          requested_at?: string
+          resolved_at?: string | null
+          resolved_by?: string | null
+          status?: string
+          tour_id: string
+          user_email?: string | null
+          user_id: string
+          user_name?: string | null
+        }
+        Update: {
+          id?: string
+          requested_at?: string
+          resolved_at?: string | null
+          resolved_by?: string | null
+          status?: string
+          tour_id?: string
+          user_email?: string | null
+          user_id?: string
+          user_name?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "upgrade_requests_tour_id_fkey"
+            columns: ["tour_id"]
+            isOneToOne: false
+            referencedRelation: "tours"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       user_artifacts: {
         Row: {
           artifact_type: string
@@ -1377,8 +1421,13 @@ export type Database = {
     Functions: {
       accept_tour_invite: { Args: { _token: string }; Returns: Json }
       activate_demo_mode: { Args: never; Returns: Json }
+      approve_upgrade_request: {
+        Args: { _request_id: string }
+        Returns: boolean
+      }
       cleanup_expired_demos: { Args: never; Returns: undefined }
       deactivate_demo_mode: { Args: never; Returns: boolean }
+      deny_upgrade_request: { Args: { _request_id: string }; Returns: boolean }
       is_tour_admin_or_mgmt: { Args: { _tour_id: string }; Returns: boolean }
       is_tour_member: { Args: { _tour_id: string }; Returns: boolean }
       match_contact_tours: { Args: { _email: string }; Returns: string[] }

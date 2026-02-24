@@ -35,7 +35,8 @@ Deno.serve(async (req) => {
       });
     }
 
-    const { user_email, user_name, expires_at } = await req.json();
+    const body = await req.json();
+    const { user_email, user_name, expires_at, type } = body;
 
     // Use service role to insert DM to jonathan
     const adminClient = createClient(supabaseUrl, serviceKey);
@@ -57,15 +58,20 @@ Deno.serve(async (req) => {
     }
 
     const tourId = tours[0].id;
-    const expiresFormatted = new Date(expires_at).toLocaleString("en-US", {
-      month: "short",
-      day: "numeric",
-      hour: "numeric",
-      minute: "2-digit",
-      timeZoneName: "short",
-    });
 
-    const messageText = `🔔 New demo activation: ${user_name || "Unknown"} (${user_email || "no email"}) — expires ${expiresFormatted}`;
+    let messageText: string;
+    if (type === "upgrade_request") {
+      messageText = `🚀 Upgrade request: ${user_name || "Unknown"} (${user_email || "no email"}) wants full CondoBunk access`;
+    } else {
+      const expiresFormatted = new Date(expires_at).toLocaleString("en-US", {
+        month: "short",
+        day: "numeric",
+        hour: "numeric",
+        minute: "2-digit",
+        timeZoneName: "short",
+      });
+      messageText = `🔔 New demo activation: ${user_name || "Unknown"} (${user_email || "no email"}) — expires ${expiresFormatted}`;
+    }
 
     // Insert as a DM from the demo user to jonathan
     await adminClient.from("direct_messages").insert({

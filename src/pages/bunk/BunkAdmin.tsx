@@ -72,6 +72,97 @@ const roleBadgeVariant = (role: string) => {
   return "outline";
 };
 
+// Pending Upgrade Requests component for tour owner
+const PendingUpgradeRequests = ({ tourId, ownerId, userId }: { tourId: string; ownerId?: string; userId?: string }) => {
+  const [requests, setRequests] = useState<any[]>([]);
+  const [loadingReqs, setLoadingReqs] = useState(false);
+
+  const isOwner = userId && ownerId && userId === ownerId;
+
+  const loadRequests = useCallback(async () => {
+    if (!tourId || !isOwner) return;
+    setLoadingReqs(true);
+    const { data } = await supabase
+      .from("upgrade_requests" as any)
+      .select("*")
+      .eq("tour_id", tourId)
+      .order("requested_at", { ascending: false });
+    setRequests((data as any[]) || []);
+    setLoadingReqs(false);
+  }, [tourId, isOwner]);
+
+  useEffect(() => { loadRequests(); }, [loadRequests]);
+
+  if (!isOwner || requests.length === 0) return null;
+
+  const pending = requests.filter((r: any) => r.status === "PENDING");
+  const resolved = requests.filter((r: any) => r.status !== "PENDING");
+
+  const handleApprove = async (requestId: string) => {
+    const { error } = await supabase.rpc("approve_upgrade_request" as any, { _request_id: requestId });
+    if (error) toast.error(error.message);
+    else { toast.success("User upgraded to full access!"); loadRequests(); }
+  };
+
+  const handleDeny = async (requestId: string) => {
+    const { error } = await supabase.rpc("deny_upgrade_request" as any, { _request_id: requestId });
+    if (error) toast.error(error.message);
+    else { toast.success("Request denied"); loadRequests(); }
+  };
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center gap-2">
+        <UserPlus className="h-5 w-5 text-primary" />
+        <h2 className="text-lg font-semibold">Upgrade Requests</h2>
+        {pending.length > 0 && <Badge variant="destructive" className="font-mono text-xs">{pending.length} pending</Badge>}
+      </div>
+
+      {pending.length > 0 && (
+        <div className="space-y-2">
+          {pending.map((req: any) => (
+            <Card key={req.id} className="p-4 flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium">{req.user_name || "Unknown"}</p>
+                <p className="text-xs text-muted-foreground font-mono">{req.user_email}</p>
+                <p className="text-[10px] text-muted-foreground mt-1">
+                  Requested {new Date(req.requested_at).toLocaleString()}
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                <Button size="sm" variant="default" onClick={() => handleApprove(req.id)}>
+                  <CheckCircle className="h-3.5 w-3.5 mr-1" /> Approve
+                </Button>
+                <Button size="sm" variant="outline" onClick={() => handleDeny(req.id)}>
+                  <XCircle className="h-3.5 w-3.5 mr-1" /> Deny
+                </Button>
+              </div>
+            </Card>
+          ))}
+        </div>
+      )}
+
+      {resolved.length > 0 && (
+        <details className="text-xs">
+          <summary className="text-muted-foreground cursor-pointer font-mono tracking-wider">
+            {resolved.length} resolved request{resolved.length !== 1 ? "s" : ""}
+          </summary>
+          <div className="mt-2 space-y-1">
+            {resolved.map((req: any) => (
+              <div key={req.id} className="flex items-center justify-between px-3 py-2 rounded bg-muted/30">
+                <span>{req.user_name || req.user_email} — <Badge variant={req.status === "APPROVED" ? "default" : "outline"} className="text-[10px]">{req.status}</Badge></span>
+                <span className="text-muted-foreground">{new Date(req.resolved_at).toLocaleDateString()}</span>
+              </div>
+            ))}
+          </div>
+        </details>
+      )}
+
+      <Separator />
+    </div>
+  );
+};
+
 const BunkAdmin = () => {
   const { selectedTourId, selectedTour, isDemoMode } = useTour();
   const { user } = useAuth();
@@ -376,6 +467,9 @@ const BunkAdmin = () => {
           Team, integrations & sync management
         </p>
       </div>
+
+      {/* Pending Upgrade Requests */}
+      <PendingUpgradeRequests tourId={selectedTourId} ownerId={selectedTour?.owner_id} userId={user?.id} />
 
       {/* Team Management */}
       <div className="space-y-3">

@@ -21,6 +21,8 @@ interface TourContextType {
   demoExpiresAt: string | null;
   exitDemo: () => Promise<void>;
   activateDemo: () => Promise<boolean>;
+  requestUpgrade: () => Promise<boolean>;
+  upgradeRequested: boolean;
 }
 
 const TourContext = createContext<TourContextType>({
@@ -34,6 +36,8 @@ const TourContext = createContext<TourContextType>({
   demoExpiresAt: null,
   exitDemo: async () => {},
   activateDemo: async () => false,
+  requestUpgrade: async () => false,
+  upgradeRequested: false,
 });
 
 export const useTour = () => useContext(TourContext);
@@ -45,6 +49,7 @@ export const TourProvider = ({ children }: { children: React.ReactNode }) => {
   const [loading, setLoading] = useState(true);
   const [isDemoMode, setIsDemoMode] = useState(false);
   const [demoExpiresAt, setDemoExpiresAt] = useState<string | null>(null);
+  const [upgradeRequested, setUpgradeRequested] = useState(false);
 
   const autoMatchContacts = async () => {
     if (!user?.email) return;
@@ -146,6 +151,68 @@ export const TourProvider = ({ children }: { children: React.ReactNode }) => {
     }
   };
 
+  const requestUpgrade = async (): Promise<boolean> => {
+    if (!user || !isDemoMode) return false;
+    try {
+      // Check if already requested
+      const { data: existing } = await supabase
+        .from("upgrade_requests" as any)
+        .select("id, status")
+        .eq("user_id", user.id)
+        .eq("status", "PENDING")
+        .maybeSingle();
+      if (existing) {
+        setUpgradeRequested(true);
+        return true; // already pending
+      }
+
+      // Get user profile info
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("display_name, email")
+        .eq("id", user.id)
+        .single();
+
+      // Insert request for each demo tour
+      const tourIds = tours.map(t => t.id);
+      for (const tourId of tourIds) {
+        await supabase.from("upgrade_requests" as any).insert({
+          user_id: user.id,
+          user_email: profile?.email || user.email,
+          user_name: profile?.display_name || user.user_metadata?.full_name,
+          tour_id: tourId,
+        });
+      }
+
+      // Notify via edge function (fire-and-forget)
+      supabase.functions.invoke("notify-demo-activation", {
+        body: {
+          type: "upgrade_request",
+          user_email: profile?.email || user.email,
+          user_name: profile?.display_name || user.user_metadata?.full_name,
+        },
+      }).catch(console.error);
+
+      setUpgradeRequested(true);
+      return true;
+    } catch (err) {
+      console.error("Failed to request upgrade:", err);
+      return false;
+    }
+  };
+
+  // Check if user already has a pending upgrade request
+  const checkUpgradeStatus = async () => {
+    if (!user) return;
+    const { data } = await supabase
+      .from("upgrade_requests" as any)
+      .select("id")
+      .eq("user_id", user.id)
+      .eq("status", "PENDING")
+      .limit(1);
+    setUpgradeRequested(!!(data && data.length > 0));
+  };
+
   const exitDemo = async () => {
     try {
       await supabase.rpc("deactivate_demo_mode" as any);
@@ -160,7 +227,10 @@ export const TourProvider = ({ children }: { children: React.ReactNode }) => {
   };
 
   useEffect(() => {
-    if (user) loadTours();
+    if (user) {
+      loadTours();
+      checkUpgradeStatus();
+    }
   }, [user]);
 
   const selectedTour = tours.find((t) => t.id === selectedTourId);
@@ -178,6 +248,8 @@ export const TourProvider = ({ children }: { children: React.ReactNode }) => {
         demoExpiresAt,
         exitDemo,
         activateDemo,
+        requestUpgrade,
+        upgradeRequested,
       }}
     >
       {children}
