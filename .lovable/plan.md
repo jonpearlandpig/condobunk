@@ -1,53 +1,52 @@
 
-## Fix: Auto-Generate Calendar Events from VAN Date Data
+
+## Make "+X more" Clickable on Desktop Calendar
 
 ### Problem
-The advance master was extracted successfully — all 30+ venues have their dates clearly embedded in the `day_and_date` text field (e.g., "Load-In (Wed): 2026-03-18 | Show Day 1 (Thu): 2026-03-19 @ 7:30 PM | Show Day 2 (Fri): 2026-03-20 @ 7:30 PM"). But the AI failed to populate the `event_dates` array, so zero `schedule_events` rows were created and the calendar is empty.
+When a calendar day has more events than the visible limit (2 in month view, 3 in week view), the overflow shows as "+X more" plain text with no way to view the hidden events.
 
-### Two-Part Fix
-
-**Part 1: Post-Extraction Date Backfill (extract-document edge function)**
-
-Add a deterministic date-parsing step that runs AFTER the AI extraction for advance master documents. Instead of relying solely on the AI to populate `event_dates`, the engine will:
-
-1. After inserting VANs, scan each VAN's `event_details.day_and_date` text field
-2. Parse all `YYYY-MM-DD` dates using a regex
-3. Classify each date as LOAD_IN, SHOW, TRAVEL, or OFF based on surrounding text ("Load-In", "Show Day", etc.)
-4. Extract show times from patterns like `@ 7:30 PM`
-5. Create `schedule_events` rows for every parsed date
-
-This is a safety net — if the AI populates `event_dates` correctly, those take priority. If not, the deterministic parser catches what the AI missed.
-
-**Part 2: Backfill Existing Keepers PAC Data Now**
-
-Create a one-time backfill function (or inline logic in the edge function) that can be triggered to re-parse existing VAN `day_and_date` fields and generate the missing `schedule_events`. This way the user doesn't have to re-upload the document.
+### Solution
+Make the "+X more" text a clickable button that opens a popover showing all events for that day. This keeps users in context without navigating away.
 
 ### Technical Detail
 
-**File: `supabase/functions/extract-document/index.ts`**
+**File: `src/pages/bunk/BunkCalendar.tsx`**
 
-Add a new helper function `parseDatesFromVanText(dayAndDate: string)` that:
+1. Add `Popover, PopoverTrigger, PopoverContent` imports from `@/components/ui/popover`
+2. Add state: `const [expandedDayKey, setExpandedDayKey] = useState<string | null>(null)`
+3. Replace the plain `<p>` overflow indicator (line 638-640) with a `Popover` that:
+   - Uses a styled button as trigger showing "+X more"
+   - Opens a `PopoverContent` listing ALL events for that day (full list, not truncated)
+   - Each event in the popover is clickable, opening the existing detail dialog
+   - The popover includes the day header (e.g., "Thu, Mar 20") for context
 
-```text
-Input:  "Load-In (Wed): 2026-03-18 | Show Day 1 (Thu): 2026-03-19 @ 7:30 PM Show Day 2 (Fri): 2026-03-20 @ 7:30 PM"
-
-Output: [
-  { date: "2026-03-18", type: "LOAD_IN", show_time: null },
-  { date: "2026-03-19", type: "SHOW", show_time: "19:30" },
-  { date: "2026-03-20", type: "SHOW", show_time: "19:30" }
-]
+**Before (line 638-640):**
+```
+<p className="text-[9px] font-mono text-muted-foreground pl-1">+{overflow} more</p>
 ```
 
-Insert this parsing step at ~line 1318 in the advance master VAN loop, right before the `datesToInsert` logic. If `eventDates` (from the AI) is empty but `day_and_date` text contains parseable dates, use the deterministic parser as fallback.
-
-**Changes summary:**
+**After:**
+```
+<Popover>
+  <PopoverTrigger asChild>
+    <button className="text-[9px] font-mono text-primary pl-1 hover:underline cursor-pointer">
+      +{overflow} more
+    </button>
+  </PopoverTrigger>
+  <PopoverContent className="w-64 p-2" align="start">
+    <p className="text-[10px] font-mono text-muted-foreground mb-1.5">
+      {format(day, "EEE, MMM d")} -- {dayEntries.length} events
+    </p>
+    <div className="space-y-1 max-h-48 overflow-y-auto">
+      {dayEntries.map(entry => (
+        // Render compact event buttons that open the detail dialog
+      ))}
+    </div>
+  </PopoverContent>
+</Popover>
+```
 
 | File | Change |
 |------|--------|
-| `supabase/functions/extract-document/index.ts` | Add `parseDatesFromVanText()` helper; integrate as fallback after AI extraction in the advance master VAN loop |
+| `src/pages/bunk/BunkCalendar.tsx` | Add Popover import; replace plain "+X more" with Popover showing all day events |
 
-### What This Means for You
-
-- Re-extracting the Keepers advance master document will now populate the calendar with all load-in days, show days, and travel days
-- Every venue's dates are already in the system — they just need to be parsed from text into calendar events
-- Future advance master uploads will always generate calendar events, even if the AI misses the `event_dates` array
