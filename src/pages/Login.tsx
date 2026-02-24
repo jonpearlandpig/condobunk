@@ -82,17 +82,35 @@ const Login = () => {
           <p className="text-sm text-muted-foreground tracking-wide mt-3">
             Close the curtain. Get schtuff done!
           </p>
-          <div className="mt-5 max-w-sm mx-auto space-y-2 text-left">
-            <p className="text-sm font-semibold text-foreground">
-              One source of truth for your tour.
-            </p>
-            <p className="text-xs text-muted-foreground/70 leading-relaxed">
-              CondoBunk extracts venue advances, tech packs, and contacts into a structured knowledge base — then makes it searchable for your entire crew via text message or in-app AI.
-            </p>
-            <p className="text-xs text-muted-foreground/50 italic">
-              No more digging through email threads. No more outdated spreadsheets.
-            </p>
-          </div>
+
+          <motion.div
+            initial="hidden"
+            animate="visible"
+            variants={{ hidden: {}, visible: { transition: { staggerChildren: 0.15, delayChildren: 0.3 } } }}
+            className="mt-8 max-w-sm mx-auto space-y-6 text-center"
+          >
+            <motion.div variants={{ hidden: { opacity: 0, y: 12 }, visible: { opacity: 1, y: 0 } }}>
+              <h2 className="text-xl font-bold font-mono tracking-widest text-foreground">
+                TOUR LAW LIVES HERE.
+              </h2>
+            </motion.div>
+
+            <motion.div variants={{ hidden: { opacity: 0, y: 12 }, visible: { opacity: 1, y: 0 } }} className="space-y-2">
+              <p className="text-sm text-muted-foreground leading-relaxed">
+                CondoBunk is your tour's command center. Upload advances, tech packs, and contacts —
+                <span className="font-semibold text-foreground"> TELA</span> (Tour Intelligence) turns them into searchable, structured knowledge for your entire operation.
+              </p>
+            </motion.div>
+
+            <motion.div variants={{ hidden: { opacity: 0, y: 12 }, visible: { opacity: 1, y: 0 } }} className="space-y-2">
+              <h3 className="text-base font-bold font-mono tracking-wider text-primary">
+                TOURTEXT
+              </h3>
+              <p className="text-sm text-muted-foreground leading-relaxed">
+                One phone number. One text. Your crew is one question away from anything they need to know — and so much more.
+              </p>
+            </motion.div>
+          </motion.div>
         </div>
 
         <div className="rounded-lg border border-border bg-card p-6 shadow-lg" style={{ boxShadow: 'var(--shadow-card)' }}>
