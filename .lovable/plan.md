@@ -1,72 +1,39 @@
 
 
-## Fix: Schedule Events Not Created from Advance Master
+## Save Crew and Cast Contacts from Document Extraction
 
-### Root Cause
+### Problem
 
-The Keepers Advance Master PDF has **multiple dates per venue** (load-in Wednesday, show Thursday, show Friday). But the extraction prompt (`ADVANCE_MASTER_VAN_PROMPT`) only asks for a single `event_date` field per venue. The AI couldn't pick just one, so it returned `null` for all 35 venues. Since schedule event creation is gated by `if (eventDate)` (line 1293), zero events were created.
+When a CONTACTS-type document is uploaded, the extraction logic explicitly **filters out** any contact categorized as `TOUR_CREW` (stagehands, riggers, lighting techs, audio techs, etc.). Only `TOUR_TEAM` (management) contacts are saved. This means crew and cast members extracted from the Advance Master are silently dropped.
 
-The 70 contacts and 71 VANs were extracted successfully -- only the schedule is missing.
+The filtering happens in `supabase/functions/extract-document/index.ts` at lines 1868-1874:
 
-### Fix (Two Parts)
-
-#### Part 1: Update `ADVANCE_MASTER_VAN_PROMPT` to capture multiple dates
-
-Change the prompt schema from:
-```
-"event_date": "YYYY-MM-DD" or null
-```
-to:
-```
-"event_dates": [
-  {"date": "YYYY-MM-DD", "type": "LOAD_IN" | "SHOW" | "TRAVEL" | "OFF" | "REHEARSAL", "show_time": "HH:MM" or null}
-]
+```text
+const filteredContacts = isContactsDoc
+  ? contacts.filter(c => {
+      const cat = (c as any).category?.toUpperCase?.() || "";
+      return cat === "TOUR_TEAM" || cat === "";
+    })
+  : contacts;
 ```
 
-Add a rule: "Each venue may have multiple dates (load-in, show days, travel days). Extract ALL dates into the event_dates array. If only one date is mentioned, still use the array format."
+### Fix
 
-**File:** `supabase/functions/extract-document/index.ts` (ADVANCE_MASTER_VAN_PROMPT, around line 547-665)
+Remove the `TOUR_CREW` exclusion filter so all extracted contacts (TOUR_TEAM, TOUR_CREW, VENUE_STAFF) are saved. To keep them organized and distinguishable in the sidebar, preserve the extracted `category` in the contact's `role` field (e.g., prepend "Crew - " or "Cast - " to the role).
 
-#### Part 2: Update the schedule event insertion logic for advance masters
+### Changes
 
-Currently (lines 1292-1336), the code does:
-```typescript
-if (eventDate) { /* insert one event */ }
-```
+**File: `supabase/functions/extract-document/index.ts`**
 
-Change to handle the new `event_dates` array:
-1. Read `v.event_dates` as an array
-2. Fall back to the single `v.event_date` for backward compatibility
-3. Loop through all dates and insert one `schedule_events` row per date
-4. Set appropriate notes per event type (e.g., "Load-In Day" vs "Show Day")
-5. Dedup by tour_id + event_date before inserting
+1. Remove the `isContactsDoc` filter that drops TOUR_CREW contacts (lines 1868-1880)
+2. Instead, insert ALL extracted contacts
+3. Map the `category` into the `role` field so crew/cast contacts are visually distinct in the sidebar (e.g., if category is `TOUR_CREW` and role is `Lighting Designer`, store role as `Crew | Lighting Designer`)
+4. Keep `VENUE_STAFF` contacts scoped as `VENUE` instead of `TOUR` so they appear in the venue partners section
 
-**File:** `supabase/functions/extract-document/index.ts` (around lines 1292-1336)
+**No database migration needed.** The existing `contacts` table already supports all contact types -- the only barrier was the application-level filter dropping them before insertion.
 
-### Technical Details
+**No sidebar changes needed.** The `SidebarContactList` already renders all `TOUR`-scoped contacts in the Tour Team tab. Crew/cast contacts will appear there with their category-prefixed role for easy identification.
 
-**Single file changed:** `supabase/functions/extract-document/index.ts`
+### Result
 
-**Prompt changes (ADVANCE_MASTER_VAN_PROMPT):**
-- Replace `"event_date": "YYYY-MM-DD" or null` with `"event_dates": [{"date": "YYYY-MM-DD", "type": "LOAD_IN|SHOW|TRAVEL|OFF|REHEARSAL", "show_time": "HH:MM or null"}]`
-- Keep `"event_date"` in the schema as a convenience alias (first show date) for VAN storage
-- Add extraction rule: "CRITICAL: Most venues have multiple dates (load-in day + show days). Extract ALL dates into the event_dates array. Do NOT collapse multiple dates into one."
-
-**Insertion logic changes:**
-- After VAN insertion, read `v.event_dates` array (or fall back to `[{date: v.event_date, type: "SHOW"}]`)
-- For each date entry, insert a `schedule_events` row with:
-  - `event_date` = the date
-  - `venue` = venue name
-  - `city` = city
-  - `show_time` = parsed from the entry's `show_time` field (for SHOW type) or null
-  - `notes` = include the event type (e.g., "Load-In Day" or "Show Day 1")
-  - `source_doc_id` = document_id
-- Dedup: delete existing events for same tour_id + event_date before inserting
-- Increment `totalEvents` for each successfully inserted row
-
-**Expected result for Keepers tour:** ~105 schedule events (35 venues x 3 dates each: 1 load-in + 2 shows)
-
-**No database migration needed.** The `schedule_events` table already supports all required fields.
-
-After deploying, the user would need to re-extract the Keepers document (archive and re-upload, or we could add a "re-extract" button) to populate the schedule.
-
+After this change, re-uploading or re-extracting a document will save all crew, cast, and management contacts. They will be editable, searchable, and visible in the sidebar like any other contact.
