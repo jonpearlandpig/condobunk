@@ -39,6 +39,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import VenueTelaMini from "@/components/bunk/VenueTelaMini";
+import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
 import AddEventDialog from "@/components/bunk/AddEventDialog";
 import EventNoteEditor from "@/components/bunk/EventNoteEditor";
 import { Button } from "@/components/ui/button";
@@ -636,7 +637,39 @@ const BunkCalendar = () => {
                     );
                   })}
                   {overflow > 0 && (
-                    <p className="text-[9px] font-mono text-muted-foreground pl-1">+{overflow} more</p>
+                    <Popover>
+                      <PopoverTrigger asChild>
+                        <button className="text-[9px] font-mono text-primary pl-1 hover:underline cursor-pointer bg-transparent border-none p-0 text-left">
+                          +{overflow} more
+                        </button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-64 p-2" align="start" side="bottom">
+                        <p className="text-[10px] font-mono text-muted-foreground mb-1.5">
+                          {format(day, "EEE, MMM d")} — {dayEntries.length} events
+                        </p>
+                        <div className="space-y-1 max-h-48 overflow-y-auto">
+                          {dayEntries.map((entry) => {
+                            const cIdx = tourColorMap[entry.tourId] ?? 0;
+                            const c = TOUR_COLORS[cIdx];
+                            const Icon = entry.category === "SHOW" ? Music : (TRAVEL_ICONS[entry.travelType || ""] || Plane);
+                            return (
+                              <button
+                                key={entry.id}
+                                onClick={() => setSelectedEntry(entry)}
+                                className={`w-full text-left rounded px-1.5 py-1 text-[10px] leading-tight transition-colors border ${c.bg} ${c.text} ${c.border} ${c.hover}`}
+                              >
+                                <div className="flex items-center gap-1">
+                                  <Icon className="h-2.5 w-2.5 shrink-0" />
+                                  <span className="font-semibold truncate flex-1">{entry.title}</span>
+                                </div>
+                                {entry.subtitle && <div className="truncate opacity-70 pl-3.5 text-[9px]">{entry.subtitle}</div>}
+                                {entry.showTime && <div className="truncate opacity-80 pl-3.5 text-[9px] font-mono">🎤 {entry.showTime}</div>}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </PopoverContent>
+                    </Popover>
                   )}
                 </div>
               </div>
