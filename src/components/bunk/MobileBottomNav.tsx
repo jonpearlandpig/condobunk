@@ -130,7 +130,7 @@ const MobileBottomNav = ({ avatarUrl, displayName, user, signOut, fileInputRef }
   const { tourTeamGroups, tourVenueGroups, updateContact, deleteContact } = useSidebarContacts();
   const { onlineUsers } = usePresence();
   const { totalUnread, unreadFrom, refetch: refetchUnread } = useUnreadDMs();
-  const { tours } = useTour();
+  const { tours, isDemoMode } = useTour();
   const tourId = tours[0]?.id;
 
   if (!isMobile) return null;
@@ -192,6 +192,7 @@ const MobileBottomNav = ({ avatarUrl, displayName, user, signOut, fileInputRef }
             setActiveDMContact(null);
             refetchUnread();
           }}
+          isDemoMode={isDemoMode}
         />
       )}
 
@@ -243,11 +244,12 @@ const MobileBottomNav = ({ avatarUrl, displayName, user, signOut, fileInputRef }
                     <SidebarContactList
                       contacts={g.contacts}
                       onNavigate={() => setDrawerOpen(false)}
-                      onUpdate={updateContact}
-                      onDelete={deleteContact}
+                      onUpdate={isDemoMode ? undefined : updateContact}
+                      onDelete={isDemoMode ? undefined : deleteContact}
                       onlineUserIds={onlineUsers}
                       unreadFrom={unreadFrom}
-                      onContactTap={handleContactTap}
+                      onContactTap={isDemoMode ? undefined : handleContactTap}
+                      isDemoMode={isDemoMode}
                     />
                   </CollapsibleSection>
                 ))}
@@ -261,11 +263,12 @@ const MobileBottomNav = ({ avatarUrl, displayName, user, signOut, fileInputRef }
                       <SidebarContactList
                         contacts={tvg.venueGroups.flatMap(vg => vg.contacts)}
                         onNavigate={() => setDrawerOpen(false)}
-                        onUpdate={updateContact}
-                        onDelete={deleteContact}
+                        onUpdate={isDemoMode ? undefined : updateContact}
+                        onDelete={isDemoMode ? undefined : deleteContact}
                         onlineUserIds={onlineUsers}
                         grouped
                         venueGroups={tvg.venueGroups}
+                        isDemoMode={isDemoMode}
                       />
                     </CollapsibleSection>
                   ))}
