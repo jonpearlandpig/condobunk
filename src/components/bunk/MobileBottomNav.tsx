@@ -278,7 +278,7 @@ const MobileBottomNav = ({ avatarUrl, displayName, user, signOut, fileInputRef }
               {/* Ask TELA — closest to thumb */}
               <CollapsibleSection title="Ask TELA" defaultOpen>
                 <SidebarProvider defaultOpen={false}>
-                  <SidebarTelaThreads />
+                  <SidebarTelaThreads isDemoMode={isDemoMode} />
                 </SidebarProvider>
               </CollapsibleSection>
           </div>

@@ -219,7 +219,7 @@ const BunkSidebar = () => {
 
         <Separator className="mx-4 w-auto" />
 
-        <SidebarTelaThreads />
+        <SidebarTelaThreads isDemoMode={isDemoMode} />
 
         <SidebarGroup>
           <button

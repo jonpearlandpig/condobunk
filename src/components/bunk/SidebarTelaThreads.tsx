@@ -8,7 +8,7 @@ import { SidebarGroup, SidebarGroupContent } from "@/components/ui/sidebar";
 import { formatDistanceToNow } from "date-fns";
 import { toast } from "sonner";
 
-const SidebarTelaThreads = () => {
+const SidebarTelaThreads = ({ isDemoMode }: { isDemoMode?: boolean }) => {
   const { threads, loading, renameThread, deleteThread } = useTelaThreads();
   const { setOpenMobile, setOpen } = useSidebar();
   const isMobile = useIsMobile();
@@ -108,20 +108,22 @@ const SidebarTelaThreads = () => {
                             {formatDistanceToNow(new Date(t.updated_at), { addSuffix: true })}
                           </p>
                         </div>
-                        <div className="hidden group-hover:flex items-center gap-0.5 shrink-0">
-                          <button
-                            onClick={(e) => { e.stopPropagation(); startRename(t.id, t.title); }}
-                            className="p-0.5 rounded text-muted-foreground/50 hover:text-foreground"
-                          >
-                            <Pencil className="h-3 w-3" />
-                          </button>
-                          <button
-                            onClick={(e) => { e.stopPropagation(); handleDelete(t.id); }}
-                            className="p-0.5 rounded text-muted-foreground/50 hover:text-destructive"
-                          >
-                            <Trash2 className="h-3 w-3" />
-                          </button>
-                        </div>
+                        {!isDemoMode && (
+                          <div className="hidden group-hover:flex items-center gap-0.5 shrink-0">
+                            <button
+                              onClick={(e) => { e.stopPropagation(); startRename(t.id, t.title); }}
+                              className="p-0.5 rounded text-muted-foreground/50 hover:text-foreground"
+                            >
+                              <Pencil className="h-3 w-3" />
+                            </button>
+                            <button
+                              onClick={(e) => { e.stopPropagation(); handleDelete(t.id); }}
+                              className="p-0.5 rounded text-muted-foreground/50 hover:text-destructive"
+                            >
+                              <Trash2 className="h-3 w-3" />
+                            </button>
+                          </div>
+                        )}
                       </>
                     )}
                   </div>
