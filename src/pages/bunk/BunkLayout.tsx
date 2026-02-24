@@ -1,7 +1,7 @@
 import { Outlet, useSearchParams } from "react-router-dom";
 import BunkSidebar from "@/components/bunk/BunkSidebar";
 import MobileBottomNav from "@/components/bunk/MobileBottomNav";
-import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
+import { SidebarProvider, useSidebar } from "@/components/ui/sidebar";
 import { LogOut, Camera } from "lucide-react";
 import whiteBunks from "@/assets/white_condobunks.png";
 import { useAuth } from "@/hooks/useAuth";
@@ -19,6 +19,21 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+
+const SidebarLogoTrigger = () => {
+  const { toggleSidebar } = useSidebar();
+  return (
+    <button
+      onClick={toggleSidebar}
+      className="flex items-center gap-2 px-2 py-1 rounded-md hover:bg-accent/50 cursor-pointer transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+    >
+      <img src={whiteBunks} alt="Condo Bunk" className="h-5 w-5 object-contain" />
+      <span className="font-mono text-xs text-muted-foreground tracking-widest hidden md:inline">
+        CONDO BUNK
+      </span>
+    </button>
+  );
+};
 
 const BunkLayoutInner = () => {
   const { user, signOut } = useAuth();
@@ -126,14 +141,7 @@ const BunkLayoutInner = () => {
         />
         <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
           <header className="hidden md:flex h-12 items-center justify-between border-b border-border px-4 bg-card/50">
-            <SidebarTrigger asChild>
-              <button className="flex items-center gap-2 px-2 py-1 rounded-md hover:bg-accent/50 cursor-pointer transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
-                <img src={whiteBunks} alt="Condo Bunk" className="h-5 w-5 object-contain" />
-                <span className="font-mono text-xs text-muted-foreground tracking-widest hidden md:inline">
-                  CONDO BUNK
-                </span>
-              </button>
-            </SidebarTrigger>
+            <SidebarLogoTrigger />
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <button className="h-7 w-7 rounded-full overflow-hidden ring-1 ring-border hover:ring-primary transition-all focus:outline-none focus:ring-2 focus:ring-primary" aria-label="Account menu">
