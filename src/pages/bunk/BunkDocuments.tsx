@@ -107,6 +107,7 @@ const BunkDocuments = () => {
   const [renameTarget, setRenameTarget] = useState<DocRow | null>(null);
   const [renameValue, setRenameValue] = useState("");
   const [showArchived, setShowArchived] = useState(false);
+  const [backfilling, setBackfilling] = useState(false);
 
   const activeDocuments = documents.filter(d => !d.archived_at);
   const archivedDocuments = documents.filter(d => !!d.archived_at);
@@ -261,6 +262,30 @@ const BunkDocuments = () => {
     }
   };
 
+  const runBackfill = async () => {
+    if (!selectedTourId) return;
+    setBackfilling(true);
+    try {
+      const { data, error } = await invokeWithTimeout(
+        "backfill-schedule-events",
+        { tour_id: selectedTourId }
+      );
+      if (error) throw error;
+      toast({
+        title: "Dates re-extracted",
+        description: `${data.events_created} calendar events created from ${data.vans_processed} venues.`,
+      });
+      loadDocuments();
+    } catch (err: any) {
+      toast({
+        title: "Re-extraction failed",
+        description: err.message,
+        variant: "destructive",
+      });
+    } finally {
+      setBackfilling(false);
+    }
+  };
   const handleArchive = async (doc: DocRow) => {
     try {
       // 1. Find event IDs and tech spec IDs linked to this document
@@ -544,6 +569,22 @@ const BunkDocuments = () => {
                             >
                               <Eye className="h-3 w-3" />
                               REVIEW
+                            </Button>
+                          )}
+                          {doc.doc_type === "SCHEDULE" && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="font-mono text-[10px] h-7 gap-1"
+                              onClick={() => runBackfill()}
+                              disabled={backfilling}
+                            >
+                              {backfilling ? (
+                                <Loader2 className="h-3 w-3 animate-spin" />
+                              ) : (
+                                <RotateCcw className="h-3 w-3" />
+                              )}
+                              RE-EXTRACT DATES
                             </Button>
                           )}
                           <button
