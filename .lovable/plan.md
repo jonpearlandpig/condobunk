@@ -1,58 +1,33 @@
 
 
-## Rewrite Login Page Copy: Make It Hit Hard
+## Replace Menu Icon with Clickable Logo
 
-### Problem
-The current product summary reads like a feature list — small text, generic SaaS copy. It doesn't convey the energy or the two-product relationship (CondoBunk + TourText). Users should feel like they're entering something powerful, not just logging into another tool.
+### What Changes
 
-### New Copy Direction
-
-Replace the small summary block with bold, stacked messaging that explains both products and gets people hyped. Bigger text, more personality, clear separation between what CondoBunk is and what TourText is.
-
-**Proposed layout:**
-
-```text
-[  CONDO BUNK LOGO  ]
-Close the curtain. Get schtuff done!
-
-TOUR LAW LIVES HERE.                        <- big, bold headline
-
-CondoBunk is your tour's command center.
-Upload advances, tech packs, and contacts —
-TELA (Tour Intelligence) turns them into
-searchable, structured knowledge for your
-entire operation.
-
-TOURTEXT                                     <- secondary headline
-One phone number. One text.
-Your crew is one question away from
-anything they need to know — and
-so much more.
-
-[========= LOGIN FORM =========]
-```
-
-### Visual Treatment
-
-- **"TOUR LAW LIVES HERE."** — `text-lg` or `text-xl`, `font-bold`, `font-mono`, `tracking-widest`, foreground color. This is the anchor line.
-- **CondoBunk description** — `text-sm`, `text-muted-foreground`, relaxed leading. Explains the workspace.
-- **"TOURTEXT"** — `text-base`, `font-bold`, `font-mono`, burnt orange accent color to visually separate it as the crew-facing product.
-- **TourText description** — `text-sm`, `text-muted-foreground`. Short, punchy, one-liner energy.
-- Centered alignment throughout, max-w-sm for readability.
-- Add subtle staggered fade-in animations using framer-motion for each block.
+Remove the `SidebarTrigger` hamburger icon from the header and make the white bunk logo + "CONDO BUNK" text act as the sidebar toggle instead.
 
 ### Technical Detail
 
-**File: `src/pages/Login.tsx`** (lines 82-95)
+**File: `src/pages/bunk/BunkLayout.tsx`** (lines 129-136)
 
-- Remove the existing tagline `<p>` and the `<div>` summary block
-- Replace with the new structured copy blocks described above
-- Use existing `motion.div` or add lightweight staggered children for the fade-in effect
-- No new components or dependencies — just JSX and existing tailwind classes + framer-motion (already installed)
+- Remove the `<SidebarTrigger />` component from the header
+- Wrap the logo `<img>` and "CONDO BUNK" text in a `<SidebarTrigger asChild>` so clicking the logo toggles the sidebar
+- Style the wrapper button with `cursor-pointer` and a subtle hover effect
+- Keep the `useSidebar` hook's `toggleSidebar` accessible via the `SidebarTrigger` component (which already handles this internally with `asChild`)
 
-### Single File Change
+**Before:**
+```text
+[hamburger icon]  [bunk logo]  CONDO BUNK          [avatar]
+```
+
+**After:**
+```text
+[bunk logo]  CONDO BUNK  (clickable, toggles sidebar)    [avatar]
+```
+
+### Single file change
 
 | File | Change |
 |------|--------|
-| `src/pages/Login.tsx` | Replace lines 82-95 with new bold copy blocks |
+| `src/pages/bunk/BunkLayout.tsx` | Remove standalone `SidebarTrigger`, wrap logo+text in `SidebarTrigger asChild` |
 
