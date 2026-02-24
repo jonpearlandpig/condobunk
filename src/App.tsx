@@ -20,6 +20,12 @@ import BunkSetup from "./pages/bunk/BunkSetup";
 import BunkArtifacts from "./pages/bunk/BunkArtifacts";
 import BunkChangeLog from "./pages/bunk/BunkChangeLog";
 import NotFound from "./pages/NotFound";
+import SiteLayout from "./components/site/SiteLayout";
+import SiteLanding from "./pages/site/SiteLanding";
+import SiteFeatures from "./pages/site/SiteFeatures";
+import SiteAbout from "./pages/site/SiteAbout";
+import SitePricing from "./pages/site/SitePricing";
+import SiteContact from "./pages/site/SiteContact";
 
 const queryClient = new QueryClient();
 
@@ -70,6 +76,13 @@ const App = () => (
               <Route path="changelog" element={<BunkChangeLog />} />
             </Route>
             <Route path="*" element={<NotFound />} />
+            <Route path="/site" element={<SiteLayout />}>
+              <Route index element={<SiteLanding />} />
+              <Route path="features" element={<SiteFeatures />} />
+              <Route path="about" element={<SiteAbout />} />
+              <Route path="pricing" element={<SitePricing />} />
+              <Route path="contact" element={<SiteContact />} />
+            </Route>
           </Routes>
         </AuthProvider>
       </BrowserRouter>
