@@ -313,9 +313,18 @@ const BunkSidebar = () => {
             <ChevronRight className={`h-3 w-3 transition-transform ${venuePartnersOpen ? "rotate-90" : ""}`} />
             <Building2 className="h-3 w-3" />
             Venue Partners
-            <span className="ml-auto text-muted-foreground/40 normal-case tracking-normal">
-              {tourVenueGroups.reduce((sum, g) => sum + g.venueGroups.length, 0)}
-            </span>
+            {(() => {
+              const contactCount = tourVenueGroups.reduce((sum, g) => sum + g.totalContacts, 0);
+              const venueCount = tourVenueGroups.reduce((sum, g) => sum + g.venueGroups.length, 0);
+              return (
+                <span className="ml-auto flex items-center gap-1.5 normal-case tracking-normal">
+                  <span className="text-muted-foreground/40">{contactCount}</span>
+                  {contactCount === 0 && venueCount > 0 && (
+                    <span className="text-[8px] text-muted-foreground/30">{venueCount} venues</span>
+                  )}
+                </span>
+              );
+            })()}
           </button>
           {venuePartnersOpen && (
             <SidebarGroupContent>
