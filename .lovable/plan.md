@@ -1,70 +1,46 @@
 
 
-## Make All AKB Changes Through TELA — Full CRUD via Chat
+## Fix: Venue Partners Not Showing When No Schedule Events Exist
 
-### What exists today
-TELA can already **create** contacts, **update** events/contacts/VANs, and **resolve** conflicts/gaps via action cards with sign-off. These changes land in the database and dispatch `akb-changed` / `contacts-changed` events so the UI refreshes everywhere.
+### Root Cause
 
-### What's missing
-Two things prevent TELA from being the complete command center:
+The Keepers PAC Tour actually **has 60 venue contacts** in the database (Belk Theater, Proctors Theatre, etc.) -- they were successfully extracted. The problem is they're invisible in the sidebar.
 
-1. **No DELETE actions** — You can't remove an event, contact, or VAN from TELA. The action types `delete_event`, `delete_contact`, and `delete_van` don't exist.
-2. **No CREATE event action** — You can create contacts but not schedule events.
+The sidebar filtering logic in `useSidebarContacts.ts` works like this:
+1. Fetch schedule events with future dates
+2. Build a venue map from those events
+3. Only show contacts that fuzzy-match a venue from that map
 
-### Plan
+The Keepers tour has **zero schedule events**, so step 2 produces an empty map, and step 3 shows nothing. The "0" count is correct from the sidebar's perspective, but misleading -- the contacts exist, they just can't be displayed.
 
-#### 1. Add new action types to `useTelaActions.ts`
+### Fix
 
-Add three new types to `TelaActionType`:
-- `delete_event` — deletes a `schedule_events` row by ID, logs to change log
-- `delete_contact` — deletes a `contacts` row by ID, logs to change log, dispatches `contacts-changed`
-- `create_event` — inserts a new `schedule_events` row with fields like `venue`, `city`, `event_date`, `notes`, `load_in`, `show_time`
+Update `useSidebarContacts.ts` to show venue contacts even when no schedule events exist by falling back to grouping contacts by their `venue` field directly.
 
-Each follows the same pattern as existing actions:
-- Resolve tour_id deterministically
-- Execute the DB operation
-- Log to `akb_change_log`
-- Dispatch refresh events (`akb-changed`, `contacts-changed`)
-- Show toast with tour name confirmation
+**File: `src/hooks/useSidebarContacts.ts`**
 
-#### 2. Update `getActionLabel()` in `useTelaActions.ts`
+After the schedule-event-based venue grouping logic, add a fallback: if the event-based venue map is empty (or doesn't cover all contacts), group remaining VENUE-scoped contacts by their `contact.venue` field. This ensures contacts extracted from advance masters appear in the sidebar regardless of whether schedule events have been created.
 
-Add labels:
-- `delete_event` -> "Remove Event"
-- `delete_contact` -> "Remove Contact"
-- `create_event` -> "Add Event"
+For each tour:
+1. After building `tourVenues` from schedule events, collect any VENUE contacts for that tour whose `venue` field doesn't fuzzy-match any event venue
+2. Group those "orphan" contacts by their own `contact.venue` value
+3. Append those groups to `tourVenues` (sorted alphabetically, after the date-sorted event venues)
 
-#### 3. Update TELA system prompt in `akb-chat/index.ts`
-
-Add the new action block formats to the system prompt so the AI knows it can propose deletions and event creation:
-
-```
-<<ACTION:{"type":"delete_event","id":"<event_uuid>","tour_id":"<tour_uuid>"}>>
-<<ACTION:{"type":"delete_contact","id":"<contact_uuid>","tour_id":"<tour_uuid>"}>>
-<<ACTION:{"type":"create_event","id":"new","tour_id":"<tour_uuid>","fields":{"venue":"Venue Name","city":"City","event_date":"2026-03-15","notes":"Off day"}}>>
-```
-
-Add rules:
-- For delete actions, TELA must explain what will be removed and why before the action block
-- Deletions are permanent and require sign-off like all other actions
-- For create_event, `venue` and `event_date` are required fields
-
-#### 4. Sign-off gate stays mandatory
-
-All new actions route through the existing `AkbEditSignoff` dialog — the user must provide a reason and flag safety/time/money impact before any delete or create executes. No changes needed here; `TelaActionCard` already handles this.
-
-#### 5. Propagation
-
-All changes already propagate:
-- **UI**: `window.dispatchEvent(new Event("akb-changed"))` triggers re-fetches in Calendar, Overview, Conflicts, Gaps
-- **TourText SMS**: The `akb-chat` edge function queries live DB data on every SMS, so deleted/added records are immediately reflected
-- **Change Log**: Every action writes to `akb_change_log`, visible at `/bunk/changelog`
+This way:
+- Contacts tied to schedule events still appear in chronological order
+- Contacts from advance masters without matching events appear alphabetically after, with their venue name as the group label
+- The count badge shows the real total
 
 ### Technical Details
 
-**Files modified:**
-- `src/hooks/useTelaActions.ts` — Add `delete_event`, `delete_contact`, `create_event` to type union and `executeAction` switch
-- `supabase/functions/akb-chat/index.ts` — Add new action block examples and rules to system prompt
+**Single file change:** `src/hooks/useSidebarContacts.ts`
 
-**No database changes needed** — existing tables and RLS policies already support DELETE on `schedule_events` and `contacts` for TA/MGMT roles, and INSERT for `schedule_events`.
+In the per-tour venue group building loop (around line 120-140), after filtering contacts by event venues:
+- Collect all venue contacts for the tour
+- Find contacts not already included in an event-based group
+- Group them by `contact.venue`
+- Append as additional `VenueGroup` entries with `city: null` and `earliestDate: "9999-12-31"` (sorts to end)
+- Recalculate `totalContacts` to include these orphan contacts
+
+No database changes needed. No edge function changes needed.
 
