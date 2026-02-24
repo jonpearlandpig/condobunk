@@ -61,9 +61,11 @@ interface SidebarContactListProps {
   onRemoveMember?: (contact: SidebarContact) => Promise<void>;
   /** Callback to explicitly refetch unread DM counts */
   onUnreadRefetch?: () => void;
+  /** When true, hide PII (phone/email) and disable all outbound actions */
+  isDemoMode?: boolean;
 }
 
-const SidebarContactList = ({ contacts, onNavigate, onUpdate, onDelete, onlineUserIds, unreadFrom, grouped, venueGroups, activeInvites, onInviteCreated, onContactTap, isOwner, onRemoveMember, onUnreadRefetch }: SidebarContactListProps) => {
+const SidebarContactList = ({ contacts, onNavigate, onUpdate, onDelete, onlineUserIds, unreadFrom, grouped, venueGroups, activeInvites, onInviteCreated, onContactTap, isOwner, onRemoveMember, onUnreadRefetch, isDemoMode }: SidebarContactListProps) => {
   const navigate = useNavigate();
   const isMobile = useIsMobile();
   const { user } = useAuth();
@@ -91,6 +93,9 @@ const SidebarContactList = ({ contacts, onNavigate, onUpdate, onDelete, onlineUs
   };
 
   const handleMessage = (c: SidebarContact) => {
+    // Block all outbound messaging in demo mode
+    if (isDemoMode) return;
+
     // If parent provides a tap handler (e.g. messaging drawer), delegate to it
     if (onContactTap) {
       onContactTap(c);
@@ -322,17 +327,22 @@ const SidebarContactList = ({ contacts, onNavigate, onUpdate, onDelete, onlineUs
     }
 
     const isMissingContact = !c.phone && !c.email;
-    const telaFixQuery = isMissingContact
+    const telaFixQuery = isDemoMode ? "" : (isMissingContact
       ? showQuickActions
         ? `Find contact details for ${c.name}${c.role ? ` (${c.role})` : ""}${c.venue ? ` at ${c.venue}` : ""}. Check tech packs and advance documents for phone and email. If you find them, update the contact.`
         : `Find contact details for ${c.name}${c.role ? ` (${c.role})` : ""}. Check all tour documents for phone and email. If you find them, update the contact.`
-      : "";
+      : "");
 
     return (
       <div key={c.id}>
         <div
           className="group flex items-center justify-between px-4 py-2 hover:bg-sidebar-accent/50 rounded-md transition-colors cursor-pointer"
           onClick={() => {
+            if (isDemoMode) {
+              // In demo mode, tapping expands on mobile but does nothing on desktop
+              if (isMobile) toggleExpand(c.id);
+              return;
+            }
             if (isMobile) {
               toggleExpand(c.id);
             } else if (!isMissingContact) {
@@ -363,7 +373,7 @@ const SidebarContactList = ({ contacts, onNavigate, onUpdate, onDelete, onlineUs
                   )}
                 </div>
               {c.role && <p className="text-[10px] font-mono text-muted-foreground/60 truncate leading-tight">{c.role}</p>}
-              {isMissingContact && (
+              {!isDemoMode && isMissingContact && (
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
@@ -379,8 +389,8 @@ const SidebarContactList = ({ contacts, onNavigate, onUpdate, onDelete, onlineUs
             </div>
           </div>
 
-          {/* Desktop actions */}
-          {!isMobile && !isMissingContact && (
+          {/* Desktop actions — hidden in demo mode */}
+          {!isMobile && !isDemoMode && !isMissingContact && (
             <>
               {/* Venue contacts: keep minimal inline icons (only 2, they fit) */}
               {showQuickActions ? (
@@ -468,7 +478,7 @@ const SidebarContactList = ({ contacts, onNavigate, onUpdate, onDelete, onlineUs
           )}
 
           {/* Mobile: minimal indicators — tap to expand for actions */}
-          {isMobile && (
+          {isMobile && !isDemoMode && (
             <div className="flex items-center gap-1 shrink-0 ml-2">
               {isMissingContact ? (
                 <MessageSquare className="h-3 w-3 text-primary/60" />
@@ -486,7 +496,7 @@ const SidebarContactList = ({ contacts, onNavigate, onUpdate, onDelete, onlineUs
         </div>
 
         {/* Mobile: expanded action bar */}
-        {isMobile && expandedId === c.id && (
+        {isMobile && expandedId === c.id && !isDemoMode && (
           <div className="flex items-center gap-1 px-4 py-2 bg-sidebar-accent/30 rounded-b-md mx-1 mb-0.5">
             {!isMissingContact && (c.appUserId || c.phone) && (
               <button
@@ -557,9 +567,24 @@ const SidebarContactList = ({ contacts, onNavigate, onUpdate, onDelete, onlineUs
             )}
           </div>
         )}
+        {/* Mobile: demo mode expanded — only TELA button */}
+        {isMobile && expandedId === c.id && isDemoMode && (
+          <div className="flex items-center gap-1 px-4 py-2 bg-sidebar-accent/30 rounded-b-md mx-1 mb-0.5">
+            <button
+              onClick={() => {
+                handleChat(c);
+                setExpandedId(null);
+              }}
+              className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-md bg-primary/10 text-primary text-xs font-mono font-medium active:bg-primary/20 transition-colors"
+            >
+              <MessageSquare className="h-3.5 w-3.5" />
+              TELA
+            </button>
+          </div>
+        )}
 
         {/* Inline Bunk Chat */}
-        {chattingWith === c.id && c.appUserId && (
+        {!isDemoMode && chattingWith === c.id && c.appUserId && (
           <div className="mx-1 mb-1 rounded-md border border-border bg-background/80 overflow-hidden">
             <div className="px-3 py-1.5 border-b border-border bg-muted/30 flex items-center justify-between">
               <span className="text-[10px] font-mono text-muted-foreground tracking-wider">BUNK CHAT</span>

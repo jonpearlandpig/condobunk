@@ -10,9 +10,10 @@ interface DMChatScreenProps {
   userId: string;
   isContactOnline: boolean;
   onClose: () => void;
+  isDemoMode?: boolean;
 }
 
-const DMChatScreen = ({ contact, tourId, userId, isContactOnline, onClose }: DMChatScreenProps) => {
+const DMChatScreen = ({ contact, tourId, userId, isContactOnline, onClose, isDemoMode }: DMChatScreenProps) => {
   const [messages, setMessages] = useState<Array<{ id: string; sender_id: string; message_text: string; created_at: string }>>([]);
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
@@ -146,7 +147,11 @@ const DMChatScreen = ({ contact, tourId, userId, isContactOnline, onClose }: DMC
 
       {/* Input bar */}
       <div className="shrink-0 border-t border-border bg-card px-4 py-3" style={{ paddingBottom: "max(env(safe-area-inset-bottom, 0px), 12px)" }}>
-        {isContactOnline ? (
+        {isDemoMode ? (
+          <div className="flex items-center justify-center py-2 text-xs font-mono text-muted-foreground tracking-wider">
+            Messaging disabled in demo mode
+          </div>
+        ) : isContactOnline ? (
           <div className="flex items-center gap-2 bg-muted/50 rounded-full px-4 py-2">
             <input
               value={input}

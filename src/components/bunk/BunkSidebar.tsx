@@ -269,7 +269,7 @@ const BunkSidebar = () => {
                   <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground/40" />
                 </div>
               ) : filteredTourTeamGroups.length <= 1 ? (
-                <SidebarContactList contacts={filteredTourTeamGroups[0]?.contacts || []} onNavigate={handleNavClick} onUpdate={updateContact} onDelete={deleteContact} onlineUserIds={onlineUsers} unreadFrom={unreadFrom} activeInvites={activeInvites} onInviteCreated={fetchInvites} isOwner={isOwner} onRemoveMember={handleRemoveMember} onUnreadRefetch={refetchUnread} />
+                <SidebarContactList contacts={filteredTourTeamGroups[0]?.contacts || []} onNavigate={handleNavClick} onUpdate={isDemoMode ? undefined : updateContact} onDelete={isDemoMode ? undefined : deleteContact} onlineUserIds={onlineUsers} unreadFrom={unreadFrom} activeInvites={activeInvites} onInviteCreated={fetchInvites} isOwner={isOwner} onRemoveMember={handleRemoveMember} onUnreadRefetch={refetchUnread} isDemoMode={isDemoMode} />
               ) : (
                 <div className="space-y-0.5">
                   {filteredTourTeamGroups.map((group) => {
@@ -297,7 +297,7 @@ const BunkSidebar = () => {
                         </button>
                         {isExpanded && (
                           <div className="ml-2 border-l border-border/30 pl-1">
-                            <SidebarContactList contacts={group.contacts} onNavigate={handleNavClick} onUpdate={updateContact} onDelete={deleteContact} onlineUserIds={onlineUsers} unreadFrom={unreadFrom} activeInvites={activeInvites} onInviteCreated={fetchInvites} isOwner={isOwner} onRemoveMember={handleRemoveMember} onUnreadRefetch={refetchUnread} />
+                            <SidebarContactList contacts={group.contacts} onNavigate={handleNavClick} onUpdate={isDemoMode ? undefined : updateContact} onDelete={isDemoMode ? undefined : deleteContact} onlineUserIds={onlineUsers} unreadFrom={unreadFrom} activeInvites={activeInvites} onInviteCreated={fetchInvites} isOwner={isOwner} onRemoveMember={handleRemoveMember} onUnreadRefetch={refetchUnread} isDemoMode={isDemoMode} />
                           </div>
                         )}
                       </div>
@@ -331,7 +331,7 @@ const BunkSidebar = () => {
                 <p className="px-4 py-1.5 text-xs text-muted-foreground/50 italic">No upcoming venues</p>
               ) : tourVenueGroups.length === 1 ? (
                 /* Single tour: show venue groups directly */
-                <SidebarContactList contacts={venueContacts} onNavigate={handleNavClick} onUpdate={updateContact} onDelete={deleteContact} onlineUserIds={onlineUsers} grouped venueGroups={tourVenueGroups[0].venueGroups} />
+                <SidebarContactList contacts={venueContacts} onNavigate={handleNavClick} onUpdate={isDemoMode ? undefined : updateContact} onDelete={isDemoMode ? undefined : deleteContact} onlineUserIds={onlineUsers} grouped venueGroups={tourVenueGroups[0].venueGroups} isDemoMode={isDemoMode} />
               ) : (
                 /* Multiple tours: nest under tour folders */
                 <div className="space-y-0.5">
@@ -360,11 +360,12 @@ const BunkSidebar = () => {
                             <SidebarContactList
                               contacts={tvg.venueGroups.flatMap(vg => vg.contacts)}
                               onNavigate={handleNavClick}
-                              onUpdate={updateContact}
-                              onDelete={deleteContact}
+                              onUpdate={isDemoMode ? undefined : updateContact}
+                              onDelete={isDemoMode ? undefined : deleteContact}
                               onlineUserIds={onlineUsers}
                               grouped
                               venueGroups={tvg.venueGroups}
+                              isDemoMode={isDemoMode}
                             />
                           </div>
                         )}
