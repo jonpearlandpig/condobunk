@@ -1,65 +1,44 @@
 
 
-## Add Metadata JSONB Column and Update Extraction for Extended Crew/Cast Fields
+## Show Tour/Artist Name on Every Event Card
 
-### Overview
-
-Add a `metadata` JSONB column to the `contacts` table and update the extraction prompt + insertion logic to capture all 20+ crew/cast fields (bus number, clothing sizes, DOB, contract/compliance status, address, dietary notes, etc.).
+### Problem
+When working multiple tours, you can't tell at a glance which tour an event belongs to. The tour name only shows on desktop grid cards in global multi-tour mode, and it's tiny and faded.
 
 ### Changes
 
-#### 1. Database Migration
+**File: `src/pages/bunk/BunkCalendar.tsx`**
 
-Add `metadata jsonb DEFAULT '{}'` column to `contacts` table. No existing data is affected -- all current contacts get an empty `{}` metadata object.
+All changes make the tour name the **first line** on every event card, always visible regardless of how many tours you have.
 
-#### 2. Update Extraction Prompt (`supabase/functions/extract-document/index.ts`, ~line 139)
-
-Expand the contacts schema from 5 fields to 27 fields:
-
+#### 1. Mobile Event Cards (~line 547-565)
+Add the tour name as a bold top line above the venue name:
 ```text
-"contacts": [
-  {
-    "name", "first_name", "last_name", "preferred_name",
-    "role", "phone", "email", "category",
-    "bus_number", "dob", "age",
-    "jacket_size", "pants_size", "sweatshirt_size", "tshirt_size",
-    "contract", "caps", "mvr", "drivers_release", "confirmed_wc",
-    "address", "city", "state", "zip",
-    "arrival_date", "special_notes"
-  }
-]
+[Icon] Keepers of the House        >
+       Madison Square Garden
+       New York, NY  |  Show 8:00 PM
 ```
 
-The AI will extract whatever fields are present in the document and return null for fields not found.
-
-#### 3. Update Contact Insertion Logic (~line 1887)
-
-After building name/role/scope, collect the 21 extended fields into a `metadata` object and include it in the insert row:
-
-```typescript
-const metaFields = [
-  'bus_number','first_name','last_name','preferred_name',
-  'dob','age','jacket_size','pants_size','sweatshirt_size',
-  'tshirt_size','contract','caps','mvr','drivers_release',
-  'confirmed_wc','address','city','state','zip',
-  'arrival_date','special_notes'
-];
-const metadata = {};
-for (const f of metaFields) {
-  if (c[f] != null && c[f] !== "") metadata[f] = c[f];
-}
-
-// Insert includes: ...existingFields, metadata
+#### 2. Desktop Grid Event Cards (~line 604-635)
+Move tour name to the top of each card instead of the bottom, remove the `isGlobal && tours.length > 1` condition so it always shows:
+```text
+[Icon] Keepers of the House
+       Madison Square Garden
+       New York, NY
+       Show 8:00 PM
 ```
 
-### Files Changed
+#### 3. Upcoming Shows List (~line 668-679)
+Add a tour name column/label between the date and venue name so you can scan the list and know which tour each show belongs to.
 
-| File | Change |
-|------|--------|
-| New migration SQL | `ALTER TABLE contacts ADD COLUMN metadata jsonb DEFAULT '{}'` |
-| `supabase/functions/extract-document/index.ts` | Expand prompt schema + build metadata in insertion |
+#### 4. Detail Dialog Header (~line 694-711)
+Add the tour name as a small label above the venue title in the event detail dialog so when you tap into a card, the tour context is immediately clear.
 
-### Result
+### Visual Hierarchy (all cards)
+1. **Tour/Artist Name** -- top line, slightly smaller, uses the tour color
+2. **Venue Name** -- primary line, bold
+3. **City** -- secondary
+4. **Times** -- tertiary
 
-Re-extracting a crew roster will populate all extended fields into `metadata`. The sidebar and existing queries are unaffected (they don't read `metadata`). The Admin AKB Contacts hub (future task) will display and edit these fields.
-
+### No Database Changes
+All data is already available in `CalendarEntry.tourName`. This is purely a UI rearrangement.
