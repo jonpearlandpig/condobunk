@@ -553,7 +553,10 @@ Return a JSON object:
       "venue_name": "Official Venue Name",
       "normalized_venue_name": "lowercase-hyphenated-venue-name",
       "city": "City, ST",
-      "event_date": "YYYY-MM-DD" or null,
+      "event_date": "YYYY-MM-DD" or null (first show date, for backward compat),
+      "event_dates": [
+        {"date": "YYYY-MM-DD", "type": "LOAD_IN" | "SHOW" | "TRAVEL" | "OFF" | "REHEARSAL", "show_time": "HH:MM" or null}
+      ],
 
       "event_details": {
         "day_and_date": "full day and date string",
@@ -662,7 +665,8 @@ CRITICAL RULES:
 - The labour.labor_notes field is CRITICAL — capture the COMPLETE labor rules including minimums, meal penalties, overtime, department rules, etc. This is often the longest field. Do NOT truncate.
 - Flag risks: no docks, long push distance (>200ft), restricted haze, complex union rules, limited power, no CO2, street load.
 - Return ONLY valid JSON, no markdown, no code blocks.
-- ZERO DATA LOSS. Every cell of data in every venue column must appear.`;
+- ZERO DATA LOSS. Every cell of data in every venue column must appear.
+- CRITICAL: Most venues have MULTIPLE dates (load-in day + show days + travel days). Extract ALL dates into the event_dates array. Do NOT collapse multiple dates into one. If a venue has "Wed Load-In, Thu Show, Fri Show", that is 3 entries in event_dates. If only one date is mentioned, still use the array format with one entry. Set event_date to the first SHOW date for backward compatibility.`;
 
 // ─── Multi-Venue Master Document Prompt (legacy non-advance-master) ───
 
@@ -1289,42 +1293,66 @@ Deno.serve(async (req) => {
               if (!cErr) totalContacts += venueContacts.length;
             }
 
-            // Insert/update schedule event
-            if (eventDate) {
-              const showTimes = ((v.venue_schedule as Record<string, string>)?.show_times) || null;
-              const chairSet = ((v.venue_schedule as Record<string, string>)?.chair_set) || null;
-              const busArrival = ((v.event_details as Record<string, string>)?.bus_arrival_time) || null;
-              const capacity = ((v.event_details as Record<string, string>)?.onsale_capacity) || null;
+            // Insert/update schedule events (supports multiple dates per venue)
+            const eventDates = (v.event_dates as Array<{ date?: string; type?: string; show_time?: string }>) || [];
+            // Backward compat: if no event_dates array, fall back to single event_date
+            const datesToInsert = eventDates.length > 0
+              ? eventDates.filter(ed => ed.date)
+              : (eventDate ? [{ date: eventDate, type: "SHOW" as string, show_time: null as string | null }] : []);
 
-              // Dedup by date + venue + tour
+            const showTimes = ((v.venue_schedule as Record<string, string>)?.show_times) || null;
+            const chairSet = ((v.venue_schedule as Record<string, string>)?.chair_set) || null;
+            const busArrival = ((v.event_details as Record<string, string>)?.bus_arrival_time) || null;
+            const capacity = ((v.event_details as Record<string, string>)?.onsale_capacity) || null;
+
+            for (const dateEntry of datesToInsert) {
+              const entryDate = dateEntry.date!;
+              const entryType = (dateEntry.type || "SHOW").toUpperCase();
+
+              // Dedup by date + tour
               await adminClient.from("schedule_events").delete()
                 .eq("tour_id", doc.tour_id)
-                .eq("event_date", eventDate);
+                .eq("event_date", entryDate);
 
+              // Build notes
               const notesParts: string[] = [];
+              if (entryType === "LOAD_IN") notesParts.push("Load-In Day");
+              else if (entryType === "TRAVEL") notesParts.push("Travel Day");
+              else if (entryType === "OFF") notesParts.push("Day Off");
+              else if (entryType === "REHEARSAL") notesParts.push("Rehearsal Day");
+              else notesParts.push("Show Day");
+
               if (busArrival) notesParts.push(`Bus Arrival: ${busArrival}`);
               if (chairSet) notesParts.push(`Chair Set: ${chairSet}`);
-              if (showTimes) notesParts.push(`Show: ${showTimes}`);
+              if (showTimes && entryType === "SHOW") notesParts.push(`Show: ${showTimes}`);
               if (capacity) notesParts.push(`Capacity: ${capacity}`);
 
-              // Try to parse show time for the show_time column
+              // Parse show_time for SHOW-type events
               let showTimeTs: string | null = null;
-              if (showTimes) {
-                const showMatch = showTimes.match(/(?:show\s*(?:at\s*)?|start\s*)(\d{1,2}(?::?\d{2})?\s*(?:am|pm))/i);
-                if (showMatch) {
-                  const t = showMatch[1].replace(/\s+/g, "").toLowerCase();
-                  const isPM = t.includes("pm");
-                  const nums = t.replace(/[apm]/g, "");
-                  let [h, m] = nums.includes(":") ? nums.split(":").map(Number) : [Number(nums), 0];
-                  if (isPM && h < 12) h += 12;
-                  if (!isPM && h === 12) h = 0;
-                  showTimeTs = `${eventDate}T${String(h).padStart(2, "0")}:${String(m || 0).padStart(2, "0")}:00`;
+              const timeSource = dateEntry.show_time || (entryType === "SHOW" ? showTimes : null);
+              if (timeSource) {
+                // Try HH:MM 24h format first
+                const hhmm = timeSource.match(/^(\d{1,2}):(\d{2})$/);
+                if (hhmm) {
+                  showTimeTs = `${entryDate}T${String(hhmm[1]).padStart(2, "0")}:${hhmm[2]}:00`;
+                } else {
+                  // Try 12h format
+                  const showMatch = timeSource.match(/(?:show\s*(?:at\s*)?|start\s*)?(\d{1,2}(?::?\d{2})?\s*(?:am|pm))/i);
+                  if (showMatch) {
+                    const t = showMatch[1].replace(/\s+/g, "").toLowerCase();
+                    const isPM = t.includes("pm");
+                    const nums = t.replace(/[apm]/g, "");
+                    let [h, m] = nums.includes(":") ? nums.split(":").map(Number) : [Number(nums), 0];
+                    if (isPM && h < 12) h += 12;
+                    if (!isPM && h === 12) h = 0;
+                    showTimeTs = `${entryDate}T${String(h).padStart(2, "0")}:${String(m || 0).padStart(2, "0")}:00`;
+                  }
                 }
               }
 
               const { error: evtErr } = await adminClient.from("schedule_events").insert({
                 tour_id: doc.tour_id,
-                event_date: eventDate,
+                event_date: entryDate,
                 city: city || null,
                 venue: venueName,
                 show_time: showTimeTs,
