@@ -332,7 +332,13 @@ const SidebarContactList = ({ contacts, onNavigate, onUpdate, onDelete, onlineUs
       <div key={c.id}>
         <div
           className="group flex items-center justify-between px-4 py-2 hover:bg-sidebar-accent/50 rounded-md transition-colors cursor-pointer"
-          onClick={() => isMobile && toggleExpand(c.id)}
+          onClick={() => {
+            if (isMobile) {
+              toggleExpand(c.id);
+            } else if (!isMissingContact) {
+              handleMessage(c);
+            }
+          }}
         >
           <div className="min-w-0 flex-1 flex items-center gap-2">
             {c.appUserId && (
