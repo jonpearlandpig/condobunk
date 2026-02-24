@@ -1,42 +1,58 @@
 
 
-## Add Product Summary to Login Page
+## Rewrite Login Page Copy: Make It Hit Hard
 
-### What Changes
+### Problem
+The current product summary reads like a feature list — small text, generic SaaS copy. It doesn't convey the energy or the two-product relationship (CondoBunk + TourText). Users should feel like they're entering something powerful, not just logging into another tool.
 
-Below the tagline ("Close the curtain. Get schtuff done!"), add a concise 3-part product summary that explains what CondoBunk is, how it works, and what makes it different. The copy will be styled to fit the dark mission-control aesthetic -- small, muted text that doesn't compete with the logo or login form.
+### New Copy Direction
 
-### Proposed Copy
+Replace the small summary block with bold, stacked messaging that explains both products and gets people hyped. Bigger text, more personality, clear separation between what CondoBunk is and what TourText is.
 
-Something along these lines (can be refined):
-
-> **One source of truth for your tour.**
-> CondoBunk extracts venue advances, tech packs, and contacts into a structured knowledge base -- then makes it searchable for your entire crew via text message or in-app AI.
-> No more digging through email threads. No more outdated spreadsheets.
-
-### Layout
+**Proposed layout:**
 
 ```text
 [  CONDO BUNK LOGO  ]
 Close the curtain. Get schtuff done!
 
-One source of truth for your tour.
-CondoBunk extracts venue advances, tech packs,
-and contacts into a structured knowledge base --
-then makes it searchable for your entire crew
-via text message or in-app AI.
-No more digging through email threads.
-No more outdated spreadsheets.
+TOUR LAW LIVES HERE.                        <- big, bold headline
+
+CondoBunk is your tour's command center.
+Upload advances, tech packs, and contacts —
+TELA (Tour Intelligence) turns them into
+searchable, structured knowledge for your
+entire operation.
+
+TOURTEXT                                     <- secondary headline
+One phone number. One text.
+Your crew is one question away from
+anything they need to know — and
+so much more.
 
 [========= LOGIN FORM =========]
 ```
 
+### Visual Treatment
+
+- **"TOUR LAW LIVES HERE."** — `text-lg` or `text-xl`, `font-bold`, `font-mono`, `tracking-widest`, foreground color. This is the anchor line.
+- **CondoBunk description** — `text-sm`, `text-muted-foreground`, relaxed leading. Explains the workspace.
+- **"TOURTEXT"** — `text-base`, `font-bold`, `font-mono`, burnt orange accent color to visually separate it as the crew-facing product.
+- **TourText description** — `text-sm`, `text-muted-foreground`. Short, punchy, one-liner energy.
+- Centered alignment throughout, max-w-sm for readability.
+- Add subtle staggered fade-in animations using framer-motion for each block.
+
 ### Technical Detail
 
-**File: `src/pages/Login.tsx`** (lines 80-85)
+**File: `src/pages/Login.tsx`** (lines 82-95)
 
-- Add a new `<div>` block after the tagline `<p>` and before the closing `</div>` of the text-center section
-- Use `text-xs text-muted-foreground/70` styling for the body text and `text-sm font-semibold text-foreground` for the headline
-- Keep the max width constrained so it reads well on mobile
-- No new components or dependencies needed -- just a few lines of JSX
+- Remove the existing tagline `<p>` and the `<div>` summary block
+- Replace with the new structured copy blocks described above
+- Use existing `motion.div` or add lightweight staggered children for the fade-in effect
+- No new components or dependencies — just JSX and existing tailwind classes + framer-motion (already installed)
+
+### Single File Change
+
+| File | Change |
+|------|--------|
+| `src/pages/Login.tsx` | Replace lines 82-95 with new bold copy blocks |
 
