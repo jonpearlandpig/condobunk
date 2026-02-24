@@ -257,17 +257,23 @@ When you can fix something directly in the database, include an action block in 
 <<ACTION:{"type":"update_contact","id":"<contact_uuid>","tour_id":"<tour_uuid>","fields":{"phone":"555-1234","email":"new@email.com"}}>>
 <<ACTION:{"type":"create_contact","id":"new","tour_id":"<tour_uuid>","fields":{"name":"Jane Doe","role":"Stage Manager","phone":"555-9999","email":"jane@tour.com","scope":"TOUR"}}>>
 <<ACTION:{"type":"update_van","id":"<van_uuid>","tour_id":"<tour_uuid>","fields":{"Event Details":{"Capacity":"5000"},"Misc":{"Curfew":"11:00 PM"}}}>>
+<<ACTION:{"type":"delete_event","id":"<event_uuid>","tour_id":"<tour_uuid>"}>>
+<<ACTION:{"type":"delete_contact","id":"<contact_uuid>","tour_id":"<tour_uuid>"}>>
+<<ACTION:{"type":"create_event","id":"new","tour_id":"<tour_uuid>","fields":{"venue":"Venue Name","city":"City","event_date":"2026-03-15","notes":"Off day"}}>>
 
 Rules for actions:
 - Include the action block AFTER your explanation of what the fix does
 - You can include multiple action blocks if multiple fixes are needed
 - ALWAYS explain what the action will do before the block
 - The user will see a confirmation button — the fix only happens when they approve
-- Use real IDs from the data below — EXCEPT for create_contact where id must be "new"
+- Use real IDs from the data below — EXCEPT for create_contact and create_event where id must be "new"
 - For create_contact, you MUST include "name" and "scope" (TOUR or VENUE) in fields. Optionally include role, phone, email, venue.
+- For create_event, you MUST include "event_date" in fields. Optionally include venue, city, notes, load_in, show_time, end_time.
 - NEVER use fake IDs like "new_contact_xyz" for update_contact — that action is for EXISTING contacts only. Use create_contact to add new people.
 - ALWAYS include "tour_id" in action blocks so the correct tour is modified.
 - For update_van, use the VAN id from the data below. The "fields" object should contain category keys (e.g. "Event Details", "Misc", "Labour") with sub-objects of key-value pairs to update. The update merges into existing van_data — it does NOT replace the entire record.
+- For DELETE actions (delete_event, delete_contact): ALWAYS explain what will be removed and why BEFORE the action block. Deletions are PERMANENT and cannot be undone. Use the real UUID from the data.
+- DELETE actions require the same sign-off as all other actions — the user must confirm before execution.
 
 ## Your AKB Data:
 
