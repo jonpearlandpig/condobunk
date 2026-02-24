@@ -1,97 +1,80 @@
 
 
-## Demo Mode: 24-Hour Expiry, Tracking, and Notifications
+## Demo-to-Full Upgrade Flow
 
-### Overview
-Enhance demo mode with a 24-hour automatic expiry, a `demo_activations` audit log, an in-app alert for jonathan, and an email notification via a new edge function.
+### How It Works Today
+- Demo users already have a Google-authenticated account, a profile row, and a Telauthorium ID
+- Their `tour_members` role is `DEMO`, which gives read-only access
+- Upgrading = changing that role to `CREW` (or `TA`/`MGMT`)
 
-### 1. Database: `demo_activations` Tracking Table
+### What We Need to Build
 
-Create a new table to log every demo activation:
+#### 1. "Request Full Access" Button (Demo User Side)
+Add a button in the demo banner (and/or BunkOverview) that lets the demo user request an upgrade. This inserts a row into a new `upgrade_requests` table and notifies Jonathan.
 
 ```text
-demo_activations
------------------
-id              uuid (PK, default gen_random_uuid())
+upgrade_requests
+----------------
+id              uuid (PK)
 user_id         uuid (NOT NULL)
 user_email      text
 user_name       text
-activated_at    timestamptz (default now())
-expires_at      timestamptz (default now() + interval '24 hours')
-deactivated_at  timestamptz (nullable -- set when they exit early)
+tour_id         uuid (NOT NULL)
+status          text (PENDING / APPROVED / DENIED)
+requested_at    timestamptz (default now())
+resolved_at     timestamptz (nullable)
+resolved_by     uuid (nullable)
 ```
 
-RLS: jonathan (the demo owner) can SELECT all rows. Users can SELECT their own rows. No public INSERT/UPDATE -- only the RPC functions write to this table.
+#### 2. Jonathan's Admin: Pending Requests
+Add a "Pending Requests" section to BunkAdmin showing:
+- Name, email, requested time
+- "Approve" button (sets role to CREW, updates request status)
+- "Deny" button (updates request status, optionally removes demo access)
 
-### 2. Database: Update `activate_demo_mode()` RPC
+Approving calls a new `approve_upgrade_request` SECURITY DEFINER RPC that:
+- Updates `tour_members` role from `DEMO` to `CREW` for all of that user's demo memberships
+- Updates the `upgrade_requests` row to `APPROVED`
+- Clears the `demo_activations` expiry (so it doesn't auto-expire after approval)
 
-Modify the existing function to:
-- Check if an active (non-expired) demo session already exists for the caller -- if so, just return it without creating duplicates
-- Insert a row into `demo_activations` with the caller's email/name (pulled from `profiles`)
-- Set `expires_at` to `now() + interval '24 hours'`
+#### 3. Notification to Jonathan
+When a demo user clicks "Request Full Access":
+- The `notify-demo-activation` edge function is reused (or extended) to send Jonathan an in-app DM: "Upgrade request from [name] ([email])"
+- Email notification can follow once an email service is connected
 
-### 3. Database: Update `deactivate_demo_mode()` RPC
+#### 4. User Experience After Approval
+- Next time the user loads the app (or on realtime update), their role is `CREW`
+- `isDemoMode` flips to `false` automatically (since not all roles are DEMO anymore)
+- Demo banner disappears
+- All write controls (new tour, upload, chat input, admin) become available
+- Their existing profile, Telauthorium ID, avatar -- all stay the same
+- They can immediately start creating tours, uploading documents, and managing their workspace
 
-Modify to also update `demo_activations` setting `deactivated_at = now()`.
+#### 5. No Action Required by User
+The user does nothing except click "Request Full Access." Once approved:
+- No re-login needed
+- No re-registration
+- No data migration
+- Everything just unlocks
 
-### 4. Database: Auto-Expire Cron Job
+### Technical Details
 
-Use `pg_cron` + `pg_net` to run every hour:
-- Find `tour_members` with `role = 'DEMO'` whose `demo_activations.expires_at < now()`
-- Delete those memberships
-- Update the `demo_activations` row with `deactivated_at = now()`
+**New migration:**
+- Create `upgrade_requests` table with RLS (users can INSERT/SELECT own, Jonathan can SELECT/UPDATE all)
+- Create `approve_upgrade_request(_request_id uuid)` SECURITY DEFINER RPC
+- Create `deny_upgrade_request(_request_id uuid)` SECURITY DEFINER RPC
 
-This ensures demo access is automatically revoked after 24 hours even if the user never clicks "Exit Demo."
-
-### 5. Edge Function: `notify-demo-activation`
-
-A new edge function that:
-- Receives `{ user_email, user_name, activated_at, expires_at }` from the `activate_demo_mode` RPC (called from the frontend after activation succeeds)
-- Sends an email to `jonathan@pearlandpig.com` using the Lovable AI integration (or a simple HTTP call to a transactional email service)
-
-Since there's no email service configured yet, we have two options:
-- **Option A**: Use the built-in Supabase Auth email hook (limited)
-- **Option B**: Add a Resend API key and send a formatted email
-
-For now, the edge function will insert a `direct_message` to jonathan as an in-app notification (guaranteed to work), and we can add email later once an email service is connected.
-
-### 6. Frontend: In-App Notification to Jonathan
-
-When `activate_demo_mode()` succeeds, the frontend calls the `notify-demo-activation` edge function which:
-- Inserts a DM to jonathan: "New demo activation: [name] ([email]) -- expires in 24h"
-- This shows up in jonathan's DM inbox immediately
-
-### 7. Frontend: Show Expiry in Demo Banner
-
-Update `BunkLayout.tsx` demo banner to show remaining time:
-```text
-DEMO MODE -- Expires in 23h 14m (read-only)  [EXIT DEMO]
-```
-
-Query `demo_activations` for the user's active session to get `expires_at`, then calculate and display countdown.
-
-### 8. Frontend: BunkOverview Empty State After Expiry
-
-When demo expires and tours become empty again, the user sees the same "TRY DEMO" button and can reactivate for another 24 hours.
-
-### 9. Jonathan's Admin: Demo Users List
-
-Add a "Demo Users" section to `BunkAdmin.tsx` that queries `demo_activations` and shows:
-- Name, email, activated time, expires/expired, status (active/expired/exited)
-- Only visible to jonathan (tour owner)
-
-### Files Summary
+**Frontend changes:**
 
 | File | Change |
 |------|--------|
-| New migration SQL | Create `demo_activations` table, update RPCs, enable pg_cron + pg_net |
-| Cron job (insert tool) | Hourly cleanup of expired demo memberships |
-| New `supabase/functions/notify-demo-activation/index.ts` | Send DM to jonathan on activation |
-| `src/hooks/useTour.tsx` | Pass activation info to notification edge function |
-| `src/pages/bunk/BunkLayout.tsx` | Show countdown timer in demo banner |
-| `src/pages/bunk/BunkAdmin.tsx` | Add "Demo Users" section for jonathan |
+| `src/pages/bunk/BunkLayout.tsx` | Add "REQUEST FULL ACCESS" button next to "EXIT DEMO" in the banner |
+| `src/hooks/useTour.tsx` | Add `requestUpgrade()` function to context, track `upgradeRequested` state |
+| `src/pages/bunk/BunkAdmin.tsx` | Add "Pending Upgrade Requests" section with approve/deny actions |
+| `supabase/functions/notify-demo-activation/index.ts` | Extend to handle upgrade request notifications |
 
-### Email Notification
-
-To send actual emails (not just in-app DMs), we'll need an email service API key (like Resend). I can set that up as a follow-up step once you provide one, or we can start with in-app DMs only and add email later. The in-app DM will be delivered immediately and is reliable.
+**Seamless transition logic:**
+- When `tour_members` role changes from DEMO to CREW, the existing `checkDemoMode()` in `useTour.tsx` will automatically detect that not all roles are DEMO and set `isDemoMode = false`
+- All UI guards (`isDemoMode && ...`) will instantly unlock
+- The 24-hour expiry becomes irrelevant once the role is no longer DEMO
 
