@@ -1,80 +1,66 @@
 
 
-## Demo-to-Full Upgrade Flow
+## Demo Mode: Hide Contact Info and Block Outbound Actions
 
-### How It Works Today
-- Demo users already have a Google-authenticated account, a profile row, and a Telauthorium ID
-- Their `tour_members` role is `DEMO`, which gives read-only access
-- Upgrading = changing that role to `CREW` (or `TA`/`MGMT`)
+### Problem
+Demo users can currently see phone numbers, email addresses, and access messaging/editing actions on contacts. They should only see names and roles -- no PII, no outbound communication.
 
-### What We Need to Build
+### Changes
 
-#### 1. "Request Full Access" Button (Demo User Side)
-Add a button in the demo banner (and/or BunkOverview) that lets the demo user request an upgrade. This inserts a row into a new `upgrade_requests` table and notifies Jonathan.
+#### 1. SidebarContactList.tsx -- Hide contact details and block actions for demo users
+
+- Accept `isDemoMode` as a new prop (passed from parent components)
+- When `isDemoMode` is true:
+  - Hide phone numbers and email addresses everywhere (tooltips, action labels, expanded mobile bars)
+  - Hide all action buttons: SMS, Call, Email, Bunk Chat, Edit, Delete, Invite, Remove
+  - Remove the "ASK TELA FOR DETAILS" button (which prompts finding contact info)
+  - Keep visible: name, role, online status indicator, unread badge
+  - On desktop hover row: show nothing (no overflow menu, no quick-action icons)
+  - On mobile expand: show only "TELA" button (Ask TELA about this person, but not for contact details)
+  - Disable the `handleMessage` click handler so tapping a contact does not open SMS or DM
+
+#### 2. DMChatScreen.tsx -- Block message sending for demo users
+
+- Accept `isDemoMode` prop
+- When true: hide the input bar entirely, replace with a read-only notice ("Demo mode -- messaging disabled")
+- Existing messages can still be viewed (read-only)
+
+#### 3. BunkSidebar.tsx -- Pass isDemoMode to contact lists
+
+- Thread `isDemoMode` from `useTour()` down to all `SidebarContactList` instances rendered in the sidebar
+
+#### 4. Any other messaging drawer or contact display components
+
+- Audit `BunkChat.tsx` and the messaging drawer to ensure demo users cannot compose or send DMs
+- The sidebar's `onContactTap` handler should be blocked for demo users
+
+#### 5. BunkAdmin.tsx -- Already handled
+
+- The admin page already shows a "Demo Mode" read-only notice and blocks all admin actions. No changes needed.
+
+### What Demo Users Will See
 
 ```text
-upgrade_requests
-----------------
-id              uuid (PK)
-user_id         uuid (NOT NULL)
-user_email      text
-user_name       text
-tour_id         uuid (NOT NULL)
-status          text (PENDING / APPROVED / DENIED)
-requested_at    timestamptz (default now())
-resolved_at     timestamptz (nullable)
-resolved_by     uuid (nullable)
+Contacts Sidebar:
+  John Smith
+  Tour Manager
+
+  Sarah Jones  [green dot]
+  Lighting Designer
+
+  (no phone, email, edit, call, text, or invite actions visible)
 ```
 
-#### 2. Jonathan's Admin: Pending Requests
-Add a "Pending Requests" section to BunkAdmin showing:
-- Name, email, requested time
-- "Approve" button (sets role to CREW, updates request status)
-- "Deny" button (updates request status, optionally removes demo access)
-
-Approving calls a new `approve_upgrade_request` SECURITY DEFINER RPC that:
-- Updates `tour_members` role from `DEMO` to `CREW` for all of that user's demo memberships
-- Updates the `upgrade_requests` row to `APPROVED`
-- Clears the `demo_activations` expiry (so it doesn't auto-expire after approval)
-
-#### 3. Notification to Jonathan
-When a demo user clicks "Request Full Access":
-- The `notify-demo-activation` edge function is reused (or extended) to send Jonathan an in-app DM: "Upgrade request from [name] ([email])"
-- Email notification can follow once an email service is connected
-
-#### 4. User Experience After Approval
-- Next time the user loads the app (or on realtime update), their role is `CREW`
-- `isDemoMode` flips to `false` automatically (since not all roles are DEMO anymore)
-- Demo banner disappears
-- All write controls (new tour, upload, chat input, admin) become available
-- Their existing profile, Telauthorium ID, avatar -- all stay the same
-- They can immediately start creating tours, uploading documents, and managing their workspace
-
-#### 5. No Action Required by User
-The user does nothing except click "Request Full Access." Once approved:
-- No re-login needed
-- No re-registration
-- No data migration
-- Everything just unlocks
-
-### Technical Details
-
-**New migration:**
-- Create `upgrade_requests` table with RLS (users can INSERT/SELECT own, Jonathan can SELECT/UPDATE all)
-- Create `approve_upgrade_request(_request_id uuid)` SECURITY DEFINER RPC
-- Create `deny_upgrade_request(_request_id uuid)` SECURITY DEFINER RPC
-
-**Frontend changes:**
+### Files to Modify
 
 | File | Change |
 |------|--------|
-| `src/pages/bunk/BunkLayout.tsx` | Add "REQUEST FULL ACCESS" button next to "EXIT DEMO" in the banner |
-| `src/hooks/useTour.tsx` | Add `requestUpgrade()` function to context, track `upgradeRequested` state |
-| `src/pages/bunk/BunkAdmin.tsx` | Add "Pending Upgrade Requests" section with approve/deny actions |
-| `supabase/functions/notify-demo-activation/index.ts` | Extend to handle upgrade request notifications |
+| `src/components/bunk/SidebarContactList.tsx` | Add `isDemoMode` prop; conditionally hide PII and all outbound action buttons |
+| `src/components/bunk/DMChatScreen.tsx` | Add `isDemoMode` prop; hide send input when true |
+| `src/components/bunk/BunkSidebar.tsx` | Pass `isDemoMode` to SidebarContactList instances |
+| Any parent rendering SidebarContactList or DMChatScreen | Pass the `isDemoMode` prop through |
 
-**Seamless transition logic:**
-- When `tour_members` role changes from DEMO to CREW, the existing `checkDemoMode()` in `useTour.tsx` will automatically detect that not all roles are DEMO and set `isDemoMode = false`
-- All UI guards (`isDemoMode && ...`) will instantly unlock
-- The 24-hour expiry becomes irrelevant once the role is no longer DEMO
+### Security Note
+
+This is a UI-level enforcement. The database already blocks demo users from INSERT/UPDATE via RLS (DEMO role is excluded from `is_tour_admin_or_mgmt`). Demo users can SELECT contacts (names, roles) through `is_tour_member`, which is correct -- they need to see who is on the tour. The phone/email data is visible at the DB level but hidden in the UI. For stricter protection, a database view excluding phone/email for DEMO users could be added as a follow-up, but the UI gate combined with existing write-blocking RLS provides practical protection.
 
