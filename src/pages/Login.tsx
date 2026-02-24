@@ -86,28 +86,39 @@ const Login = () => {
           <motion.div
             initial="hidden"
             animate="visible"
-            variants={{ hidden: {}, visible: { transition: { staggerChildren: 0.15, delayChildren: 0.3 } } }}
-            className="mt-8 max-w-sm mx-auto space-y-6 text-center"
+            variants={{ hidden: {}, visible: { transition: { staggerChildren: 0.18, delayChildren: 0.3 } } }}
+            className="mt-8 max-w-sm mx-auto space-y-5 text-center"
           >
-            <motion.div variants={{ hidden: { opacity: 0, y: 12 }, visible: { opacity: 1, y: 0 } }}>
-              <h2 className="text-xl font-bold font-mono tracking-widest text-foreground">
-                TOUR LAW LIVES HERE.
-              </h2>
-            </motion.div>
+            <motion.h2
+              variants={{ hidden: { opacity: 0, y: 12 }, visible: { opacity: 1, y: 0 } }}
+              className="text-2xl font-bold font-mono tracking-widest text-foreground"
+            >
+              TOUR LAW LIVES HERE.
+            </motion.h2>
 
-            <motion.div variants={{ hidden: { opacity: 0, y: 12 }, visible: { opacity: 1, y: 0 } }} className="space-y-2">
-              <p className="text-sm text-muted-foreground leading-relaxed">
-                CondoBunk is your tour's command center. Upload advances, tech packs, and contacts —
-                <span className="font-semibold text-foreground"> TELA</span> (Tour Intelligence) turns them into searchable, structured knowledge for your entire operation.
-              </p>
-            </motion.div>
+            <motion.p
+              variants={{ hidden: { opacity: 0, y: 12 }, visible: { opacity: 1, y: 0 } }}
+              className="text-lg font-mono font-semibold tracking-tight text-foreground/80"
+            >
+              YOUR WORKSPACE. YOUR KNOWLEDGE BASE.
+            </motion.p>
 
-            <motion.div variants={{ hidden: { opacity: 0, y: 12 }, visible: { opacity: 1, y: 0 } }} className="space-y-2">
-              <h3 className="text-base font-bold font-mono tracking-wider text-primary">
+            <motion.p
+              variants={{ hidden: { opacity: 0, y: 12 }, visible: { opacity: 1, y: 0 } }}
+              className="text-xs text-muted-foreground font-mono tracking-wide"
+            >
+              POWERED BY <span className="text-foreground font-bold">TELA</span> — TOUR INTELLIGENCE
+            </motion.p>
+
+            <motion.div
+              variants={{ hidden: { opacity: 0, y: 12 }, visible: { opacity: 1, y: 0 } }}
+              className="pt-2 border-t border-border/40 space-y-1"
+            >
+              <h3 className="text-lg font-bold font-mono tracking-wider text-primary">
                 TOURTEXT
               </h3>
-              <p className="text-sm text-muted-foreground leading-relaxed">
-                One phone number. One text. Your crew is one question away from anything they need to know — and so much more.
+              <p className="text-xs text-muted-foreground font-mono tracking-wide">
+                ONE NUMBER. ONE TEXT. EVERY ANSWER.
               </p>
             </motion.div>
           </motion.div>
