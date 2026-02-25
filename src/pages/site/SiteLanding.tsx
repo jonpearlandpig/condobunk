@@ -24,7 +24,7 @@ const VALUE_PROPS = [
     icon: Radio,
     title: "TELA",
     subtitle: "Tour Efficiency Liaison Assistant",
-    desc: "AI that answers questions from your tour data instantly. No digging through spreadsheets.",
+    desc: "Tour Intelligence that answers questions from your tour data instantly. No digging through spreadsheets.",
   },
   {
     icon: MessageSquare,

@@ -323,7 +323,7 @@ ${(vansRes.data || []).map((v: any) => `${v.venue_name} (${v.city || "?"}, ${v.e
         messages: [
           {
             role: "system",
-            content: `You are TELA, the touring AI for "${tourName}". A crew member just texted the TourText number (888-340-0564). Reply in SHORT, punchy SMS style — no markdown, no headers, no source citations. Keep it under 300 characters when possible. Be direct and factual. If you don't know, say so honestly.\n\nAKB DATA:\n${akbContext}`,
+            content: `You are TELA, the Tour Intelligence for "${tourName}". A crew member just texted the TourText number (888-340-0564). Reply in SHORT, punchy SMS style — no markdown, no headers, no source citations. Keep it under 300 characters when possible. Be direct and factual. If you don't know, say so honestly.\n\nAKB DATA:\n${akbContext}`,
           },
           {
             role: "user",
