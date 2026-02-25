@@ -1,168 +1,152 @@
 
 
-# Smart Document Re-Upload: Version-Aware AKB Updates
+# TourText Intelligence Dashboard + TELA Pattern Detection
 
-## The Problem
+## Overview
 
-Today, uploading an updated version of "PW2026 MASTER AKB TOUR INTEL.PDF" creates a completely separate document entry. The old data stays in the AKB alongside the new data, causing duplicates or stale info. The user has to manually archive the old version, re-extract, and re-approve -- a fragile, error-prone workflow that erodes trust.
+Build an SMS activity dashboard in BunkAdmin and a backend edge function that analyzes TourText inquiry patterns. When 5+ crew members ask about the same topic, TELA surfaces a proactive alert with a suggested fix -- turning reactive Q&A into preventive tour management.
 
-## The Solution: Intelligent Version Detection + Delta Sync
+## Architecture
 
-When a user uploads a document, the system checks if a document with a matching (or very similar) filename already exists for that tour. If it does, the system treats it as a **version update** rather than a brand new document -- automatically handling the old-to-new transition with a clear change summary.
+```text
++-------------------+       +----------------------+       +------------------+
+| tourtext-inbound  | --->  | sms_inbound/outbound | <---  | BunkAdmin        |
+| (existing)        |       | (existing tables)     |       | TourText tab     |
++-------------------+       +----------------------+       +------------------+
+                                     |                              |
+                                     v                              v
+                            +----------------------+       +------------------+
+                            | tourtext-insights    |       | TELA Alert Card  |
+                            | (new edge function)  | --->  | "17 asked about  |
+                            | clusters questions   |       |  catering..."    |
+                            +----------------------+       +------------------+
+```
 
-## User Experience
+## What the Tour Admin Sees
 
-### Upload Flow (What the user sees)
+### 1. TourText Activity Tab (in BunkAdmin)
 
-1. User uploads "PW2026 MASTER AKB TOUR INTEL.PDF" (same name as existing doc)
-2. Instead of silently creating a new entry, a dialog appears:
+A new section/tab in BunkAdmin with:
+
+- **Stats bar**: Total messages (24h), unique senders, avg response time
+- **Message feed**: Recent inbound/outbound pairs showing sender phone (masked), question, TELA's reply, timestamp, matched tour
+- **Pattern Alerts**: TELA-generated insight cards when 5+ inquiries cluster around the same topic
+
+### 2. Pattern Alert Card (the key feature)
+
+When TELA detects a pattern:
 
 ```text
 +--------------------------------------------------+
-|  Update Detected                                  |
+|  ! TELA Pattern Alert                             |
 |                                                   |
-|  "PW2026 MASTER AKB TOUR INTEL.PDF" already       |
-|  exists (uploaded Tue, Mar 4).                     |
+|  17 of 18 TourTexts today asked about CATERING    |
+|  location at tomorrow's venue.                    |
 |                                                   |
-|  [ Upload as New Version ]  [ Upload as Separate ] |
+|  Suggested fix:                                   |
+|  "Catering info is missing from the VAN for       |
+|   Bridgestone Arena. Add catering details to the  |
+|   venue advance notes, or send a group text to    |
+|   crew with the info."                            |
+|                                                   |
+|  [ Go to VAN ]  [ Dismiss ]                       |
 +--------------------------------------------------+
 ```
 
-3. If "Upload as New Version":
-   - Old document is auto-archived (data cleaned up)
-   - New document is uploaded with `version` incremented
-   - Extraction runs automatically
-   - After extraction, a **Change Summary** is shown:
-     - "3 venues updated, 1 new venue added, 2 contacts changed"
-   - All changes are logged in the AKB Change Log
+## Technical Plan
 
-4. If "Upload as Separate":
-   - Behaves exactly like today (new independent document)
+### 1. New Edge Function: `tourtext-insights`
 
-### Post-Extraction Delta Report
+Called from the frontend when the TA opens the TourText dashboard tab. It:
 
-After re-extraction, TELA generates a human-readable diff:
+1. Fetches recent `sms_inbound` messages for the tour (last 24-72h)
+2. Sends the batch of questions to the AI gateway with a clustering prompt
+3. Returns:
+   - `clusters`: Array of `{ topic, count, sample_questions, suggested_fix, severity, related_entity }` 
+   - `stats`: `{ total_inbound, total_outbound, unique_senders, avg_response_ms }`
 
-```text
-Changes since v1 (uploaded Mar 4):
-  + Added: Venue "Smoothie King Center" (New Orleans, LA)
-  ~ Updated: "Bridgestone Arena" - show_time changed 7:30 PM -> 8:00 PM
-  ~ Updated: Contact "Sarah Chen" - phone changed
-  - Removed: Venue "Ryman Auditorium" (no longer in document)
-```
+The AI prompt instructs the model to:
+- Group questions by semantic similarity
+- Only flag clusters with 5+ occurrences as actionable
+- Suggest concrete fixes referencing AKB entities (VANs, contacts, schedule)
+- Rate severity: `info` (1-4 similar), `warning` (5-9), `critical` (10+)
 
-This gets logged to `akb_change_log` and is visible in the Change Log page.
+### 2. Frontend: TourText Dashboard Component
 
-## Technical Implementation
+A new `TourTextDashboard` component rendered inside BunkAdmin after the existing sections. Contains:
 
-### 1. Frontend: Version Detection Dialog (`BunkDocuments.tsx`)
+- **Stats row**: 3 metric cards (total messages, unique senders, avg response time)
+- **Pattern alerts**: Cards for each cluster with 5+ occurrences, color-coded by severity
+- **Message log**: Scrollable table of recent SMS conversations (inbound question + outbound reply paired by phone/timestamp)
+- **Refresh button**: Re-runs the insights analysis
 
-Before uploading, query existing active documents for filename similarity:
+### 3. Modify BunkAdmin
 
-```typescript
-// Normalize filename for comparison
-const normalize = (f: string) => f.toLowerCase().replace(/[^a-z0-9]/g, "");
+Add the TourText dashboard section after the Sync History section, gated behind `is_tour_admin_or_mgmt`. Uses `sms_inbound` and `sms_outbound` tables (already have TA/MGMT SELECT policies).
 
-const existingMatch = activeDocuments.find(d => 
-  d.filename && normalize(d.filename) === normalize(file.name)
-);
-```
+### 4. Enhance `tourtext-inbound` (minor)
 
-If a match is found, show a dialog asking "Upload as New Version" vs "Upload as Separate". 
-
-When "Upload as New Version" is chosen:
-- Set `replaces_doc_id` on the upload flow
-- Archive the old document (reuse existing `handleArchive` logic)
-- Upload + extract the new one
-- Increment version number from the old doc's version
-
-### 2. New Component: `VersionUpdateDialog.tsx`
-
-A simple dialog component with:
-- The matched filename and its upload date
-- Two buttons: "Upload as New Version" and "Upload as Separate"
-- Brief explanation of what each option does
-
-### 3. Backend: Delta Detection in `extract-document/index.ts`
-
-Before the extraction cleans up old data, snapshot the current state:
-
-```typescript
-// If replaces_doc_id is provided, snapshot old data for diff
-let oldSnapshot = null;
-if (replaces_doc_id) {
-  const [oldEvents, oldContacts, oldVans] = await Promise.all([
-    adminClient.from("schedule_events").select("*").eq("source_doc_id", replaces_doc_id),
-    adminClient.from("contacts").select("*").eq("source_doc_id", replaces_doc_id),
-    adminClient.from("venue_advance_notes").select("*").eq("source_doc_id", replaces_doc_id),
-  ]);
-  oldSnapshot = { events: oldEvents.data, contacts: oldContacts.data, vans: oldVans.data };
-}
-```
-
-After extraction completes, compare old vs new:
-- Events: compare by `event_date + venue` -- detect added/removed/changed
-- Contacts: compare by `name` -- detect added/removed/changed fields
-- VANs: compare by `venue_name` -- detect added/removed venues
-
-Return a `changes` array in the response:
-
-```json
-{
-  "changes": [
-    { "type": "added", "entity": "venue", "detail": "Smoothie King Center, New Orleans, LA" },
-    { "type": "updated", "entity": "event", "detail": "Bridgestone Arena: show_time 19:30 -> 20:00" },
-    { "type": "removed", "entity": "venue", "detail": "Ryman Auditorium" }
-  ]
-}
-```
-
-### 4. Frontend: Change Summary Display
-
-After extraction of a version update, show the changes in:
-- The extraction review dialog (immediate feedback)
-- A toast summary ("3 changes detected")
-- The AKB Change Log (permanent record)
-
-### 5. Auto-Log to `akb_change_log`
-
-Each detected change gets a change log entry with:
-- `action`: "VERSION_UPDATE"
-- `change_summary`: Human-readable description
-- `change_reason`: "Document re-upload: [filename] v[N] -> v[N+1]"
-- `entity_type`: "schedule_event" / "contact" / "venue_advance_note"
-
-### 6. Database: Add `replaces_doc_id` column to `documents`
-
-A single migration to add lineage tracking:
-
-```sql
-ALTER TABLE documents ADD COLUMN replaces_doc_id uuid REFERENCES documents(id);
-```
-
-This creates a version chain: v3 -> v2 -> v1.
+Add a `sender_name` column to `sms_inbound` so the dashboard can show who texted without a separate lookup. This is a small migration + one line change in the edge function.
 
 ## Files to Create/Modify
 
 | File | Action | Purpose |
 |------|--------|---------|
-| `src/components/bunk/VersionUpdateDialog.tsx` | Create | Dialog asking user how to handle duplicate filename |
-| `src/pages/bunk/BunkDocuments.tsx` | Modify | Add version detection logic before upload, show dialog, pass `replaces_doc_id` |
-| `supabase/functions/extract-document/index.ts` | Modify | Accept `replaces_doc_id`, snapshot old data, compute diff, return changes |
-| `documents` table | Migration | Add `replaces_doc_id` column |
+| `supabase/functions/tourtext-insights/index.ts` | Create | AI-powered clustering of SMS inquiries, stats computation |
+| `src/components/bunk/TourTextDashboard.tsx` | Create | Full dashboard UI: stats, pattern alerts, message log |
+| `src/pages/bunk/BunkAdmin.tsx` | Modify | Add TourText dashboard section after Sync History |
+| `supabase/functions/tourtext-inbound/index.ts` | Modify | Save `sender_name` alongside inbound messages |
+| `sms_inbound` table | Migration | Add `sender_name` text column (nullable) |
+| `supabase/config.toml` | Modify | Add `tourtext-insights` function config |
+
+## Edge Function: `tourtext-insights` Detail
+
+```text
+Input (POST, authenticated):
+  { tour_id: string, hours?: number }  // default 24h lookback
+
+Processing:
+  1. Query sms_inbound WHERE tour_id = X AND created_at > now() - interval
+  2. Query sms_outbound WHERE tour_id = X AND created_at > now() - interval  
+  3. Compute stats (counts, unique phones, avg time between inbound/outbound pairs)
+  4. Send inbound messages to AI with clustering prompt
+  5. Return { stats, clusters, messages }
+
+Output:
+  {
+    stats: { total_inbound, total_outbound, unique_senders, avg_response_seconds },
+    clusters: [
+      { topic: "Catering location", count: 17, severity: "critical",
+        sample_questions: ["where is catering?", "what floor is catering on?"],
+        suggested_fix: "Add catering location to Bridgestone Arena VAN...",
+        related_entity: "venue_advance_notes" }
+    ],
+    messages: [
+      { direction: "inbound", phone: "+1***5678", sender_name: "Jake",
+        text: "where is catering?", created_at: "...", tour_id: "..." },
+      ...
+    ]
+  }
+```
+
+## Pattern Detection Thresholds
+
+- **1-4 similar questions**: Normal -- no alert, just visible in the log
+- **5-9 similar questions**: Warning-level alert -- yellow card, "You may want to address this"
+- **10+ similar questions**: Critical alert -- red card, "This is a recurring gap that needs immediate attention"
+
+These thresholds are embedded in the AI prompt, not hardcoded in filtering logic, so TELA can apply judgment about what constitutes "similar."
+
+## Security
+
+- `tourtext-insights` validates the JWT and checks tour membership via `is_tour_admin_or_mgmt` RPC before returning data
+- Phone numbers in the message log are partially masked (show last 4 digits) for privacy in the UI
+- No new RLS policies needed -- existing `sms_inbound` / `sms_outbound` SELECT policies already gate to TA/MGMT
 
 ## What This Does NOT Change
 
-- The existing "Upload as Separate" flow remains identical to today
-- Archiving, renaming, and manual extraction all work the same
-- No changes to RLS policies (the new column is just a self-referential FK)
-- The extraction AI prompts stay the same -- only the surrounding orchestration changes
-
-## The Trust Factor
-
-This design ensures:
-- **No silent overwrites** -- the user always sees what changed
-- **Full audit trail** -- every version update is logged with before/after
-- **Easy rollback** -- old versions are archived, not deleted; they can be restored
-- **Async propagation** -- once the new extraction is approved, all AKB views (calendar, contacts, coverage, TELA) automatically reflect the updated data via the existing `akb-changed` event system
+- The existing `tourtext-inbound` SMS flow remains identical
+- No changes to TELA chat or the AKB extraction pipeline
+- No new tables beyond the `sender_name` column addition
+- The pattern detection is on-demand (when TA opens the tab), not a background cron
 
