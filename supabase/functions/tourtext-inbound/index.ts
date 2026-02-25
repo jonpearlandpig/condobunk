@@ -183,7 +183,112 @@ Deno.serve(async (req) => {
       return twimlResponse(replyText);
     }
 
-    // --- Fetch AKB data for the matched tour ---
+    // --- Guest list intent detection ---
+    const guestListKeywords = /guest\s*list|comp\s*ticket|put\s.+\s*on\s*the\s*list|tickets?\s*for|\+\s*\d|plus\s*\d|will\s*call/i;
+    if (guestListKeywords.test(messageBody)) {
+      console.log("Guest list intent detected, extracting fields...");
+
+      // Use AI to extract structured fields
+      const extractResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${LOVABLE_API_KEY}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model: "google/gemini-2.5-flash",
+          messages: [
+            {
+              role: "system",
+              content: `Extract guest list request fields from this crew member's text message. Today's date is ${new Date().toISOString().split("T")[0]}. "Tomorrow" means one day from today. Return ONLY valid JSON with these fields:
+{
+  "guest_names": "Full names of guests, comma separated",
+  "ticket_count": number,
+  "event_date": "YYYY-MM-DD or null if not specified",
+  "venue": "venue name or null if not specified"
+}
+If the message says "+1" or "plus one" after a name, that means 2 tickets total (the named guest + 1). If just "+1" with no names, ticket_count is 1 and guest_names should be "Guest +1". Always try to parse relative dates like "tomorrow", "tonight", "Saturday".`,
+            },
+            { role: "user", content: messageBody },
+          ],
+          max_tokens: 200,
+          temperature: 0,
+        }),
+      });
+
+      if (extractResponse.ok) {
+        const extractData = await extractResponse.json();
+        const rawExtract = extractData.choices?.[0]?.message?.content || "";
+        try {
+          // Parse JSON from response (handle markdown code blocks)
+          const jsonMatch = rawExtract.match(/\{[\s\S]*\}/);
+          if (jsonMatch) {
+            const fields = JSON.parse(jsonMatch[0]);
+            const { guest_names, ticket_count, event_date, venue } = fields;
+
+            if (guest_names && ticket_count && event_date) {
+              // All required fields present — call guest-list-request
+              const glResponse = await fetch(`${supabaseUrl}/functions/v1/guest-list-request`, {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                  "Authorization": `Bearer ${serviceKey}`,
+                },
+                body: JSON.stringify({
+                  tour_id: matchedTourId,
+                  requester_phone: fromPhone,
+                  requester_name: senderName,
+                  guest_names,
+                  ticket_count,
+                  event_date,
+                  venue: venue || null,
+                }),
+              });
+
+              if (glResponse.ok) {
+                const glData = await glResponse.json();
+                const smsReply = glData.sms_reply || "Your guest list request has been received.";
+
+                // Don't send SMS here — guest-list-request already handles it for approvals
+                // Only send if the function returned a reply but didn't auto-send (NO_ALLOTMENT, PAST_DEADLINE, PENDING)
+                if (glData.status !== "APPROVED") {
+                  await sendTwilioSms(fromPhone, smsReply, TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_PHONE_NUMBER);
+                  await admin.from("sms_outbound").insert({
+                    to_phone: fromPhone,
+                    message_text: smsReply,
+                    tour_id: matchedTourId,
+                    status: "sent",
+                  });
+                }
+
+                return twimlResponse("");
+              }
+            } else {
+              // Missing fields — ask for them
+              const missing: string[] = [];
+              if (!guest_names) missing.push("guest names (full names)");
+              if (!event_date) missing.push("which show date");
+              if (!ticket_count) missing.push("how many tickets");
+
+              const askReply = `Got it! Just need a few details: ${missing.join(", ")}?`;
+              await sendTwilioSms(fromPhone, askReply, TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_PHONE_NUMBER);
+              await admin.from("sms_outbound").insert({
+                to_phone: fromPhone,
+                message_text: askReply,
+                tour_id: matchedTourId,
+                status: "sent",
+              });
+              return twimlResponse("");
+            }
+          }
+        } catch (parseErr) {
+          console.error("Failed to parse guest list extraction:", parseErr);
+          // Fall through to normal TELA flow
+        }
+      }
+    }
+
+    // --- Fetch AKB data for the matched tour (normal TELA Q&A flow) ---
     const [eventsRes, contactsRes, vansRes, tourRes] = await Promise.all([
       admin.from("schedule_events").select("event_date, venue, city, load_in, show_time, notes").eq("tour_id", matchedTourId).order("event_date").limit(50),
       admin.from("contacts").select("name, role, email, phone, scope, venue").eq("tour_id", matchedTourId).limit(50),

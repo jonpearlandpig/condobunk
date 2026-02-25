@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { Settings, RefreshCw, Plus, Trash2, Copy, CheckCircle, XCircle, Clock, Loader2, Users, Mail, Link, UserPlus, Send, Eye } from "lucide-react";
 import { TourTextDashboard } from "@/components/bunk/TourTextDashboard";
+import { GuestListManager } from "@/components/bunk/GuestListManager";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -887,6 +888,10 @@ const BunkAdmin = () => {
           </div>
         </div>
       )}
+
+      {/* Guest List Management */}
+      <Separator />
+      <GuestListManager tourId={selectedTourId} />
 
       {/* TourText Intelligence Dashboard */}
       <TourTextDashboard tourId={selectedTourId} />
