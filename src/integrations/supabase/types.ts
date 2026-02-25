@@ -573,6 +573,7 @@ export type Database = {
           from_phone: string
           id: string
           message_text: string
+          sender_name: string | null
           tour_id: string | null
           user_id: string | null
         }
@@ -581,6 +582,7 @@ export type Database = {
           from_phone: string
           id?: string
           message_text: string
+          sender_name?: string | null
           tour_id?: string | null
           user_id?: string | null
         }
@@ -589,6 +591,7 @@ export type Database = {
           from_phone?: string
           id?: string
           message_text?: string
+          sender_name?: string | null
           tour_id?: string | null
           user_id?: string | null
         }
