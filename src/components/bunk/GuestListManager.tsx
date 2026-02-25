@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-import { Ticket, Plus, CheckCircle, XCircle, Clock, Loader2, ChevronDown, Sparkles, Edit2 } from "lucide-react";
+import { Ticket, Plus, CheckCircle, XCircle, Clock, Loader2, ChevronDown, Sparkles, Edit2, Bell } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
+import { Switch } from "@/components/ui/switch";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
@@ -26,6 +27,9 @@ type Allotment = {
   deadline: string | null;
   created_by: string;
   created_at: string;
+  box_office_email: string | null;
+  box_office_phone: string | null;
+  auto_notify_box_office: boolean;
 };
 
 type GuestRequest = {
@@ -105,6 +109,9 @@ export const GuestListManager = ({ tourId }: GuestListManagerProps) => {
       pickup_instructions: editAllotment.pickup_instructions || null,
       deadline: editAllotment.deadline || null,
       created_by: user.id,
+      box_office_email: editAllotment.box_office_email || null,
+      box_office_phone: editAllotment.box_office_phone || null,
+      auto_notify_box_office: editAllotment.auto_notify_box_office || false,
     };
 
     if (editAllotment.id) {
@@ -236,7 +243,7 @@ export const GuestListManager = ({ tourId }: GuestListManagerProps) => {
           </Button>
           <Dialog open={editOpen} onOpenChange={(open) => { setEditOpen(open); if (!open) setEditAllotment(null); }}>
             <DialogTrigger asChild>
-              <Button size="sm" variant="outline" onClick={() => setEditAllotment({ total_tickets: 20, per_person_max: 4 })}>
+              <Button size="sm" variant="outline" onClick={() => setEditAllotment({ total_tickets: 20, per_person_max: 4, auto_notify_box_office: false })}>
                 <Plus className="h-4 w-4 mr-1" /> Add Allotment
               </Button>
             </DialogTrigger>
@@ -307,6 +314,54 @@ export const GuestListManager = ({ tourId }: GuestListManagerProps) => {
                       onChange={(e) => setEditAllotment({ ...editAllotment, deadline: e.target.value ? new Date(e.target.value).toISOString() : null })}
                     />
                   </div>
+                  <Separator />
+                  <div className="space-y-3">
+                    <Label className="text-xs font-mono tracking-wider text-muted-foreground">BOX OFFICE CONTACT</Label>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <Label>Email</Label>
+                        <Input
+                          type="email"
+                          value={editAllotment.box_office_email || ""}
+                          onChange={(e) => {
+                            const email = e.target.value;
+                            setEditAllotment({
+                              ...editAllotment,
+                              box_office_email: email,
+                              auto_notify_box_office: (email || editAllotment.box_office_phone) ? true : editAllotment.auto_notify_box_office,
+                            });
+                          }}
+                          placeholder="boxoffice@venue.com"
+                        />
+                      </div>
+                      <div>
+                        <Label>Phone</Label>
+                        <Input
+                          type="tel"
+                          value={editAllotment.box_office_phone || ""}
+                          onChange={(e) => {
+                            const phone = e.target.value;
+                            setEditAllotment({
+                              ...editAllotment,
+                              box_office_phone: phone,
+                              auto_notify_box_office: (phone || editAllotment.box_office_email) ? true : editAllotment.auto_notify_box_office,
+                            });
+                          }}
+                          placeholder="+1 615-555-0100"
+                        />
+                      </div>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <Label className="text-sm">Auto-Notify Box Office</Label>
+                        <p className="text-xs text-muted-foreground">Send updated guest list on every approval</p>
+                      </div>
+                      <Switch
+                        checked={editAllotment.auto_notify_box_office || false}
+                        onCheckedChange={(checked) => setEditAllotment({ ...editAllotment, auto_notify_box_office: checked })}
+                      />
+                    </div>
+                  </div>
                   <DialogFooter>
                     <Button onClick={handleSaveAllotment} disabled={saving || !editAllotment.event_date || !editAllotment.venue}>
                       {saving ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : null}
@@ -335,7 +390,14 @@ export const GuestListManager = ({ tourId }: GuestListManagerProps) => {
               <Card key={a.id} className="p-4">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-sm font-medium">{a.venue}</p>
+                    <div className="flex items-center gap-1.5">
+                      <p className="text-sm font-medium">{a.venue}</p>
+                      {a.auto_notify_box_office && (
+                        <span title="Box office auto-notify enabled">
+                          <Bell className="h-3.5 w-3.5 text-primary" />
+                        </span>
+                      )}
+                    </div>
                     <p className="text-xs text-muted-foreground font-mono">
                       {a.city ? `${a.city} · ` : ""}{new Date(a.event_date + "T00:00:00").toLocaleDateString(undefined, { month: "short", day: "numeric" })}
                       {a.deadline && ` · Deadline: ${new Date(a.deadline).toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}`}
