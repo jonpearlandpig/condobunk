@@ -25,6 +25,7 @@ import {
   Undo2,
 } from "lucide-react";
 import AkbEditSignoff, { type SignoffData } from "./AkbEditSignoff";
+import DeltaChangeSummary, { type DeltaChange } from "./DeltaChangeSummary";
 
 interface ExtractionReviewDialogProps {
   open: boolean;
@@ -45,6 +46,7 @@ interface ExtractionReviewDialogProps {
       protocols: number;
       venues: number;
     };
+    changes?: DeltaChange[];
   } | null;
   onApproved: () => void;
 }
@@ -286,7 +288,13 @@ const ExtractionReviewDialog = ({
             <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
           </div>
         ) : (
-          <Tabs defaultValue="events" className="flex-1 flex flex-col min-h-0 px-4 pt-3">
+          <div className="flex-1 flex flex-col min-h-0 px-4 pt-3">
+            {extractionSummary?.changes && extractionSummary.changes.length > 0 && (
+              <div className="shrink-0 mb-3">
+                <DeltaChangeSummary changes={extractionSummary.changes} />
+              </div>
+            )}
+          <Tabs defaultValue="events" className="flex-1 flex flex-col min-h-0">
             <TabsList className="font-mono text-sm w-full shrink-0">
               <TabsTrigger value="events" className="gap-1.5 flex-1">
                 <Calendar className="h-3.5 w-3.5" />
@@ -471,6 +479,7 @@ const ExtractionReviewDialog = ({
               </TabsContent>
             </ScrollArea>
           </Tabs>
+          </div>
         )}
 
         <DrawerFooter className="shrink-0 border-t border-border pt-3 pb-6 flex-row gap-3">
