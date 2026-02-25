@@ -168,6 +168,7 @@ Deno.serve(async (req) => {
       from_phone: fromPhone,
       message_text: messageBody,
       tour_id: matchedTourId,
+      sender_name: senderName !== "Unknown" ? senderName : null,
     });
 
     if (!matchedTourId) {
