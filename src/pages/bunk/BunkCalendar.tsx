@@ -13,6 +13,7 @@ import {
   subWeeks,
   addMonths,
   subMonths,
+  addDays,
   eachDayOfInterval,
   isToday,
   isSameMonth,
@@ -129,6 +130,7 @@ const BunkCalendar = () => {
   const [hasAutoNavigated, setHasAutoNavigated] = useState(false);
   const [selectedEntry, setSelectedEntry] = useState<CalendarEntry | null>(null);
   const [tourFilter, setTourFilter] = useState<string>("all");
+  const [mobileRange, setMobileRange] = useState<"today" | "2weeks">("today");
   const [copied, setCopied] = useState(false);
   const [vanMap, setVanMap] = useState<Record<string, any[]>>({});
   const [selectedVanData, setSelectedVanData] = useState<any[] | null>(null);
@@ -406,17 +408,31 @@ const BunkCalendar = () => {
   }, [entries]);
 
   const visibleDays = useMemo(() => {
+    // Mobile: respect the mobileRange toggle
+    if (isMobile) {
+      if (mobileRange === "2weeks") {
+        return eachDayOfInterval({ start: currentDate, end: addDays(currentDate, 13) });
+      }
+      // "today" mode: show current week
+      return eachDayOfInterval({ start: startOfWeek(currentDate, { weekStartsOn: 0 }), end: endOfWeek(currentDate, { weekStartsOn: 0 }) });
+    }
+    // Desktop
     if (viewMode === "week") {
       return eachDayOfInterval({ start: startOfWeek(currentDate, { weekStartsOn: 0 }), end: endOfWeek(currentDate, { weekStartsOn: 0 }) });
     }
     const ms = startOfMonth(currentDate);
     const me = endOfMonth(currentDate);
     return eachDayOfInterval({ start: startOfWeek(ms, { weekStartsOn: 0 }), end: endOfWeek(me, { weekStartsOn: 0 }) });
-  }, [currentDate, viewMode]);
+  }, [currentDate, viewMode, isMobile, mobileRange]);
 
   const nav = (dir: -1 | 1) => {
-    if (viewMode === "week") setCurrentDate(dir === 1 ? addWeeks(currentDate, 1) : subWeeks(currentDate, 1));
-    else setCurrentDate(dir === 1 ? addMonths(currentDate, 1) : subMonths(currentDate, 1));
+    if (isMobile && mobileRange === "2weeks") {
+      setCurrentDate(dir === 1 ? addWeeks(currentDate, 2) : subWeeks(currentDate, 2));
+    } else if (viewMode === "week" || isMobile) {
+      setCurrentDate(dir === 1 ? addWeeks(currentDate, 1) : subWeeks(currentDate, 1));
+    } else {
+      setCurrentDate(dir === 1 ? addMonths(currentDate, 1) : subMonths(currentDate, 1));
+    }
   };
 
   const handleCopy = useCallback((entry: CalendarEntry) => {
@@ -479,6 +495,11 @@ const BunkCalendar = () => {
           <div className="hidden sm:flex rounded-md border border-border overflow-hidden">
             <button onClick={() => setViewMode("week")} className={`px-3 py-1.5 text-[11px] font-mono tracking-wider transition-colors ${viewMode === "week" ? "bg-primary text-primary-foreground" : "bg-card text-muted-foreground hover:bg-muted"}`}>WEEK</button>
             <button onClick={() => setViewMode("month")} className={`px-3 py-1.5 text-[11px] font-mono tracking-wider transition-colors ${viewMode === "month" ? "bg-primary text-primary-foreground" : "bg-card text-muted-foreground hover:bg-muted"}`}>MONTH</button>
+          </div>
+          {/* Mobile-only TODAY / 2 WEEKS toggle */}
+          <div className="flex sm:hidden rounded-md border border-border overflow-hidden">
+            <button onClick={() => { setMobileRange("today"); setCurrentDate(new Date()); }} className={`px-3 py-1.5 text-[11px] font-mono tracking-wider transition-colors ${mobileRange === "today" ? "bg-primary text-primary-foreground" : "bg-card text-muted-foreground hover:bg-muted"}`}>TODAY</button>
+            <button onClick={() => { setMobileRange("2weeks"); setCurrentDate(new Date()); }} className={`px-3 py-1.5 text-[11px] font-mono tracking-wider transition-colors ${mobileRange === "2weeks" ? "bg-primary text-primary-foreground" : "bg-card text-muted-foreground hover:bg-muted"}`}>2 WEEKS</button>
           </div>
           <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => nav(-1)}><ChevronLeft className="h-4 w-4" /></Button>
           <Button variant="outline" size="sm" className="font-mono text-xs h-8" onClick={() => setCurrentDate(new Date())}>Today</Button>

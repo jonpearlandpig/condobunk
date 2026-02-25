@@ -9,12 +9,9 @@ import PullToRefresh from "@/components/ui/pull-to-refresh";
 import { useToast } from "@/hooks/use-toast";
 import { motion } from "framer-motion";
 import {
-  startOfMonth,
-  endOfMonth,
   startOfWeek,
   endOfWeek,
   addDays,
-  isSameMonth,
   isSameDay,
   isToday,
   format,
@@ -429,11 +426,11 @@ const BunkOverview = () => {
       // 2-week rolling from today
       return Array.from({ length: 14 }, (_, i) => addDays(today, i));
     }
-    // Full month grid
-    const monthStart = startOfMonth(today);
-    const monthEnd = endOfMonth(today);
-    const gridStart = startOfWeek(monthStart);
-    const gridEnd = endOfWeek(monthEnd);
+    // Desktop: 5 days back + ~30 days ahead, aligned to week boundaries
+    const rangeStart = addDays(today, -5);
+    const rangeEnd = addDays(today, 30);
+    const gridStart = startOfWeek(rangeStart);
+    const gridEnd = endOfWeek(rangeEnd);
     const days: Date[] = [];
     let d = gridStart;
     while (d <= gridEnd) {
@@ -442,6 +439,15 @@ const BunkOverview = () => {
     }
     return days;
   }, [isMobile]);
+
+  // Desktop calendar header label showing the rolling date range
+  const calendarHeaderLabel = useMemo(() => {
+    if (isMobile) return "NEXT 2 WEEKS";
+    if (calendarDays.length === 0) return "";
+    const first = calendarDays[0];
+    const last = calendarDays[calendarDays.length - 1];
+    return `${format(first, "MMM d").toUpperCase()} – ${format(last, "MMM d").toUpperCase()}`;
+  }, [isMobile, calendarDays]);
 
   const cards = [
     { label: "ACTIVE TOURS", value: tours.length, icon: Radio, color: "text-primary", link: null },
@@ -622,7 +628,7 @@ const BunkOverview = () => {
             <div className="flex items-center gap-2">
               <CalendarDays className="h-4 w-4 text-primary" />
               <span className="font-mono text-[10px] tracking-[0.15em] text-muted-foreground font-semibold">
-                {isMobile ? "NEXT 2 WEEKS" : format(new Date(), "MMMM yyyy").toUpperCase()}
+                {calendarHeaderLabel}
               </span>
             </div>
             <button
@@ -653,7 +659,7 @@ const BunkOverview = () => {
               const tourIdsForDay = eventsByDate[dateStr];
               const hasEvents = !!tourIdsForDay;
               const today = isToday(day);
-              const outsideMonth = !isMobile && !isSameMonth(day, new Date());
+              // No outsideMonth dimming — rolling window, not month-based
 
               return (
                 <button
@@ -665,7 +671,7 @@ const BunkOverview = () => {
                       : hasEvents
                       ? "hover:bg-muted/50 cursor-pointer"
                       : "cursor-default"
-                  } ${outsideMonth ? "opacity-30" : ""}`}
+                  }`}
                 >
                   <span className={`font-mono text-[11px] sm:text-xs leading-none ${
                     today ? "font-bold text-primary" : "text-foreground"
