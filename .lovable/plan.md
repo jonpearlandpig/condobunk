@@ -1,152 +1,84 @@
 
 
-# TourText Intelligence Dashboard + TELA Pattern Detection
+# TL;DR Desktop Calendar: Start 5 Days Back + Mobile 2-Week Toggle
 
 ## Overview
 
-Build an SMS activity dashboard in BunkAdmin and a backend edge function that analyzes TourText inquiry patterns. When 5+ crew members ask about the same topic, TELA surfaces a proactive alert with a suggested fix -- turning reactive Q&A into preventive tour management.
+Two targeted changes to the calendar widgets:
+1. **TL;DR desktop calendar** (BunkOverview): Shift the grid to start 5 days before today instead of at the beginning of the current month, showing a forward-looking ~5-week window.
+2. **Mobile calendar** (BunkCalendar): Add a toggle so mobile users can switch between "Today" (agenda from today forward) and "2 Weeks" view, instead of being locked to the current week-only agenda.
 
-## Architecture
+## Changes
 
-```text
-+-------------------+       +----------------------+       +------------------+
-| tourtext-inbound  | --->  | sms_inbound/outbound | <---  | BunkAdmin        |
-| (existing)        |       | (existing tables)     |       | TourText tab     |
-+-------------------+       +----------------------+       +------------------+
-                                     |                              |
-                                     v                              v
-                            +----------------------+       +------------------+
-                            | tourtext-insights    |       | TELA Alert Card  |
-                            | (new edge function)  | --->  | "17 asked about  |
-                            | clusters questions   |       |  catering..."    |
-                            +----------------------+       +------------------+
+### 1. BunkOverview.tsx -- Desktop Calendar Start Date (lines ~426-444)
+
+Currently the desktop `calendarDays` computes a full month grid starting at the beginning of the current month. Change this to:
+- Start date = 5 days before today
+- End date = ~30 days from today (roughly one month out)
+- Still rendered as a 7-column grid with day-of-week headers
+- The header label changes from "FEBRUARY 2026" to something like "FEB 20 - MAR 27" to reflect the rolling window
+- Today still gets the highlighted ring treatment
+
+The `calendarDays` useMemo becomes:
+```typescript
+const today = new Date();
+if (isMobile) {
+  return Array.from({ length: 14 }, (_, i) => addDays(today, i));
+}
+// Desktop: 5 days back + ~30 days ahead, aligned to week boundaries
+const rangeStart = addDays(today, -5);
+const rangeEnd = addDays(today, 30);
+const gridStart = startOfWeek(rangeStart);
+const gridEnd = endOfWeek(rangeEnd);
+const days: Date[] = [];
+let d = gridStart;
+while (d <= gridEnd) {
+  days.push(d);
+  d = addDays(d, 1);
+}
+return days;
 ```
 
-## What the Tour Admin Sees
+The header label (line ~625) changes from `format(new Date(), "MMMM yyyy").toUpperCase()` to show the date range like `"FEB 20 - MAR 27"`.
 
-### 1. TourText Activity Tab (in BunkAdmin)
+The `outsideMonth` dimming logic is removed since we're no longer doing a month-based grid.
 
-A new section/tab in BunkAdmin with:
+### 2. BunkCalendar.tsx -- Mobile 2-Week Toggle
 
-- **Stats bar**: Total messages (24h), unique senders, avg response time
-- **Message feed**: Recent inbound/outbound pairs showing sender phone (masked), question, TELA's reply, timestamp, matched tour
-- **Pattern Alerts**: TELA-generated insight cards when 5+ inquiries cluster around the same topic
+Currently the WEEK/MONTH toggle is hidden on mobile (`hidden sm:flex` on line 479). We need to:
 
-### 2. Pattern Alert Card (the key feature)
+- Add a mobile-only toggle with two options: **TODAY** and **2 WEEKS**
+- Add a new state variable `mobileRange` with values `"today"` or `"2weeks"`
+- When "TODAY" is selected: show agenda from today forward for the current week (existing behavior)
+- When "2 WEEKS" is selected: show a 14-day rolling agenda from today
 
-When TELA detects a pattern:
-
-```text
-+--------------------------------------------------+
-|  ! TELA Pattern Alert                             |
-|                                                   |
-|  17 of 18 TourTexts today asked about CATERING    |
-|  location at tomorrow's venue.                    |
-|                                                   |
-|  Suggested fix:                                   |
-|  "Catering info is missing from the VAN for       |
-|   Bridgestone Arena. Add catering details to the  |
-|   venue advance notes, or send a group text to    |
-|   crew with the info."                            |
-|                                                   |
-|  [ Go to VAN ]  [ Dismiss ]                       |
-+--------------------------------------------------+
+**New state:**
+```typescript
+const [mobileRange, setMobileRange] = useState<"today" | "2weeks">("today");
 ```
 
-## Technical Plan
-
-### 1. New Edge Function: `tourtext-insights`
-
-Called from the frontend when the TA opens the TourText dashboard tab. It:
-
-1. Fetches recent `sms_inbound` messages for the tour (last 24-72h)
-2. Sends the batch of questions to the AI gateway with a clustering prompt
-3. Returns:
-   - `clusters`: Array of `{ topic, count, sample_questions, suggested_fix, severity, related_entity }` 
-   - `stats`: `{ total_inbound, total_outbound, unique_senders, avg_response_ms }`
-
-The AI prompt instructs the model to:
-- Group questions by semantic similarity
-- Only flag clusters with 5+ occurrences as actionable
-- Suggest concrete fixes referencing AKB entities (VANs, contacts, schedule)
-- Rate severity: `info` (1-4 similar), `warning` (5-9), `critical` (10+)
-
-### 2. Frontend: TourText Dashboard Component
-
-A new `TourTextDashboard` component rendered inside BunkAdmin after the existing sections. Contains:
-
-- **Stats row**: 3 metric cards (total messages, unique senders, avg response time)
-- **Pattern alerts**: Cards for each cluster with 5+ occurrences, color-coded by severity
-- **Message log**: Scrollable table of recent SMS conversations (inbound question + outbound reply paired by phone/timestamp)
-- **Refresh button**: Re-runs the insights analysis
-
-### 3. Modify BunkAdmin
-
-Add the TourText dashboard section after the Sync History section, gated behind `is_tour_admin_or_mgmt`. Uses `sms_inbound` and `sms_outbound` tables (already have TA/MGMT SELECT policies).
-
-### 4. Enhance `tourtext-inbound` (minor)
-
-Add a `sender_name` column to `sms_inbound` so the dashboard can show who texted without a separate lookup. This is a small migration + one line change in the edge function.
-
-## Files to Create/Modify
-
-| File | Action | Purpose |
-|------|--------|---------|
-| `supabase/functions/tourtext-insights/index.ts` | Create | AI-powered clustering of SMS inquiries, stats computation |
-| `src/components/bunk/TourTextDashboard.tsx` | Create | Full dashboard UI: stats, pattern alerts, message log |
-| `src/pages/bunk/BunkAdmin.tsx` | Modify | Add TourText dashboard section after Sync History |
-| `supabase/functions/tourtext-inbound/index.ts` | Modify | Save `sender_name` alongside inbound messages |
-| `sms_inbound` table | Migration | Add `sender_name` text column (nullable) |
-| `supabase/config.toml` | Modify | Add `tourtext-insights` function config |
-
-## Edge Function: `tourtext-insights` Detail
-
-```text
-Input (POST, authenticated):
-  { tour_id: string, hours?: number }  // default 24h lookback
-
-Processing:
-  1. Query sms_inbound WHERE tour_id = X AND created_at > now() - interval
-  2. Query sms_outbound WHERE tour_id = X AND created_at > now() - interval  
-  3. Compute stats (counts, unique phones, avg time between inbound/outbound pairs)
-  4. Send inbound messages to AI with clustering prompt
-  5. Return { stats, clusters, messages }
-
-Output:
-  {
-    stats: { total_inbound, total_outbound, unique_senders, avg_response_seconds },
-    clusters: [
-      { topic: "Catering location", count: 17, severity: "critical",
-        sample_questions: ["where is catering?", "what floor is catering on?"],
-        suggested_fix: "Add catering location to Bridgestone Arena VAN...",
-        related_entity: "venue_advance_notes" }
-    ],
-    messages: [
-      { direction: "inbound", phone: "+1***5678", sender_name: "Jake",
-        text: "where is catering?", created_at: "...", tour_id: "..." },
-      ...
-    ]
-  }
+**Mobile toggle UI** (visible only on mobile, placed near the existing nav buttons):
+```tsx
+<div className="flex sm:hidden rounded-md border border-border overflow-hidden">
+  <button onClick={() => setMobileRange("today")} className={`px-3 py-1.5 text-[11px] font-mono ...`}>TODAY</button>
+  <button onClick={() => setMobileRange("2weeks")} className={`px-3 py-1.5 text-[11px] font-mono ...`}>2 WEEKS</button>
+</div>
 ```
 
-## Pattern Detection Thresholds
+**Adjust `visibleDays`** to account for mobile range:
+- When mobile + "today": keep existing week view behavior (starts from current week)
+- When mobile + "2weeks": use `eachDayOfInterval` from today to today+13
 
-- **1-4 similar questions**: Normal -- no alert, just visible in the log
-- **5-9 similar questions**: Warning-level alert -- yellow card, "You may want to address this"
-- **10+ similar questions**: Critical alert -- red card, "This is a recurring gap that needs immediate attention"
+**Adjust navigation**: When in "2weeks" mode, the left/right arrows shift by 2 weeks instead of 1 week. The "Today" button resets to today.
 
-These thresholds are embedded in the AI prompt, not hardcoded in filtering logic, so TELA can apply judgment about what constitutes "similar."
+## Files Modified
 
-## Security
+| File | Change |
+|------|--------|
+| `src/pages/bunk/BunkOverview.tsx` | Desktop `calendarDays` starts 5 days back; update header label; remove `outsideMonth` dimming |
+| `src/pages/bunk/BunkCalendar.tsx` | Add `mobileRange` state; add mobile-only TODAY/2WEEKS toggle; adjust `visibleDays` for 2-week mobile mode |
 
-- `tourtext-insights` validates the JWT and checks tour membership via `is_tour_admin_or_mgmt` RPC before returning data
-- Phone numbers in the message log are partially masked (show last 4 digits) for privacy in the UI
-- No new RLS policies needed -- existing `sms_inbound` / `sms_outbound` SELECT policies already gate to TA/MGMT
+## No Backend Changes
 
-## What This Does NOT Change
-
-- The existing `tourtext-inbound` SMS flow remains identical
-- No changes to TELA chat or the AKB extraction pipeline
-- No new tables beyond the `sender_name` column addition
-- The pattern detection is on-demand (when TA opens the tab), not a background cron
+This is purely frontend -- no migrations, edge functions, or RLS changes needed.
 
