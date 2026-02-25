@@ -1,95 +1,65 @@
 
 
-## Add ElevenLabs Voice Agent to TELA
+# TELA Intelligence Upgrade — Build Phase 1A + 1B + 3
 
-### What This Does
-Adds a "Talk to TELA" voice button inside the existing TELA chat screen. Tap it, speak your question hands-free, and TELA responds with voice — perfect for on-site walkthroughs, load-in, and production calls where your hands are full.
+Starting with the three parallelizable low-effort phases that establish the behavioral baseline for everything that follows.
 
-### How It Works
+---
 
-```text
-User taps mic  -->  Browser mic opens
-       |
-User speaks    -->  ElevenLabs agent transcribes + sends to your AKB data
-       |
-TELA responds  -->  Voice audio plays back through phone speaker
-       |
-Transcript     -->  Both sides appear as text in the existing chat thread
+## Phase 1A: Contextual Pre-fill Buttons
+
+Add "Ask TELA" Radio icon buttons to open rows on Gaps, Conflicts, and Coverage pages. Each navigates to `/bunk/chat?scope=tour&q={encodedPrompt}`.
+
+**Files changed:**
+- `src/pages/bunk/BunkGaps.tsx` — Add Radio icon button per open gap row. Prompt template: `Help me resolve this gap: "{question}" in the {domain} domain`
+- `src/pages/bunk/BunkConflicts.tsx` — Add Radio icon button per conflict row. Prompt template: `Diagnose this conflict: {type} (severity: {severity}). What should I do?`
+- `src/pages/bunk/BunkCoverage.tsx` — Review existing "ASK TELA" links and update `domainQuestions` prompts to be more actionable where needed
+
+---
+
+## Phase 1B: Action Outcome Logging
+
+**Database migration:** Create `tela_action_log` table with RLS (INSERT/SELECT scoped to `auth.uid() = user_id`). Includes explicit comment noting Phase 6 service-role aggregation.
+
+```sql
+-- Phase 6: akb-chat aggregates this table across all tour users
+-- via service role key (bypasses RLS). This is intentional for
+-- behavioral hint generation. No user-facing SELECT crosses boundaries.
+CREATE TABLE public.tela_action_log (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  tour_id uuid REFERENCES tours(id) ON DELETE CASCADE NOT NULL,
+  user_id uuid NOT NULL,
+  action_type text NOT NULL,
+  outcome text NOT NULL CHECK (outcome IN ('approved','dismissed')),
+  created_at timestamptz DEFAULT now()
+);
+ALTER TABLE tela_action_log ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Users can insert own logs" ON tela_action_log
+  FOR INSERT WITH CHECK (auth.uid() = user_id);
+CREATE POLICY "Users can read own logs" ON tela_action_log
+  FOR SELECT USING (auth.uid() = user_id);
 ```
 
-The ElevenLabs Conversational AI agent connects to your existing `akb-chat` backend function as a "server tool," so TELA's voice answers draw from the exact same tour data, citations, and action blocks as the text chat.
+**Files changed:**
+- `src/components/bunk/TelaActionCard.tsx` — On approve (`handleCommit` success), insert `{outcome: 'approved'}`; on dismiss (signoff dialog close without commit), insert `{outcome: 'dismissed'}`. Requires passing `tour_id` from `useTour()` context and `user_id` from `useAuth()`.
 
-### Prerequisites
+---
 
-1. **ElevenLabs Account** -- you already have one
-2. **ElevenLabs API Key** -- you'll be prompted to securely store it
-3. **ElevenLabs Agent Setup** -- you'll create a Conversational AI agent in the ElevenLabs dashboard with:
-   - A voice that fits TELA's personality (recommendation: **"George"** or **"Eric"** for a calm, professional ops tone)
-   - A server tool pointing to your `akb-chat` function so the agent can query tour data
-   - Prompt overrides will be injected from the app (tour context, user identity)
+## Phase 3: Smart Thread Titles
 
-### Implementation Steps
+**New edge function:** `supabase/functions/generate-thread-title/index.ts`
+- Accepts `thread_id`, fetches first 3-4 messages from `tela_messages`
+- Calls AI to generate a concise 5-8 word title
+- Updates `tela_threads.title`
 
-**Step 1: Store the ElevenLabs API Key**
-- Securely add your `ELEVENLABS_API_KEY` as a backend secret
-- Add your `ELEVENLABS_AGENT_ID` as a second secret (the agent ID from the ElevenLabs dashboard)
+**Files changed:**
+- `src/pages/bunk/BunkChat.tsx` — On component unmount or thread switch, if thread has 2+ assistant messages AND title is still the truncated default (first ~60 chars of first message), fire-and-forget call to `generate-thread-title`
 
-**Step 2: Create Token Edge Function**
-- New file: `supabase/functions/elevenlabs-conversation-token/index.ts`
-- Authenticates the user (JWT validation)
-- Calls ElevenLabs API to generate a short-lived WebRTC conversation token
-- Returns the token to the client
+---
 
-**Step 3: Install the React SDK**
-- Add `@elevenlabs/react` package
-- Provides the `useConversation` hook for WebRTC audio management
+## Build Notes
 
-**Step 4: Build the Voice UI Component**
-- New file: `src/components/bunk/TelaVoiceAgent.tsx`
-- Floating mic button in the TELA chat screen
-- States: idle, connecting, listening, TELA speaking
-- Pulsing animation when TELA is speaking, waveform when listening
-- Transcripts from both sides are injected into the existing chat message list
-- "End call" button to disconnect
-
-**Step 5: Integrate into BunkChat**
-- Add the voice button to the TELA chat top bar (next to the scope badge)
-- When voice is active, text input is dimmed/disabled
-- Voice transcripts are saved to the same `tela_messages` / `tela_threads` tables
-- Works in both scoped (single tour) and global (all tours) modes
-
-**Step 6: Configure the ElevenLabs Agent (Manual Step)**
-- You'll set up the agent in the ElevenLabs dashboard:
-  - **System prompt**: "You are TELA, a touring efficiency assistant. Use the akb_query tool to answer questions about tour schedules, venues, contacts, and production data."
-  - **Server tool**: POST to your `akb-chat` endpoint with the user's question
-  - **Voice**: Choose from the ElevenLabs voice library
-  - **First message**: "Hey, TELA here. What do you need?"
-
-### Technical Detail
-
-| File | Change |
-|------|--------|
-| `supabase/functions/elevenlabs-conversation-token/index.ts` | New -- generates WebRTC conversation tokens |
-| `supabase/config.toml` | Add `[functions.elevenlabs-conversation-token]` with `verify_jwt = false` |
-| `src/components/bunk/TelaVoiceAgent.tsx` | New -- voice UI with mic button, status indicators, transcript display |
-| `src/pages/bunk/BunkChat.tsx` | Add voice button to top bar, integrate transcript into message list |
-| Secrets | `ELEVENLABS_API_KEY` and `ELEVENLABS_AGENT_ID` |
-| Package | `@elevenlabs/react` |
-
-### Voice UX Details
-
-- **Mic button**: Appears as a small microphone icon in the chat top bar
-- **Permission prompt**: First tap explains why mic access is needed, then requests it
-- **Active state**: Chat input area shows "TELA is listening..." with a pulsing indicator
-- **Speaking state**: Audio plays through device speaker; visual indicator shows TELA is responding
-- **Transcript sync**: User speech and TELA responses appear as regular chat bubbles in real-time
-- **Mobile optimized**: Works great on-site with one hand -- tap to start, tap to stop
-
-### What You'll Need to Do
-
-1. Approve this plan
-2. When prompted, paste your ElevenLabs API key
-3. Create a Conversational AI agent in the ElevenLabs dashboard (I'll give you exact setup instructions)
-4. Paste the Agent ID when prompted
-5. Pick a voice for TELA
+- **Prompt template monitoring (1A):** The pre-fill prompts are the first user-facing signal of TELA's contextual awareness. Watch the first week — if users reword pre-filled queries before sending, the templates need tuning.
+- **Learning loop telemetry (1B):** Console.log observability is sufficient for launch. Flag for later: when audit-grade decision tracking becomes a positioning conversation, surface this data somewhere more durable than edge function logs.
+- **Thread title trigger (3):** On-blur/unmount only, never mid-conversation. Guard conditions prevent unnecessary calls.
 
