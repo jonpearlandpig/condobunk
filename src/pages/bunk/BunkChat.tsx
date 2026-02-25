@@ -93,6 +93,54 @@ const BunkChat = () => {
     }
   }, [searchParams, hasTours]);
 
+  // Phase 3: Auto-generate thread title on thread switch or unmount
+  const prevThreadRef = useRef<string | null>(null);
+  const messagesRef = useRef<Msg[]>(messages);
+  messagesRef.current = messages;
+
+  const maybeGenerateTitle = useCallback(async (threadId: string) => {
+    const msgs = messagesRef.current;
+    const assistantCount = msgs.filter((m) => m.role === "assistant").length;
+    if (assistantCount < 2) return;
+
+    // Check if title is still the default (truncated first user message)
+    const { data: thread } = await supabase
+      .from("tela_threads" as any)
+      .select("title")
+      .eq("id", threadId)
+      .maybeSingle();
+    if (!thread) return;
+    const firstUserMsg = msgs.find((m) => m.role === "user");
+    const defaultTitle = firstUserMsg?.content.trim().slice(0, 60) || "New conversation";
+    if ((thread as any).title !== defaultTitle && (thread as any).title !== "New conversation") return;
+
+    // Fire-and-forget
+    const url = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/generate-thread-title`;
+    const { data: { session } } = await supabase.auth.getSession();
+    fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${session?.access_token || import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
+      },
+      body: JSON.stringify({ thread_id: threadId }),
+    }).catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    const prev = prevThreadRef.current;
+    if (prev && prev !== activeThreadId) {
+      maybeGenerateTitle(prev);
+    }
+    prevThreadRef.current = activeThreadId;
+    return () => {
+      // On unmount, try to generate title for current thread
+      if (prevThreadRef.current) {
+        maybeGenerateTitle(prevThreadRef.current);
+      }
+    };
+  }, [activeThreadId, maybeGenerateTitle]);
+
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
   }, [messages]);

@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
-import { HelpCircle, Check, MessageSquare } from "lucide-react";
+import { HelpCircle, Check, MessageSquare, Radio } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 
@@ -16,6 +17,7 @@ interface Gap {
 const BunkGaps = () => {
   const [gaps, setGaps] = useState<Gap[]>([]);
   const { toast } = useToast();
+  const navigate = useNavigate();
 
   useEffect(() => {
     loadGaps();
@@ -90,15 +92,30 @@ const BunkGaps = () => {
                   {new Date(gap.created_at).toLocaleDateString()}
                 </p>
               </div>
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => resolveGap(gap.id)}
-                className="font-mono text-[10px] tracking-wider shrink-0"
-              >
-                <Check className="mr-1 h-3 w-3" />
-                RESOLVE
-              </Button>
+              <div className="flex items-center gap-1.5 shrink-0">
+                <button
+                  onClick={() =>
+                    navigate(
+                      `/bunk/chat?scope=tour&q=${encodeURIComponent(
+                        `Help me resolve this gap: "${gap.question}"${gap.domain ? ` in the ${gap.domain} domain` : ""}`
+                      )}`
+                    )
+                  }
+                  className="p-1.5 rounded-md text-primary hover:bg-primary/10 transition-colors"
+                  title="Ask TELA"
+                >
+                  <Radio className="h-3.5 w-3.5" />
+                </button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => resolveGap(gap.id)}
+                  className="font-mono text-[10px] tracking-wider shrink-0"
+                >
+                  <Check className="mr-1 h-3 w-3" />
+                  RESOLVE
+                </Button>
+              </div>
             </motion.div>
           ))
         )}
