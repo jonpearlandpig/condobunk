@@ -1,90 +1,95 @@
 
 
-## CondoBunk Marketing Site — Multi-Page Build
+## Add ElevenLabs Voice Agent to TELA
 
-### Overview
-Build a standalone marketing site at `/site` with sub-pages, completely separate from the authenticated `/bunk` app. The marketing site will pull all content from the existing codebase (glossary, branding, copy) and use the same dark mission-control aesthetic.
+### What This Does
+Adds a "Talk to TELA" voice button inside the existing TELA chat screen. Tap it, speak your question hands-free, and TELA responds with voice — perfect for on-site walkthroughs, load-in, and production calls where your hands are full.
 
-### Site Structure
+### How It Works
 
 ```text
-/site              --> Landing page (Hero + overview)
-/site/features     --> Detailed feature breakdowns
-/site/about        --> About CondoBunk / the team
-/site/pricing      --> Plans and pricing tiers
-/site/contact      --> Contact form / inquiry
+User taps mic  -->  Browser mic opens
+       |
+User speaks    -->  ElevenLabs agent transcribes + sends to your AKB data
+       |
+TELA responds  -->  Voice audio plays back through phone speaker
+       |
+Transcript     -->  Both sides appear as text in the existing chat thread
 ```
 
-Each page shares a marketing navigation bar and footer.
+The ElevenLabs Conversational AI agent connects to your existing `akb-chat` backend function as a "server tool," so TELA's voice answers draw from the exact same tour data, citations, and action blocks as the text chat.
 
-### Page Breakdown
+### Prerequisites
 
-**1. Landing Page (`/site`)**
-- Full-width hero with the white CondoBunk logo, tagline "Close the curtain. Get schtuff done!", and subheading "TOUR LAW LIVES HERE"
-- Three-column value prop section: AKB (your knowledge base), TELA (AI assistant), TourText (SMS answers)
-- Social proof / stats section (placeholder for metrics)
-- CTA buttons: "TRY DEMO" (links to login with demo activation) and "SIGN IN" (links to /login)
+1. **ElevenLabs Account** -- you already have one
+2. **ElevenLabs API Key** -- you'll be prompted to securely store it
+3. **ElevenLabs Agent Setup** -- you'll create a Conversational AI agent in the ElevenLabs dashboard with:
+   - A voice that fits TELA's personality (recommendation: **"George"** or **"Eric"** for a calm, professional ops tone)
+   - A server tool pointing to your `akb-chat` function so the agent can query tour data
+   - Prompt overrides will be injected from the app (tour context, user identity)
 
-**2. Features Page (`/site/features`)**
-- Feature grid built from the glossary data: AKB, TELA, TourText, VANs, Tech Packs, Artifacts, Gaps, Conflicts, Sign-offs, Presence
-- Each feature gets an icon, title, and description pulled from `glossary.ts`
-- Grouped by category (Core, Data, Features)
-- Animated entrance using framer-motion
+### Implementation Steps
 
-**3. About Page (`/site/about`)**
-- Product story / mission statement
-- How CondoBunk replaces email threads and spreadsheets
-- "Built by tour professionals, for tour professionals" positioning
-- Placeholder section for team bios
+**Step 1: Store the ElevenLabs API Key**
+- Securely add your `ELEVENLABS_API_KEY` as a backend secret
+- Add your `ELEVENLABS_AGENT_ID` as a second secret (the agent ID from the ElevenLabs dashboard)
 
-**4. Pricing Page (`/site/pricing`)**
-- Three-tier card layout (Demo / Pro / Enterprise)
-- Demo: Free 24h access, read-only AKB
-- Pro: Full AKB management, TELA, TourText, unlimited crew
-- Enterprise: Custom, contact for details
-- Pricing values as placeholders you can update
+**Step 2: Create Token Edge Function**
+- New file: `supabase/functions/elevenlabs-conversation-token/index.ts`
+- Authenticates the user (JWT validation)
+- Calls ElevenLabs API to generate a short-lived WebRTC conversation token
+- Returns the token to the client
 
-**5. Contact Page (`/site/contact`)**
-- Simple inquiry form (name, email, message)
-- Stores submissions in a new `site_inquiries` database table
-- "Request a Demo" CTA alongside the form
+**Step 3: Install the React SDK**
+- Add `@elevenlabs/react` package
+- Provides the `useConversation` hook for WebRTC audio management
 
-### Shared Components
+**Step 4: Build the Voice UI Component**
+- New file: `src/components/bunk/TelaVoiceAgent.tsx`
+- Floating mic button in the TELA chat screen
+- States: idle, connecting, listening, TELA speaking
+- Pulsing animation when TELA is speaking, waveform when listening
+- Transcripts from both sides are injected into the existing chat message list
+- "End call" button to disconnect
 
-**Marketing Nav Bar** (`src/components/site/SiteNav.tsx`)
-- White CondoBunk logo (left)
-- Nav links: Features, About, Pricing, Contact
-- "SIGN IN" button (right, links to /login)
-- Mobile hamburger menu
+**Step 5: Integrate into BunkChat**
+- Add the voice button to the TELA chat top bar (next to the scope badge)
+- When voice is active, text input is dimmed/disabled
+- Voice transcripts are saved to the same `tela_messages` / `tela_threads` tables
+- Works in both scoped (single tour) and global (all tours) modes
 
-**Marketing Footer** (`src/components/site/SiteFooter.tsx`)
-- Logo, tagline, copyright
-- Quick links to all marketing pages
-- "TOURTEXT + CONDO BUNK v2.1" branding
-
-**Marketing Layout** (`src/components/site/SiteLayout.tsx`)
-- Wraps all /site pages with nav + footer
-- No sidebar, no auth required
+**Step 6: Configure the ElevenLabs Agent (Manual Step)**
+- You'll set up the agent in the ElevenLabs dashboard:
+  - **System prompt**: "You are TELA, a touring efficiency assistant. Use the akb_query tool to answer questions about tour schedules, venues, contacts, and production data."
+  - **Server tool**: POST to your `akb-chat` endpoint with the user's question
+  - **Voice**: Choose from the ElevenLabs voice library
+  - **First message**: "Hey, TELA here. What do you need?"
 
 ### Technical Detail
 
 | File | Change |
 |------|--------|
-| `src/App.tsx` | Add routes: `/site`, `/site/features`, `/site/about`, `/site/pricing`, `/site/contact` |
-| `src/components/site/SiteLayout.tsx` | New -- marketing layout with nav + footer |
-| `src/components/site/SiteNav.tsx` | New -- marketing navigation bar |
-| `src/components/site/SiteFooter.tsx` | New -- marketing footer |
-| `src/pages/site/SiteLanding.tsx` | New -- hero + value props + CTA |
-| `src/pages/site/SiteFeatures.tsx` | New -- feature grid from glossary |
-| `src/pages/site/SiteAbout.tsx` | New -- about / mission page |
-| `src/pages/site/SitePricing.tsx` | New -- pricing tiers |
-| `src/pages/site/SiteContact.tsx` | New -- contact form |
-| Database migration | New `site_inquiries` table for contact form submissions |
+| `supabase/functions/elevenlabs-conversation-token/index.ts` | New -- generates WebRTC conversation tokens |
+| `supabase/config.toml` | Add `[functions.elevenlabs-conversation-token]` with `verify_jwt = false` |
+| `src/components/bunk/TelaVoiceAgent.tsx` | New -- voice UI with mic button, status indicators, transcript display |
+| `src/pages/bunk/BunkChat.tsx` | Add voice button to top bar, integrate transcript into message list |
+| Secrets | `ELEVENLABS_API_KEY` and `ELEVENLABS_AGENT_ID` |
+| Package | `@elevenlabs/react` |
 
-### Design Notes
-- Same dark background, burnt orange primary, Space Grotesk + JetBrains Mono
-- framer-motion scroll animations for section reveals
-- All content pulled from existing glossary and login copy -- no new copywriting needed for features
-- Fully responsive (mobile-first grid layouts)
-- No authentication required for any marketing page
+### Voice UX Details
+
+- **Mic button**: Appears as a small microphone icon in the chat top bar
+- **Permission prompt**: First tap explains why mic access is needed, then requests it
+- **Active state**: Chat input area shows "TELA is listening..." with a pulsing indicator
+- **Speaking state**: Audio plays through device speaker; visual indicator shows TELA is responding
+- **Transcript sync**: User speech and TELA responses appear as regular chat bubbles in real-time
+- **Mobile optimized**: Works great on-site with one hand -- tap to start, tap to stop
+
+### What You'll Need to Do
+
+1. Approve this plan
+2. When prompted, paste your ElevenLabs API key
+3. Create a Conversational AI agent in the ElevenLabs dashboard (I'll give you exact setup instructions)
+4. Paste the Agent ID when prompted
+5. Pick a voice for TELA
 
