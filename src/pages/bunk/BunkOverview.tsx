@@ -466,7 +466,7 @@ const BunkOverview = () => {
         <div>
           <h1 className="text-xl sm:text-2xl font-bold tracking-tight">TELA;QR</h1>
           <p className="text-xs sm:text-sm text-muted-foreground font-mono mt-0.5 sm:mt-1">
-            Real-time tour intelligence
+            Real-time Tour Intelligence
           </p>
         </div>
         {!isDemoMode && (
