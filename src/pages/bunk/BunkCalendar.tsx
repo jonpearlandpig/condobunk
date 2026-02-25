@@ -36,6 +36,8 @@ import {
   Check,
   ClipboardList,
   Plus,
+  Rss,
+  Link as LinkIcon,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
@@ -136,6 +138,7 @@ const BunkCalendar = () => {
   const [selectedVanData, setSelectedVanData] = useState<any[] | null>(null);
   const [addEventOpen, setAddEventOpen] = useState(false);
   const [addEventDefaultDate, setAddEventDefaultDate] = useState<string | undefined>();
+  const [feedCopied, setFeedCopied] = useState(false);
 
   const tourColorMap = useMemo(() => {
     const map: Record<string, number> = {};
@@ -459,6 +462,25 @@ const BunkCalendar = () => {
   const isMonthView = viewMode === "month";
   const isGlobal = tourFilter === "all";
 
+  const isDemoMode = tours.some(t => {
+    // check if any tour membership is DEMO — approximate by checking tour name
+    return false; // will rely on tourFilter for feed URL
+  });
+
+  // Build the iCal feed URL for the currently selected tour (or first tour)
+  const feedTourId = tourFilter !== "all" ? tourFilter : tours[0]?.id;
+  const feedUrl = feedTourId
+    ? `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/calendar-feed?tour_id=${feedTourId}`
+    : "";
+  const webcalUrl = feedUrl.replace(/^https?:\/\//, "webcal://");
+
+  const handleCopyFeed = useCallback(() => {
+    if (!feedUrl) return;
+    navigator.clipboard.writeText(feedUrl);
+    setFeedCopied(true);
+    setTimeout(() => setFeedCopied(false), 2000);
+  }, [feedUrl]);
+
   const handleRefresh = useCallback(async () => {
     await loadCalendar();
   }, [loadCalendar]);
@@ -508,6 +530,43 @@ const BunkCalendar = () => {
             <Plus className="h-3.5 w-3.5" />
             <span className="hidden sm:inline">Add Event</span>
           </Button>
+          {feedTourId && (
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button variant="ghost" size="icon" className="h-8 w-8" title="Subscribe to calendar feed">
+                  <Rss className="h-4 w-4" />
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-80 space-y-3" align="end">
+                <div className="space-y-1">
+                  <h4 className="font-semibold text-sm">Subscribe to Calendar</h4>
+                  <p className="text-xs text-muted-foreground">
+                    Add this tour's schedule to Google Calendar, Apple Calendar, or any app that supports iCal feeds.
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <code className="flex-1 text-[10px] bg-muted rounded px-2 py-1.5 font-mono break-all select-all line-clamp-2">
+                    {feedUrl}
+                  </code>
+                  <Button variant="outline" size="icon" className="h-8 w-8 shrink-0" onClick={handleCopyFeed}>
+                    {feedCopied ? <Check className="h-3.5 w-3.5 text-success" /> : <Copy className="h-3.5 w-3.5" />}
+                  </Button>
+                </div>
+                <div className="space-y-1.5">
+                  <a
+                    href={webcalUrl}
+                    className="flex items-center gap-2 text-xs text-primary hover:underline font-mono"
+                  >
+                    <LinkIcon className="h-3 w-3" />
+                    One-click subscribe (webcal://)
+                  </a>
+                  <p className="text-[10px] text-muted-foreground leading-relaxed">
+                    Or paste the URL in Google Calendar → Other calendars → From URL
+                  </p>
+                </div>
+              </PopoverContent>
+            </Popover>
+          )}
         </div>
       </div>
 

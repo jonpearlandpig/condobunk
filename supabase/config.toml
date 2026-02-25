@@ -33,3 +33,9 @@ verify_jwt = false
 
 [functions.notify-box-office]
 verify_jwt = false
+
+[functions.calendar-feed]
+verify_jwt = false
+
+[functions.google-drive-proxy]
+verify_jwt = false
