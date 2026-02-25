@@ -72,6 +72,7 @@ const BunkOverview = () => {
   const { user } = useAuth();
   const { tours, setSelectedTourId, reload, isDemoMode, activateDemo } = useTour();
   const [activatingDemo, setActivatingDemo] = useState(false);
+  const [briefingExpanded, setBriefingExpanded] = useState(false);
   const navigate = useNavigate();
   const { toast } = useToast();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -463,7 +464,7 @@ const BunkOverview = () => {
     <div className="space-y-5 sm:space-y-8 max-w-5xl">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl sm:text-2xl font-bold tracking-tight"><GlossaryTerm term="TELA">TELA</GlossaryTerm> TL;DR</h1>
+          <h1 className="text-xl sm:text-2xl font-bold tracking-tight">TELA;QR</h1>
           <p className="text-xs sm:text-sm text-muted-foreground font-mono mt-0.5 sm:mt-1">
             Real-time tour intelligence
           </p>
@@ -529,7 +530,7 @@ const BunkOverview = () => {
             <CollapsibleTrigger className="flex items-center gap-2 hover:opacity-80 transition-opacity">
               <Radio className="h-4 w-4 text-primary" />
               <span className="font-mono text-[10px] tracking-[0.15em] text-primary font-semibold">
-                DAILY BRIEFING
+                QUICK READ
               </span>
               <ChevronRight className="h-3 w-3 text-primary/60 transition-transform duration-200 [[data-state=open]>&]:rotate-90" />
             </CollapsibleTrigger>
@@ -552,7 +553,7 @@ const BunkOverview = () => {
               </div>
             ) : (
               <div className="space-y-2.5">
-                {tldr.map((item, i) => (
+                {(isMobile && !briefingExpanded ? tldr.slice(0, 2) : tldr).map((item, i) => (
                   <div key={i} className="flex items-start gap-2 group">
                     <span className="text-primary/60 mt-0.5 shrink-0">▸</span>
                     <div className="flex-1 min-w-0">
@@ -571,6 +572,14 @@ const BunkOverview = () => {
                     </div>
                   </div>
                 ))}
+                {isMobile && tldr.length > 2 && (
+                  <button
+                    onClick={() => setBriefingExpanded(!briefingExpanded)}
+                    className="w-full text-center py-2 text-[10px] font-mono tracking-[0.15em] text-primary/70 hover:text-primary transition-colors"
+                  >
+                    {briefingExpanded ? "SHOW LESS" : "SHOW MORE"}
+                  </button>
+                )}
               </div>
             )}
           </CollapsibleContent>

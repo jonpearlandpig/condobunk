@@ -44,7 +44,7 @@ import { SidebarProvider } from "@/components/ui/sidebar";
 import { toast } from "sonner";
 
 const navItems = [
-  { title: "TL;DR", url: "/bunk", icon: LayoutDashboard, end: true, tip: "Tour overview" },
+  { title: "TELA;QR", url: "/bunk", icon: LayoutDashboard, end: true, tip: "Quick Read" },
   { title: "Calendar", url: "/bunk/calendar", icon: CalendarDays, tip: "Schedule & events" },
   { title: "Ask Tela", url: "/bunk/chat", icon: Radio, tip: "AKB Assistant" },
   { title: "AKB's", url: "/bunk/documents", icon: FileText, tip: "Approved Tour Info" },
