@@ -110,11 +110,13 @@ const BunkSidebar = () => {
     contacts: g.contacts.filter(c => c.appUserId !== user?.id),
   }));
 
-  // Count online team members (excluding self)
-  const onlineTeamCount = filteredTourTeamGroups
-    .flatMap(g => g.contacts)
-    .filter(c => c.appUserId && onlineUsers.has(c.appUserId))
-    .length;
+  // Count unique online team members (excluding self, deduplicated across tours)
+  const onlineTeamCount = new Set(
+    filteredTourTeamGroups
+      .flatMap(g => g.contacts)
+      .filter(c => c.appUserId && onlineUsers.has(c.appUserId))
+      .map(c => c.appUserId)
+  ).size;
 
   // Get all uninvited contacts with emails across all tour groups
   const getUninvitedContacts = () => {
