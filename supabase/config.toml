@@ -24,3 +24,6 @@ verify_jwt = false
 
 [functions.elevenlabs-conversation-token]
 verify_jwt = false
+
+[functions.tourtext-inbound]
+verify_jwt = false
