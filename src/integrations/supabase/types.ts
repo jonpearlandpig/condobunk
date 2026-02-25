@@ -259,6 +259,7 @@ export type Database = {
           id: string
           is_active: boolean
           raw_text: string | null
+          replaces_doc_id: string | null
           tour_id: string
           version: number
         }
@@ -271,6 +272,7 @@ export type Database = {
           id?: string
           is_active?: boolean
           raw_text?: string | null
+          replaces_doc_id?: string | null
           tour_id: string
           version?: number
         }
@@ -283,10 +285,18 @@ export type Database = {
           id?: string
           is_active?: boolean
           raw_text?: string | null
+          replaces_doc_id?: string | null
           tour_id?: string
           version?: number
         }
         Relationships: [
+          {
+            foreignKeyName: "documents_replaces_doc_id_fkey"
+            columns: ["replaces_doc_id"]
+            isOneToOne: false
+            referencedRelation: "documents"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "documents_tour_id_fkey"
             columns: ["tour_id"]
