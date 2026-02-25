@@ -53,6 +53,7 @@ const navItems = [
   { title: "ASK TELA", url: "/bunk/chat", icon: Radio },
   { title: "TOUR AKB'S", url: "/bunk/documents", icon: FileText },
   { title: "CHANGE LOG", url: "/bunk/changelog", icon: ShieldCheck },
+  { title: "ARTIFACTS", url: "/bunk/artifacts", icon: StickyNote },
   { title: "ADMIN", url: "/bunk/admin", icon: Settings },
 ];
 
