@@ -24,7 +24,7 @@ const PAIN_POINTS = [
   {
     icon: Clock,
     before: "Hours hunting for venue contacts",
-    after: "Instant answers via AI or SMS",
+    after: "Instant answers via TELA or SMS",
   },
   {
     icon: Users,

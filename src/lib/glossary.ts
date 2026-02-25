@@ -13,7 +13,7 @@ export const GLOSSARY: Record<string, GlossaryEntry> = {
   },
   TELA: {
     term: "TELA",
-    short: "Tour Efficiency Liaison Assistant — the AI that answers questions from your tour data.",
+    short: "Tour Efficiency Liaison Assistant — the Tour Intelligence that answers questions from your tour data.",
     category: "core",
   },
   TourText: {

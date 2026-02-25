@@ -21,7 +21,7 @@ const TIERS = [
     features: [
       "Read-only AKB access",
       "Browse calendar & venue data",
-      "Try TELA AI assistant",
+      "Try TELA Tour Intelligence",
       "View Gaps & Conflicts",
     ],
     cta: "TRY DEMO",
@@ -35,7 +35,7 @@ const TIERS = [
     desc: "Full operational command for your tour.",
     features: [
       "Full AKB management",
-      "TELA AI — unlimited queries",
+      "TELA TI — unlimited queries",
       "TourText SMS for all crew",
       "Unlimited crew members",
       "Document extraction & versioning",
