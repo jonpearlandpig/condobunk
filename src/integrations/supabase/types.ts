@@ -690,6 +690,41 @@ export type Database = {
           },
         ]
       }
+      tela_action_log: {
+        Row: {
+          action_type: string
+          created_at: string | null
+          id: string
+          outcome: string
+          tour_id: string
+          user_id: string
+        }
+        Insert: {
+          action_type: string
+          created_at?: string | null
+          id?: string
+          outcome: string
+          tour_id: string
+          user_id: string
+        }
+        Update: {
+          action_type?: string
+          created_at?: string | null
+          id?: string
+          outcome?: string
+          tour_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tela_action_log_tour_id_fkey"
+            columns: ["tour_id"]
+            isOneToOne: false
+            referencedRelation: "tours"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       tela_messages: {
         Row: {
           content: string

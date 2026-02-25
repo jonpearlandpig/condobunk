@@ -3,6 +3,8 @@ import { CheckCircle, Loader2, Radio } from "lucide-react";
 import { TelaAction, getActionLabel, useTelaActions } from "@/hooks/useTelaActions";
 import AkbEditSignoff, { type SignoffData } from "./AkbEditSignoff";
 import { useTour } from "@/hooks/useTour";
+import { useAuth } from "@/hooks/useAuth";
+import { supabase } from "@/integrations/supabase/client";
 
 interface TelaActionCardProps {
   action: TelaAction;
@@ -11,7 +13,18 @@ interface TelaActionCardProps {
 const TelaActionCard = ({ action }: TelaActionCardProps) => {
   const { executeAction } = useTelaActions();
   const { selectedTourId } = useTour();
+  const { user } = useAuth();
   const [state, setState] = useState<"idle" | "signoff" | "loading" | "done">("idle");
+
+  const logOutcome = async (outcome: "approved" | "dismissed") => {
+    if (!user || !selectedTourId) return;
+    await supabase.from("tela_action_log" as any).insert({
+      tour_id: selectedTourId,
+      user_id: user.id,
+      action_type: action.type,
+      outcome,
+    } as any);
+  };
 
   const handleClick = () => {
     setState("signoff");
@@ -20,6 +33,7 @@ const TelaActionCard = ({ action }: TelaActionCardProps) => {
   const handleCommit = async (signoff: SignoffData) => {
     setState("loading");
     const ok = await executeAction(action, signoff.reason, signoff, selectedTourId);
+    if (ok) await logOutcome("approved");
     setState(ok ? "done" : "idle");
   };
 
@@ -49,7 +63,12 @@ const TelaActionCard = ({ action }: TelaActionCardProps) => {
 
       <AkbEditSignoff
         open={state === "signoff"}
-        onOpenChange={(o) => { if (!o) setState("idle"); }}
+        onOpenChange={(o) => {
+          if (!o) {
+            logOutcome("dismissed");
+            setState("idle");
+          }
+        }}
         changeSummary={`TELA action: ${getActionLabel(action)}`}
         onCommit={handleCommit}
         loading={state === "loading"}

@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
-import { AlertTriangle, Check } from "lucide-react";
+import { AlertTriangle, Check, Radio } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 
@@ -22,6 +23,7 @@ const severityColors: Record<string, string> = {
 const BunkConflicts = () => {
   const [conflicts, setConflicts] = useState<Conflict[]>([]);
   const { toast } = useToast();
+  const navigate = useNavigate();
 
   useEffect(() => {
     loadConflicts();
@@ -83,15 +85,30 @@ const BunkConflicts = () => {
                   </span>
                 </div>
               </div>
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => resolveConflict(c.id)}
-                className="font-mono text-[10px] tracking-wider"
-              >
-                <Check className="mr-1 h-3 w-3" />
-                RESOLVE
-              </Button>
+              <div className="flex items-center gap-1.5">
+                <button
+                  onClick={() =>
+                    navigate(
+                      `/bunk/chat?scope=tour&q=${encodeURIComponent(
+                        `Diagnose this conflict: ${c.conflict_type.replace(/_/g, " ")} (severity: ${c.severity}). What should I do?`
+                      )}`
+                    )
+                  }
+                  className="p-1.5 rounded-md text-primary hover:bg-primary/10 transition-colors"
+                  title="Ask TELA"
+                >
+                  <Radio className="h-3.5 w-3.5" />
+                </button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => resolveConflict(c.id)}
+                  className="font-mono text-[10px] tracking-wider"
+                >
+                  <Check className="mr-1 h-3 w-3" />
+                  RESOLVE
+                </Button>
+              </div>
             </motion.div>
           ))}
         </div>

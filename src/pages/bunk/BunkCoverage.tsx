@@ -19,16 +19,16 @@ const docTypes = [
 ];
 
 const domainQuestions: Record<string, string> = {
-  SCHEDULE: "We're missing schedule coverage. What schedule documents do we need to upload?",
-  CONTACTS: "No contacts artifacts in the AKB. What contact sheets should we gather?",
-  RUN_OF_SHOW: "Run of show is not covered. What do we need to build this out?",
-  TECH: "No tech packs in the AKB yet. What venue tech specs should we collect?",
-  FINANCE: "Finance domain is empty. What financial documents should we upload?",
-  TRAVEL: "Travel is not covered. What travel documents or itineraries do we need?",
-  LOGISTICS: "Logistics has no artifacts. What logistics documents should we gather?",
-  HOSPITALITY: "Hospitality domain is empty. What hospitality riders or docs are needed?",
-  CAST: "Cast information is missing. What cast/artist documents should we upload?",
-  VENUE: "Venue domain needs coverage. What venue-specific documents do we need?",
+  SCHEDULE: "The SCHEDULE domain has no artifacts. What schedule documents (master itinerary, day sheets) should I upload to build this out?",
+  CONTACTS: "The CONTACTS domain is empty. What contact sheets or crew lists should I gather and upload?",
+  RUN_OF_SHOW: "RUN_OF_SHOW is not covered. What run-of-show documents do I need to create or collect for upcoming shows?",
+  TECH: "The TECH domain has no artifacts. What venue tech specs, rider requirements, or input lists should I collect?",
+  FINANCE: "FINANCE domain is empty. What financial documents (settlements, budgets, expense reports) should I upload?",
+  TRAVEL: "TRAVEL has no coverage. What travel itineraries, flight manifests, or ground transport docs should I gather?",
+  LOGISTICS: "LOGISTICS domain is empty. What logistics documents (truck manifests, load plans, shipping docs) do I need?",
+  HOSPITALITY: "HOSPITALITY has no artifacts. What hospitality riders, catering orders, or hotel rooming lists should I collect?",
+  CAST: "CAST domain is missing. What cast/artist documents (bios, availability, tech riders) should I upload?",
+  VENUE: "VENUE domain needs coverage. What venue-specific documents (floor plans, advance sheets, capacity info) should I collect?",
 };
 
 interface DocInfo {
