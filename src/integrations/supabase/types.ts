@@ -346,6 +346,9 @@ export type Database = {
       }
       guest_list_allotments: {
         Row: {
+          auto_notify_box_office: boolean
+          box_office_email: string | null
+          box_office_phone: string | null
           city: string | null
           created_at: string
           created_by: string
@@ -360,6 +363,9 @@ export type Database = {
           venue: string
         }
         Insert: {
+          auto_notify_box_office?: boolean
+          box_office_email?: string | null
+          box_office_phone?: string | null
           city?: string | null
           created_at?: string
           created_by: string
@@ -374,6 +380,9 @@ export type Database = {
           venue: string
         }
         Update: {
+          auto_notify_box_office?: boolean
+          box_office_email?: string | null
+          box_office_phone?: string | null
           city?: string | null
           created_at?: string
           created_by?: string

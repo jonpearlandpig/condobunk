@@ -30,3 +30,6 @@ verify_jwt = false
 
 [functions.guest-list-request]
 verify_jwt = false
+
+[functions.notify-box-office]
+verify_jwt = false

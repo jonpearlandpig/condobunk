@@ -30,6 +30,33 @@ async function sendTwilioSms(
   }
 }
 
+// --- Trigger box office notification via notify-box-office edge function ---
+async function notifyBoxOffice(
+  supabaseUrl: string,
+  serviceKey: string,
+  allotmentId: string,
+): Promise<void> {
+  try {
+    const response = await fetch(`${supabaseUrl}/functions/v1/notify-box-office`, {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${serviceKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ allotment_id: allotmentId }),
+    });
+    if (!response.ok) {
+      const errText = await response.text();
+      console.error("notify-box-office call failed:", response.status, errText);
+    } else {
+      const result = await response.json();
+      console.log("notify-box-office result:", result);
+    }
+  } catch (err) {
+    console.error("notify-box-office error:", err);
+  }
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -129,6 +156,11 @@ Deno.serve(async (req) => {
             tour_id: glRequest.tour_id,
             status: "sent",
           });
+        }
+
+        // Notify box office if configured
+        if (glRequest.allotment_id) {
+          await notifyBoxOffice(supabaseUrl, serviceKey, glRequest.allotment_id);
         }
 
         return new Response(JSON.stringify({ success: true, action: "approved" }), {
@@ -280,6 +312,9 @@ Deno.serve(async (req) => {
           status: "sent",
         });
       }
+
+      // Notify box office if configured
+      await notifyBoxOffice(supabaseUrl, serviceKey, allotment.id);
 
       return new Response(JSON.stringify({
         success: true,
