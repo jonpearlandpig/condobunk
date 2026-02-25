@@ -71,6 +71,11 @@ export const GLOSSARY: Record<string, GlossaryEntry> = {
     short: "A user's unique identifier in the CondoBunk system.",
     category: "features",
   },
+  "TELA;QR": {
+    term: "TELA;QR",
+    short: "TI-generated daily quick read — intelligence-based analysis built from your AKB data, surfacing upcoming events, open gaps, and unresolved conflicts.",
+    category: "features",
+  },
 };
 
 /** Build glossary text block for AI system prompts */
