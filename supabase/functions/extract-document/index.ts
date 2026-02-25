@@ -1173,6 +1173,137 @@ function isTechPackDocument(filename: string, rawText: string): boolean {
   return false;
 }
 
+// ─── Delta Computation for Version Updates ───
+
+interface DeltaChange {
+  type: "added" | "updated" | "removed";
+  entity: "event" | "contact" | "venue";
+  detail: string;
+}
+
+function computeDelta(
+  oldSnapshot: { events: any[]; contacts: any[]; vans: any[] },
+  newDocId: string,
+  adminClient: any,
+): Promise<DeltaChange[]> {
+  // This is called after extraction completes — query the NEW data
+  return (async () => {
+    const [newEvents, newContacts, newVans] = await Promise.all([
+      adminClient.from("schedule_events").select("*").eq("source_doc_id", newDocId),
+      adminClient.from("contacts").select("*").eq("source_doc_id", newDocId),
+      adminClient.from("venue_advance_notes").select("*").eq("source_doc_id", newDocId),
+    ]);
+
+    const changes: DeltaChange[] = [];
+
+    // Compare events by event_date + venue
+    const oldEventKeys = new Map(oldSnapshot.events.map(e => [`${e.event_date}|${(e.venue || "").toLowerCase()}`, e]));
+    const newEventKeys = new Map((newEvents.data || []).map((e: any) => [`${e.event_date}|${(e.venue || "").toLowerCase()}`, e]));
+
+    for (const [key, newEvt] of newEventKeys) {
+      const oldEvt = oldEventKeys.get(key);
+      if (!oldEvt) {
+        changes.push({ type: "added", entity: "event", detail: `${newEvt.venue || "Unknown"}, ${newEvt.city || ""} (${newEvt.event_date})` });
+      } else {
+        // Check for field changes
+        const diffs: string[] = [];
+        if (oldEvt.show_time !== newEvt.show_time) diffs.push(`show_time ${oldEvt.show_time || "null"} → ${newEvt.show_time || "null"}`);
+        if (oldEvt.load_in !== newEvt.load_in) diffs.push(`load_in changed`);
+        if (oldEvt.notes !== newEvt.notes) diffs.push(`notes updated`);
+        if (diffs.length > 0) {
+          changes.push({ type: "updated", entity: "event", detail: `${newEvt.venue || "Unknown"}: ${diffs.join(", ")}` });
+        }
+      }
+    }
+    for (const [key, oldEvt] of oldEventKeys) {
+      if (!newEventKeys.has(key)) {
+        changes.push({ type: "removed", entity: "event", detail: `${oldEvt.venue || "Unknown"} (${oldEvt.event_date})` });
+      }
+    }
+
+    // Compare contacts by name
+    const oldContactNames = new Map(oldSnapshot.contacts.map(c => [c.name.toLowerCase(), c]));
+    const newContactNames = new Map((newContacts.data || []).map((c: any) => [c.name.toLowerCase(), c]));
+
+    for (const [name, newC] of newContactNames) {
+      const oldC = oldContactNames.get(name);
+      if (!oldC) {
+        changes.push({ type: "added", entity: "contact", detail: `${newC.name} (${newC.role || "no role"})` });
+      } else {
+        const diffs: string[] = [];
+        if (oldC.phone !== newC.phone) diffs.push("phone changed");
+        if (oldC.email !== newC.email) diffs.push("email changed");
+        if (oldC.role !== newC.role) diffs.push("role changed");
+        if (diffs.length > 0) {
+          changes.push({ type: "updated", entity: "contact", detail: `${newC.name}: ${diffs.join(", ")}` });
+        }
+      }
+    }
+    for (const [name, oldC] of oldContactNames) {
+      if (!newContactNames.has(name)) {
+        changes.push({ type: "removed", entity: "contact", detail: `${oldC.name}` });
+      }
+    }
+
+    // Compare VANs by normalized venue name
+    const oldVanKeys = new Map(oldSnapshot.vans.map(v => [v.normalized_venue_name, v]));
+    const newVanKeys = new Map((newVans.data || []).map((v: any) => [v.normalized_venue_name, v]));
+
+    for (const [key, newV] of newVanKeys) {
+      if (!oldVanKeys.has(key)) {
+        changes.push({ type: "added", entity: "venue", detail: `${newV.venue_name}, ${newV.city || ""}` });
+      } else {
+        // VAN data is JSONB — just check if it changed
+        const oldData = JSON.stringify(oldVanKeys.get(key)!.van_data);
+        const newData = JSON.stringify(newV.van_data);
+        if (oldData !== newData) {
+          changes.push({ type: "updated", entity: "venue", detail: `${newV.venue_name} — advance notes updated` });
+        }
+      }
+    }
+    for (const [key, oldV] of oldVanKeys) {
+      if (!newVanKeys.has(key)) {
+        changes.push({ type: "removed", entity: "venue", detail: `${oldV.venue_name}` });
+      }
+    }
+
+    return changes;
+  })();
+}
+
+// ─── Auto-Log Delta Changes to akb_change_log ───
+
+async function logDeltaChanges(
+  changes: DeltaChange[],
+  adminClient: any,
+  tourId: string,
+  userId: string,
+  filename: string,
+  oldVersion: number,
+  newVersion: number,
+) {
+  if (changes.length === 0) return;
+  const reason = `Document re-upload: ${filename} v${oldVersion} → v${newVersion}`;
+  const entityTypeMap: Record<string, string> = {
+    event: "schedule_event",
+    contact: "contact",
+    venue: "venue_advance_note",
+  };
+  const rows = changes.map(c => ({
+    tour_id: tourId,
+    user_id: userId,
+    entity_id: tourId, // best-effort; no per-row ID available at this point
+    entity_type: entityTypeMap[c.entity] || c.entity,
+    action: "VERSION_UPDATE",
+    change_summary: `${c.type === "added" ? "+" : c.type === "removed" ? "−" : "~"} ${c.type}: ${c.detail}`,
+    change_reason: reason,
+    severity: "INFO",
+  }));
+  const { error } = await adminClient.from("akb_change_log").insert(rows);
+  if (error) console.error("[extract] Failed to log delta changes:", error);
+  else console.log("[extract] Logged", rows.length, "delta changes to akb_change_log");
+}
+
 // ─── Main Handler ───
 
 Deno.serve(async (req) => {
@@ -1208,12 +1339,29 @@ Deno.serve(async (req) => {
 
     const adminClient = createClient(supabaseUrl, serviceKey);
 
-    const { document_id } = await req.json();
+    const { document_id, replaces_doc_id } = await req.json();
     if (!document_id) {
       return new Response(JSON.stringify({ error: "document_id required" }), {
         status: 400,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
+    }
+
+    // ── Snapshot old data for delta detection if this is a version update ──
+    let oldSnapshot: { events: any[]; contacts: any[]; vans: any[] } | null = null;
+    if (replaces_doc_id) {
+      console.log("[extract] Version update detected, snapshotting old data from doc:", replaces_doc_id);
+      const [oldEvents, oldContacts, oldVans] = await Promise.all([
+        adminClient.from("schedule_events").select("*").eq("source_doc_id", replaces_doc_id),
+        adminClient.from("contacts").select("*").eq("source_doc_id", replaces_doc_id),
+        adminClient.from("venue_advance_notes").select("*").eq("source_doc_id", replaces_doc_id),
+      ]);
+      oldSnapshot = {
+        events: oldEvents.data || [],
+        contacts: oldContacts.data || [],
+        vans: oldVans.data || [],
+      };
+      console.log("[extract] Old snapshot:", oldSnapshot.events.length, "events,", oldSnapshot.contacts.length, "contacts,", oldSnapshot.vans.length, "VANs");
     }
 
     // Fetch document
@@ -1683,6 +1831,14 @@ Deno.serve(async (req) => {
           risk_flags: allRiskFlags,
         };
 
+        // ── Delta detection for version updates ──
+        if (oldSnapshot) {
+          const changes = await computeDelta(oldSnapshot, document_id, adminClient);
+          (result as any).changes = changes;
+          console.log("[extract] Delta detected:", changes.length, "changes");
+          await logDeltaChanges(changes, adminClient, doc.tour_id, user.id, filename, doc.version - 1, doc.version);
+        }
+
         console.log("[extract] Multi-venue result:", JSON.stringify(result));
 
         return new Response(JSON.stringify(result), {
@@ -1873,6 +2029,12 @@ Deno.serve(async (req) => {
           tech_spec_id: specRow?.id || null,
           risk_flags: riskFlags,
         };
+
+        if (oldSnapshot) {
+          const changes = await computeDelta(oldSnapshot, document_id, adminClient);
+          (result as any).changes = changes;
+          await logDeltaChanges(changes, adminClient, doc.tour_id, user.id, filename, doc.version - 1, doc.version);
+        }
 
         console.log("[extract] Tech pack result:", JSON.stringify(result));
 
@@ -2169,6 +2331,12 @@ Deno.serve(async (req) => {
         venues: (aiResult?.venues || []).length,
       },
     };
+
+    if (oldSnapshot) {
+      const changes = await computeDelta(oldSnapshot, document_id, adminClient);
+      (result as any).changes = changes;
+      await logDeltaChanges(changes, adminClient, doc.tour_id, user.id, filename, doc.version - 1, doc.version);
+    }
 
     console.log("[extract] Final result:", JSON.stringify(result));
 

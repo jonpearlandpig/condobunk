@@ -1,0 +1,1 @@
+ALTER TABLE public.documents ADD COLUMN replaces_doc_id uuid REFERENCES public.documents(id);

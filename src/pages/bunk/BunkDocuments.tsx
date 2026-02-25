@@ -58,6 +58,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Input } from "@/components/ui/input";
 import GlossaryTerm from "@/components/bunk/GlossaryTerm";
+import VersionUpdateDialog from "@/components/bunk/VersionUpdateDialog";
 
 interface DocRow {
   id: string;
@@ -108,6 +109,9 @@ const BunkDocuments = () => {
   const [renameValue, setRenameValue] = useState("");
   const [showArchived, setShowArchived] = useState(false);
   const [backfilling, setBackfilling] = useState(false);
+  const [versionMatch, setVersionMatch] = useState<{ doc: DocRow; file: File } | null>(null);
+
+  const normalize = (f: string) => f.toLowerCase().replace(/[^a-z0-9]/g, "");
 
   const activeDocuments = documents.filter(d => !d.archived_at);
   const archivedDocuments = documents.filter(d => !!d.archived_at);
@@ -160,11 +164,9 @@ const BunkDocuments = () => {
     if (data) setDocuments(data as DocRow[]);
   };
 
-  const handleFileUpload = useCallback(
-    async (e: React.ChangeEvent<HTMLInputElement>) => {
-      const file = e.target.files?.[0];
-      if (!file || !selectedTourId || !user) return;
-
+  const doUpload = useCallback(
+    async (file: File, replacesDocId?: string, newVersion?: number) => {
+      if (!selectedTourId || !user) return;
       setUploading(true);
       try {
         const isTextFile = /\.(txt|csv|tsv|md)$/i.test(file.name);
@@ -172,11 +174,11 @@ const BunkDocuments = () => {
         if (isTextFile) {
           rawText = await file.text();
         }
-        const { count } = await supabase
+
+        const version = newVersion ?? ((await supabase
           .from("documents")
           .select("*", { count: "exact", head: true })
-          .eq("tour_id", selectedTourId);
-        const nextVersion = (count ?? 0) + 1;
+          .eq("tour_id", selectedTourId)).count ?? 0) + 1;
 
         const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
         const filePath = `${selectedTourId}/${Date.now()}_${safeName}`;
@@ -186,19 +188,28 @@ const BunkDocuments = () => {
 
         if (storageErr) throw storageErr;
 
+        // If replacing, archive the old document first
+        if (replacesDocId) {
+          const oldDoc = documents.find(d => d.id === replacesDocId);
+          if (oldDoc) await handleArchive(oldDoc);
+        }
+
         const { error: docErr } = await supabase.from("documents").insert({
           tour_id: selectedTourId,
           filename: file.name,
           file_path: filePath,
           raw_text: rawText,
-          version: nextVersion,
+          version,
           doc_type: "UNKNOWN" as const,
           is_active: false,
         });
 
         if (docErr) throw docErr;
 
-        toast({ title: "Document uploaded", description: file.name });
+        toast({
+          title: replacesDocId ? `Updated to v${version}` : "Document uploaded",
+          description: file.name,
+        });
         loadDocuments();
       } catch (err: any) {
         toast({
@@ -208,10 +219,31 @@ const BunkDocuments = () => {
         });
       } finally {
         setUploading(false);
-        e.target.value = "";
       }
     },
-    [selectedTourId, user]
+    [selectedTourId, user, documents]
+  );
+
+  const handleFileUpload = useCallback(
+    async (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      if (!file || !selectedTourId || !user) return;
+
+      // Check for filename match against active documents
+      const existingMatch = activeDocuments.find(
+        d => d.filename && normalize(d.filename) === normalize(file.name)
+      );
+
+      if (existingMatch) {
+        setVersionMatch({ doc: existingMatch, file });
+        e.target.value = "";
+        return;
+      }
+
+      await doUpload(file);
+      e.target.value = "";
+    },
+    [selectedTourId, user, activeDocuments, doUpload]
   );
 
   const runExtraction = async (docId: string) => {
@@ -250,6 +282,22 @@ const BunkDocuments = () => {
         setReviewSummary(data);
         setReviewDocId(docId);
       }
+
+      // Show delta summary if this was a version update
+      if (data.changes && data.changes.length > 0) {
+        const added = data.changes.filter((c: any) => c.type === "added").length;
+        const updated = data.changes.filter((c: any) => c.type === "updated").length;
+        const removed = data.changes.filter((c: any) => c.type === "removed").length;
+        const parts = [];
+        if (added) parts.push(`${added} added`);
+        if (updated) parts.push(`${updated} updated`);
+        if (removed) parts.push(`${removed} removed`);
+        toast({
+          title: "📋 Version Changes Detected",
+          description: parts.join(", ") + ". See Change Log for details.",
+        });
+      }
+
       loadDocuments();
     } catch (err: any) {
       toast({
@@ -741,6 +789,27 @@ const BunkDocuments = () => {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Version Update Dialog */}
+      {versionMatch && (
+        <VersionUpdateDialog
+          open={!!versionMatch}
+          onOpenChange={(open) => { if (!open) setVersionMatch(null); }}
+          existingFilename={versionMatch.doc.filename || "Unknown"}
+          existingDate={versionMatch.doc.created_at}
+          existingVersion={versionMatch.doc.version}
+          onUploadAsNewVersion={() => {
+            const { doc, file } = versionMatch;
+            setVersionMatch(null);
+            doUpload(file, doc.id, doc.version + 1);
+          }}
+          onUploadAsSeparate={() => {
+            const { file } = versionMatch;
+            setVersionMatch(null);
+            doUpload(file);
+          }}
+        />
+      )}
     </div>
   );
 };
