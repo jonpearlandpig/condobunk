@@ -1,101 +1,168 @@
 
 
-# TELA Progressive Depth Response Protocol
+# Smart Document Re-Upload: Version-Aware AKB Updates
 
-## Concept
+## The Problem
 
-TELA currently responds with full detail on every question. The upgrade introduces a "Progressive Depth" behavior: short, high-signal first answers that reward curiosity with deeper follow-ups. This teaches crew that asking more = knowing more, and keeps initial responses fast and scannable (especially important for TourText SMS).
+Today, uploading an updated version of "PW2026 MASTER AKB TOUR INTEL.PDF" creates a completely separate document entry. The old data stays in the AKB alongside the new data, causing duplicates or stale info. The user has to manually archive the old version, re-extract, and re-approve -- a fragile, error-prone workflow that erodes trust.
 
-## How It Works
+## The Solution: Intelligent Version Detection + Delta Sync
 
-**Depth Level 1 (First question on a topic):** Answer with the single most important fact. No context, no contacts, no caveats. Just the answer.
+When a user uploads a document, the system checks if a document with a matching (or very similar) filename already exists for that tour. If it does, the system treats it as a **version update** rather than a brand new document -- automatically handling the old-to-new transition with a clear change summary.
 
-- "Docks?" -> "2 loading docks." 
-- "Curfew?" -> "11 PM."
-- "Power?" -> "400A 3-phase."
+## User Experience
 
-**Depth Level 2 (Follow-up on same topic):** Expand with location, logistics, contacts, and operational detail.
+### Upload Flow (What the user sees)
 
-- "Where?" -> "Northwest corner past security gate. Guards on duty are Frank and Stacy. Trucks expected 4 AM. Onsite contact: Frank, 555-555-1213."
+1. User uploads "PW2026 MASTER AKB TOUR INTEL.PDF" (same name as existing doc)
+2. Instead of silently creating a new entry, a dialog appears:
 
-**Depth Level 3 (Further drill-down):** Full context — related documents, download links, known gaps, action blocks if something needs fixing.
-
-The model determines depth from conversation history (the full message array is already sent). No new database tables or state tracking needed — the AI reads the thread and escalates naturally.
-
-## Changes
-
-### `supabase/functions/akb-chat/index.ts` — System Prompt Update
-
-Add a new `## RESPONSE DEPTH PROTOCOL` section right after the opening paragraph (before "CRITICAL BEHAVIOR: SOLVE, DON'T JUST REPORT"). This section will contain:
-
-```
-## RESPONSE DEPTH PROTOCOL (Progressive Disclosure)
-
-Your default response style is SHORT AND PUNCHY. Crew are busy. Reward curiosity.
-
-### Depth Rules:
-
-**DEPTH 1 — First question on a topic (default):**
-- Answer with the SINGLE most important fact. One line. No preamble.
-- Examples:
-  - "Docks?" -> "2 loading docks. [Source: VAN — Venue — Dock & Logistics]"
-  - "Curfew?" -> "11 PM. [Source: VAN — Venue — Misc]"
-  - "Power?" -> "400A 3-phase. [Source: VAN — Venue — Power]"
-  - "Who's the PM?" -> "Sarah Chen, 555-1234. [Source: Contacts — Sarah Chen]"
-- Do NOT add context, warnings, related info, or follow-up suggestions unless
-  the data reveals an urgent issue (conflict, missing critical field).
-- Keep source citations but make them compact (one tag at end of line).
-
-**DEPTH 2 — Follow-up or "tell me more" on same topic:**
-- Expand with location, logistics, contacts, timing, and operational context.
-- Example: "Docks?" -> "2" ... then "Location?" -> "Northwest corner past 
-  security gate. Guards: Frank and Stacy. Trucks expected 4 AM. Onsite 
-  contact: Frank, 555-555-1213. [Source: VAN — Venue — Dock & Logistics]"
-- Include relevant contacts, phone numbers, and practical details.
-- Still concise — a short paragraph, not a wall of text.
-
-**DEPTH 3 — Deep drill-down, explicit request for everything, or complex query:**
-- Full detail: documents with download links, related gaps/conflicts,
-  action blocks for fixes, cross-references between sources.
-- This is where you show the FULL power of the AKB.
-- Use structured formatting (bullets, bold labels) for scanability.
-
-### How to determine depth:
-- Count how many times the user has asked about the SAME topic/venue/field
-  in the current conversation. First mention = Depth 1. Second = Depth 2. 
-  Third+ or explicit "tell me everything" = Depth 3.
-- A broad question like "Tell me about Detroit" or "What do I need to know
-  about load-in?" starts at Depth 2 (the question itself implies they want
-  more than a number).
-- Questions with multiple sub-topics ("docks and power and curfew?") get
-  Depth 1 for each: a compact list of one-line answers.
-- Action blocks (fixes) are ALWAYS included regardless of depth when TELA
-  detects an issue it can resolve — but at Depth 1, keep the explanation
-  to one sentence before the block.
-
-### The philosophy:
-Every crew member who texts TourText or asks TELA should instantly see that
-the system KNOWS the answer. Short replies prove confidence. Follow-ups
-prove depth. The message to the user: "Ask more, and I'll show you 
-everything. The data is here."
+```text
++--------------------------------------------------+
+|  Update Detected                                  |
+|                                                   |
+|  "PW2026 MASTER AKB TOUR INTEL.PDF" already       |
+|  exists (uploaded Tue, Mar 4).                     |
+|                                                   |
+|  [ Upload as New Version ]  [ Upload as Separate ] |
++--------------------------------------------------+
 ```
 
-Also update the existing Rules section line "Keep responses concise — tour managers are busy." to reinforce the new behavior:
+3. If "Upload as New Version":
+   - Old document is auto-archived (data cleaned up)
+   - New document is uploaded with `version` incremented
+   - Extraction runs automatically
+   - After extraction, a **Change Summary** is shown:
+     - "3 venues updated, 1 new venue added, 2 contacts changed"
+   - All changes are logged in the AKB Change Log
 
-Change:
-```
-- Keep responses concise — tour managers are busy.
-```
-To:
-```
-- Default to Depth 1 (shortest useful answer). Let the user pull more detail by asking follow-ups. Tour managers are busy — prove you know the answer in one line, then go deep when they want it.
+4. If "Upload as Separate":
+   - Behaves exactly like today (new independent document)
+
+### Post-Extraction Delta Report
+
+After re-extraction, TELA generates a human-readable diff:
+
+```text
+Changes since v1 (uploaded Mar 4):
+  + Added: Venue "Smoothie King Center" (New Orleans, LA)
+  ~ Updated: "Bridgestone Arena" - show_time changed 7:30 PM -> 8:00 PM
+  ~ Updated: Contact "Sarah Chen" - phone changed
+  - Removed: Venue "Ryman Auditorium" (no longer in document)
 ```
 
-## Technical Details
+This gets logged to `akb_change_log` and is visible in the Change Log page.
 
-- **No new files, tables, or migrations** — this is purely a system prompt behavioral change
-- **No frontend changes** — the chat UI already handles short and long responses
-- **Conversation history already sent** — the `messages` array in the request body contains the full thread, so TELA can naturally detect follow-up patterns
-- **SMS-ready** — this pattern is ideal for TourText since first responses will be short enough for a single SMS segment
-- **Source citations preserved** — even Depth 1 answers include a compact citation
+## Technical Implementation
+
+### 1. Frontend: Version Detection Dialog (`BunkDocuments.tsx`)
+
+Before uploading, query existing active documents for filename similarity:
+
+```typescript
+// Normalize filename for comparison
+const normalize = (f: string) => f.toLowerCase().replace(/[^a-z0-9]/g, "");
+
+const existingMatch = activeDocuments.find(d => 
+  d.filename && normalize(d.filename) === normalize(file.name)
+);
+```
+
+If a match is found, show a dialog asking "Upload as New Version" vs "Upload as Separate". 
+
+When "Upload as New Version" is chosen:
+- Set `replaces_doc_id` on the upload flow
+- Archive the old document (reuse existing `handleArchive` logic)
+- Upload + extract the new one
+- Increment version number from the old doc's version
+
+### 2. New Component: `VersionUpdateDialog.tsx`
+
+A simple dialog component with:
+- The matched filename and its upload date
+- Two buttons: "Upload as New Version" and "Upload as Separate"
+- Brief explanation of what each option does
+
+### 3. Backend: Delta Detection in `extract-document/index.ts`
+
+Before the extraction cleans up old data, snapshot the current state:
+
+```typescript
+// If replaces_doc_id is provided, snapshot old data for diff
+let oldSnapshot = null;
+if (replaces_doc_id) {
+  const [oldEvents, oldContacts, oldVans] = await Promise.all([
+    adminClient.from("schedule_events").select("*").eq("source_doc_id", replaces_doc_id),
+    adminClient.from("contacts").select("*").eq("source_doc_id", replaces_doc_id),
+    adminClient.from("venue_advance_notes").select("*").eq("source_doc_id", replaces_doc_id),
+  ]);
+  oldSnapshot = { events: oldEvents.data, contacts: oldContacts.data, vans: oldVans.data };
+}
+```
+
+After extraction completes, compare old vs new:
+- Events: compare by `event_date + venue` -- detect added/removed/changed
+- Contacts: compare by `name` -- detect added/removed/changed fields
+- VANs: compare by `venue_name` -- detect added/removed venues
+
+Return a `changes` array in the response:
+
+```json
+{
+  "changes": [
+    { "type": "added", "entity": "venue", "detail": "Smoothie King Center, New Orleans, LA" },
+    { "type": "updated", "entity": "event", "detail": "Bridgestone Arena: show_time 19:30 -> 20:00" },
+    { "type": "removed", "entity": "venue", "detail": "Ryman Auditorium" }
+  ]
+}
+```
+
+### 4. Frontend: Change Summary Display
+
+After extraction of a version update, show the changes in:
+- The extraction review dialog (immediate feedback)
+- A toast summary ("3 changes detected")
+- The AKB Change Log (permanent record)
+
+### 5. Auto-Log to `akb_change_log`
+
+Each detected change gets a change log entry with:
+- `action`: "VERSION_UPDATE"
+- `change_summary`: Human-readable description
+- `change_reason`: "Document re-upload: [filename] v[N] -> v[N+1]"
+- `entity_type`: "schedule_event" / "contact" / "venue_advance_note"
+
+### 6. Database: Add `replaces_doc_id` column to `documents`
+
+A single migration to add lineage tracking:
+
+```sql
+ALTER TABLE documents ADD COLUMN replaces_doc_id uuid REFERENCES documents(id);
+```
+
+This creates a version chain: v3 -> v2 -> v1.
+
+## Files to Create/Modify
+
+| File | Action | Purpose |
+|------|--------|---------|
+| `src/components/bunk/VersionUpdateDialog.tsx` | Create | Dialog asking user how to handle duplicate filename |
+| `src/pages/bunk/BunkDocuments.tsx` | Modify | Add version detection logic before upload, show dialog, pass `replaces_doc_id` |
+| `supabase/functions/extract-document/index.ts` | Modify | Accept `replaces_doc_id`, snapshot old data, compute diff, return changes |
+| `documents` table | Migration | Add `replaces_doc_id` column |
+
+## What This Does NOT Change
+
+- The existing "Upload as Separate" flow remains identical to today
+- Archiving, renaming, and manual extraction all work the same
+- No changes to RLS policies (the new column is just a self-referential FK)
+- The extraction AI prompts stay the same -- only the surrounding orchestration changes
+
+## The Trust Factor
+
+This design ensures:
+- **No silent overwrites** -- the user always sees what changed
+- **Full audit trail** -- every version update is logged with before/after
+- **Easy rollback** -- old versions are archived, not deleted; they can be restored
+- **Async propagation** -- once the new extraction is approved, all AKB views (calendar, contacts, coverage, TELA) automatically reflect the updated data via the existing `akb-changed` event system
 
