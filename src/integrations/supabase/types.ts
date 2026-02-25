@@ -344,6 +344,132 @@ export type Database = {
           },
         ]
       }
+      guest_list_allotments: {
+        Row: {
+          city: string | null
+          created_at: string
+          created_by: string
+          deadline: string | null
+          event_date: string
+          event_id: string | null
+          id: string
+          per_person_max: number
+          pickup_instructions: string | null
+          total_tickets: number
+          tour_id: string
+          venue: string
+        }
+        Insert: {
+          city?: string | null
+          created_at?: string
+          created_by: string
+          deadline?: string | null
+          event_date: string
+          event_id?: string | null
+          id?: string
+          per_person_max?: number
+          pickup_instructions?: string | null
+          total_tickets?: number
+          tour_id: string
+          venue: string
+        }
+        Update: {
+          city?: string | null
+          created_at?: string
+          created_by?: string
+          deadline?: string | null
+          event_date?: string
+          event_id?: string | null
+          id?: string
+          per_person_max?: number
+          pickup_instructions?: string | null
+          total_tickets?: number
+          tour_id?: string
+          venue?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "guest_list_allotments_event_id_fkey"
+            columns: ["event_id"]
+            isOneToOne: false
+            referencedRelation: "schedule_events"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "guest_list_allotments_tour_id_fkey"
+            columns: ["tour_id"]
+            isOneToOne: false
+            referencedRelation: "tours"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      guest_list_requests: {
+        Row: {
+          allotment_id: string | null
+          approved_by: string | null
+          created_at: string
+          guest_names: string
+          id: string
+          pickup_info_sent: boolean
+          requester_name: string | null
+          requester_phone: string | null
+          requester_user_id: string | null
+          resolved_at: string | null
+          status: string
+          status_reason: string | null
+          ticket_count: number
+          tour_id: string
+        }
+        Insert: {
+          allotment_id?: string | null
+          approved_by?: string | null
+          created_at?: string
+          guest_names: string
+          id?: string
+          pickup_info_sent?: boolean
+          requester_name?: string | null
+          requester_phone?: string | null
+          requester_user_id?: string | null
+          resolved_at?: string | null
+          status?: string
+          status_reason?: string | null
+          ticket_count?: number
+          tour_id: string
+        }
+        Update: {
+          allotment_id?: string | null
+          approved_by?: string | null
+          created_at?: string
+          guest_names?: string
+          id?: string
+          pickup_info_sent?: boolean
+          requester_name?: string | null
+          requester_phone?: string | null
+          requester_user_id?: string | null
+          resolved_at?: string | null
+          status?: string
+          status_reason?: string | null
+          ticket_count?: number
+          tour_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "guest_list_requests_allotment_id_fkey"
+            columns: ["allotment_id"]
+            isOneToOne: false
+            referencedRelation: "guest_list_allotments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "guest_list_requests_tour_id_fkey"
+            columns: ["tour_id"]
+            isOneToOne: false
+            referencedRelation: "tours"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       knowledge_gaps: {
         Row: {
           created_at: string
