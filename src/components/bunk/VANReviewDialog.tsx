@@ -26,6 +26,7 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
+import DeltaChangeSummary, { type DeltaChange } from "./DeltaChangeSummary";
 
 interface VANReviewDialogProps {
   open: boolean;
@@ -36,6 +37,7 @@ interface VANReviewDialogProps {
     doc_type: string;
     extracted_count: number;
     venue_count?: number;
+    changes?: DeltaChange[];
   } | null;
   onApproved: () => void;
 }
@@ -277,6 +279,12 @@ const VANReviewDialog = ({
           </div>
         ) : (
           <div className="flex-1 flex flex-col min-h-0">
+            {/* Delta changes summary */}
+            {extractionSummary?.changes && extractionSummary.changes.length > 0 && (
+              <div className="shrink-0 px-4 pt-3">
+                <DeltaChangeSummary changes={extractionSummary.changes} />
+              </div>
+            )}
             {/* Venue selector - horizontal scroll */}
             <div className="shrink-0 px-4 pt-3 pb-2 overflow-x-auto">
                 <div className="flex gap-2 pb-1" ref={venueBarRef}>
