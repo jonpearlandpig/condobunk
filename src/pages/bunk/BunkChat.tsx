@@ -12,6 +12,7 @@ import MessageActions from "@/components/bunk/MessageActions";
 import { supabase } from "@/integrations/supabase/client";
 import { useTelaThreads } from "@/hooks/useTelaThreads";
 import GlossaryTerm from "@/components/bunk/GlossaryTerm";
+import TelaVoiceAgent from "@/components/bunk/TelaVoiceAgent";
 
 type Msg = { role: "user" | "assistant"; content: string; id?: string };
 
@@ -352,7 +353,17 @@ const BunkChat = () => {
             </div>
           )}
         </div>
-        <SidebarTrigger className="text-muted-foreground" />
+        <div className="flex items-center gap-2">
+          {hasTours && !isDemoMode && (
+            <TelaVoiceAgent
+              agentId=""
+              onTranscript={(role, text) => {
+                setMessages(prev => [...prev, { role, content: text }]);
+              }}
+            />
+          )}
+          <SidebarTrigger className="text-muted-foreground" />
+        </div>
       </div>
 
       {/* Messages */}

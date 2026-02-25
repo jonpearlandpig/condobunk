@@ -21,3 +21,6 @@ verify_jwt = false
 
 [functions.notify-demo-activation]
 verify_jwt = false
+
+[functions.elevenlabs-conversation-token]
+verify_jwt = false
