@@ -1,71 +1,53 @@
 
 
-# Replace "AI" with "TI" (Tour Intelligence) in All User-Facing Copy
+# TELA;QR — Quick Read
 
-TELA is Tour Intelligence, not Artificial Intelligence. Every place where users or venues see "AI" needs to say "TI" or "Tour Intelligence" instead. Internal code (API gateway URLs, console logs, variable names) stays untouched -- those are infrastructure, not branding.
+TELA;QR is the gold standard: intelligence-based analysis built on the user's pristinely maintained AKB data. Not guessing — reading what's there and surfacing what matters.
 
 ## Changes
 
-### 1. `src/lib/glossary.ts`
+### 1. Page title (`src/pages/bunk/BunkOverview.tsx`, line 466)
+- Before: `<GlossaryTerm term="TELA">TELA</GlossaryTerm> TL;DR`
+- After: `TELA;QR`
+- Remove the GlossaryTerm wrapper — TELA;QR is its own brand mark now
+- Subtitle stays: "Real-time tour intelligence"
 
-**Line 16** -- TELA definition:
-- Before: `"Tour Efficiency Liaison Assistant — the AI that answers questions from your tour data."`
-- After: `"Tour Efficiency Liaison Assistant — the Tour Intelligence that answers questions from your tour data."`
+### 2. Section header (`src/pages/bunk/BunkOverview.tsx`, line 532)
+- Before: `DAILY BRIEFING`
+- After: `QUICK READ`
 
-The `buildGlossaryPromptBlock` function comment on line 76 says "AI system prompts" -- this is an internal developer comment, not user-facing. Leave it.
+### 3. Mobile 2-line collapse (`src/pages/bunk/BunkOverview.tsx`, lines 554-574)
+- Add `briefingExpanded` state (default `false`)
+- On mobile (`isMobile`): show only `tldr.slice(0, 2)` when collapsed
+- Render a "SHOW MORE" / "SHOW LESS" toggle button below the items (only on mobile, only when more than 2 items exist)
+- Desktop: always show all items, no change
 
-### 2. `src/pages/site/SiteLanding.tsx`
+### 4. Desktop sidebar (`src/components/bunk/BunkSidebar.tsx`, line 51)
+- Before: `{ title: "TL;DR", ... }`
+- After: `{ title: "TELA;QR", ... }`
 
-**Line 27** -- TELA description:
-- Before: `"AI that answers questions from your tour data instantly."`
-- After: `"Tour Intelligence that answers questions from your tour data instantly."`
+### 5. Mobile bottom nav (`src/components/bunk/MobileBottomNav.tsx`, line 47)
+- Before: `{ title: "TL;DR", ..., tip: "Tour overview" }`
+- After: `{ title: "TELA;QR", ..., tip: "Quick Read" }`
 
-### 3. `src/pages/site/SitePricing.tsx`
+### 6. Glossary (`src/lib/glossary.ts`)
+- Add new entry:
+```typescript
+"TELA;QR": {
+  term: "TELA;QR",
+  short: "TI-generated daily quick read — intelligence-based analysis built from your AKB data, surfacing upcoming events, open gaps, and unresolved conflicts.",
+  category: "features",
+}
+```
 
-**Line 24** -- Demo tier feature:
-- Before: `"Try TELA AI assistant"`
-- After: `"Try TELA Tour Intelligence"`
+## Files
 
-**Line 38** -- Pro tier feature:
-- Before: `"TELA AI — unlimited queries"`
-- After: `"TELA TI — unlimited queries"`
+| File | What |
+|------|------|
+| `src/pages/bunk/BunkOverview.tsx` | Title rename, section rename, mobile 2-line collapse |
+| `src/components/bunk/BunkSidebar.tsx` | Sidebar nav label |
+| `src/components/bunk/MobileBottomNav.tsx` | Bottom nav label + tip |
+| `src/lib/glossary.ts` | New glossary entry |
 
-### 4. `src/pages/site/SiteAbout.tsx`
+No database changes. No new dependencies. Internal variable names (`tldr`, `tldrLoading`, etc.) stay as-is.
 
-**Line 27** -- Pain point "after" text:
-- Before: `"Instant answers via AI or SMS"`
-- After: `"Instant answers via TELA or SMS"`
-
-### 5. `supabase/functions/tourtext-inbound/index.ts`
-
-**Line 326** -- TELA system prompt (this IS user-facing since it shapes how TELA describes itself):
-- Before: `"You are TELA, the touring AI for..."`
-- After: `"You are TELA, the Tour Intelligence for..."`
-
-### 6. `supabase/functions/akb-chat/index.ts`
-
-**Line 393** -- Glossary block in TELA's system prompt:
-- Before: `"TELA: Tour Efficiency Liaison Assistant — the AI that answers questions from your tour data."`
-- After: `"TELA: Tour Efficiency Liaison Assistant — the Tour Intelligence that answers questions from your tour data."`
-
-## NOT Changing (Internal/Technical)
-
-These stay as-is because they're infrastructure code, not branding:
-- API gateway URLs (`ai.gateway.lovable.dev`)
-- Console log messages (`"AI error:"`, `"AI returned non-JSON"`)
-- Variable names (`aiResponse`, `aiExtractFromPdf`)
-- Code comments about extraction logic
-- The `ai` loop variable in `BunkChat.tsx` line 468 (just an iterator variable name)
-
-## Summary
-
-| File | Lines Changed | What |
-|------|--------------|------|
-| `src/lib/glossary.ts` | 1 | TELA definition |
-| `src/pages/site/SiteLanding.tsx` | 1 | TELA value prop |
-| `src/pages/site/SitePricing.tsx` | 2 | Demo + Pro feature lists |
-| `src/pages/site/SiteAbout.tsx` | 1 | Pain point copy |
-| `supabase/functions/tourtext-inbound/index.ts` | 1 | TELA self-description in system prompt |
-| `supabase/functions/akb-chat/index.ts` | 1 | Glossary in TELA system prompt |
-
-7 total string replacements. No structural changes. No database changes.
