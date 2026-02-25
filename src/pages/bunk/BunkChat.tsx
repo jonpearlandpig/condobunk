@@ -356,7 +356,7 @@ const BunkChat = () => {
         <div className="flex items-center gap-2">
           {hasTours && !isDemoMode && (
             <TelaVoiceAgent
-              agentId=""
+              agentId="DXFkLCBUTmvXpp2QwZjA"
               onTranscript={(role, text) => {
                 setMessages(prev => [...prev, { role, content: text }]);
               }}
