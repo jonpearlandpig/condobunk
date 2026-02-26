@@ -1,24 +1,18 @@
 
+# Reduce Spacing Between Logo and Narrative
 
-# Update TourText Line on Login Page
+## Problem
+The screenshot shows a large empty gap between the CONDO BUNK logo and the "It's the night before..." headline. This is caused by:
+- `mb-6` on the logo container (line 80)
+- `space-y-8` on the outer wrapper (line 78) adding 2rem gap between all children
+- `space-y-8` on the narrative container (line 88) adding more internal spacing
 
-## Summary
-Update the TourText reveal line (line 144) to include the new tagline about TELA.
+## Changes
 
-## Change
+**File: `src/pages/Login.tsx`**
 
-**File: `src/pages/Login.tsx`** (line 143-145)
+1. **Line 78** -- Change `space-y-8` to `space-y-4` on the outer `motion.div` wrapper to tighten the gap between the logo and the narrative section
+2. **Line 80** -- Change `mb-6` to `mb-2` on the logo container to reduce the bottom margin after the logo
+3. **Line 88** -- Change `space-y-8` to `space-y-6` on the narrative `motion.div` to slightly tighten the internal spacing between narrative sections while keeping it readable
 
-Replace the current line:
-> "The Tour Manager is on **CondoBunk** and had already sent you the **TourText** number."
-
-With:
-> "The Tour Manager is on **CondoBunk** and had already sent you the **TourText** number. One number, one text, endless tour intelligence, brought to you by **TELA**."
-
-The second sentence will be styled slightly differently -- keeping "TELA" in `text-primary font-bold` to match the other brand highlights, and the tagline portion in a slightly lighter weight to create visual contrast between the factual statement and the brand tagline.
-
-### Technical detail
-- Edit line 144 in `src/pages/Login.tsx` to append the new sentence
-- "TELA" wrapped in `<span className="text-primary font-bold">` to match CondoBunk/TourText styling
-- Single line change, no structural or layout modifications
-
+These three changes will significantly reduce the dead space while maintaining a clean, readable flow from logo into the story.
