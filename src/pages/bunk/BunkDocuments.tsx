@@ -271,6 +271,31 @@ const BunkDocuments = () => {
     [selectedTourId, user, activeDocuments, doUpload]
   );
 
+  // Check if extraction succeeded on the backend despite client disconnect
+  const checkExtractionResult = async (docId: string): Promise<{ recovered: boolean; doc_type?: string; vanCount?: number; eventCount?: number }> => {
+    const { data: doc } = await supabase
+      .from("documents")
+      .select("doc_type")
+      .eq("id", docId)
+      .single();
+    if (doc && doc.doc_type !== "UNKNOWN") {
+      // Also check how much data landed
+      const [vans, events] = await Promise.all([
+        supabase.from("venue_advance_notes").select("id", { count: "exact", head: true }).eq("source_doc_id", docId),
+        supabase.from("schedule_events").select("id", { count: "exact", head: true }).eq("source_doc_id", docId),
+      ]);
+      return { recovered: true, doc_type: doc.doc_type, vanCount: vans.count || 0, eventCount: events.count || 0 };
+    }
+    return { recovered: false };
+  };
+
+  const isNetworkTimeout = (err: any): boolean => {
+    if (!err) return false;
+    const msg = (err.message || "").toLowerCase();
+    return msg.includes("timed out") || msg.includes("load failed") || msg.includes("aborted") ||
+      msg.includes("network") || msg.includes("failed to fetch") || msg.includes("connection closed");
+  };
+
   const runExtraction = async (docId: string) => {
     setExtracting(docId);
     try {
@@ -278,7 +303,41 @@ const BunkDocuments = () => {
         "extract-document",
         { document_id: docId }
       );
-      if (error) throw error;
+
+      if (error) {
+        // Connection may have dropped but extraction could have succeeded on the backend
+        if (isNetworkTimeout(error)) {
+          console.log("[BunkDocuments] Extraction call timed out, polling backend...", error.message);
+          toast({ title: "Extraction running…", description: "Connection dropped — checking if it completed in the background." });
+          let recovered = false;
+          for (let attempt = 0; attempt < 12; attempt++) {
+            await new Promise((r) => setTimeout(r, 5000));
+            const result = await checkExtractionResult(docId);
+            if (result.recovered) {
+              recovered = true;
+              const isAdvance = result.doc_type === "SCHEDULE" && (result.vanCount || 0) > 0;
+              if (isAdvance) {
+                toast({ title: "★ Advance Master extracted (recovered)", description: `${result.vanCount} venues, ${result.eventCount} events.` });
+                setVanReviewSummary({ doc_type: result.doc_type, extracted_count: (result.vanCount || 0) + (result.eventCount || 0), venue_count: result.vanCount });
+                setVanReviewDocId(docId);
+              } else if (result.doc_type === "TECH") {
+                toast({ title: "Tech pack extracted (recovered)" });
+                await openTechReview(docId);
+              } else {
+                toast({ title: "Extraction complete (recovered)", description: `Type: ${result.doc_type}` });
+                setReviewSummary({ doc_type: result.doc_type, extracted_count: (result.eventCount || 0) });
+                setReviewDocId(docId);
+              }
+              loadDocuments();
+              break;
+            }
+          }
+          if (!recovered) throw error;
+        } else {
+          throw error;
+        }
+        return;
+      }
 
       if (data.is_advance_master) {
         toast({
@@ -343,7 +402,33 @@ const BunkDocuments = () => {
         "backfill-schedule-events",
         { tour_id: selectedTourId }
       );
-      if (error) throw error;
+      if (error) {
+        if (isNetworkTimeout(error)) {
+          console.log("[BunkDocuments] Backfill timed out, polling for results...");
+          toast({ title: "Re-extracting…", description: "Connection dropped — checking if it completed." });
+          // Poll for recently updated schedule_events
+          const before = Date.now();
+          let recovered = false;
+          for (let attempt = 0; attempt < 8; attempt++) {
+            await new Promise((r) => setTimeout(r, 5000));
+            const { count } = await supabase
+              .from("schedule_events")
+              .select("id", { count: "exact", head: true })
+              .eq("tour_id", selectedTourId)
+              .gte("created_at", new Date(before - 120000).toISOString());
+            if ((count || 0) > 0) {
+              recovered = true;
+              toast({ title: "Dates re-extracted (recovered)", description: `${count} events found.` });
+              loadDocuments();
+              break;
+            }
+          }
+          if (!recovered) throw error;
+        } else {
+          throw error;
+        }
+        return;
+      }
       toast({
         title: "Dates re-extracted",
         description: `${data.events_created} calendar events created from ${data.vans_processed} venues.`,
