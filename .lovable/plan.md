@@ -1,70 +1,92 @@
 
 
-# Rework Advance Master Per-Column Extraction
+# Fix Advance Master Extraction Timeout
 
 ## Problem
 
-The advance master spreadsheet (e.g. `KOH_Advance_Master-2.xlsx`) has venues across columns (B through Q+) and category labels down column A. The current extraction flattens the entire sheet into CSV text via `sheet_to_csv()`, which:
+The extraction finds 37 venue columns and processes them in **sequential** batches of 3, requiring 13 AI calls. Each gemini-2.5-pro call takes ~90 seconds, totaling ~1,170 seconds -- far exceeding the 300-second edge function limit. The function dies after batch 2-3.
 
-1. Creates a massive text blob where the AI loses track of which data belongs to which venue
-2. Exceeds practical context limits for 16+ venue columns with dense labor notes, power specs, etc.
-3. Causes data loss and cross-venue contamination
+## Root Causes
 
-The VAN prompt schema already maps correctly to all the fields you listed (event_details, production_contact, house_rigger_contact, summary, venue_schedule, plant_equipment, labour, dock_and_logistics, power, staging, misc, lighting, video, notes). The issue is purely in how the spreadsheet data is fed to the AI.
+1. **Too many columns detected (37)**: The parser picks up sparse/empty columns. Real venue count is likely 15-20.
+2. **Sequential batch processing**: Batches run one after another instead of in parallel.
+3. **Small batch size (3)**: More batches = more overhead.
 
 ## Solution
 
-### 1. Per-Column Excel Parsing for Advance Masters
+Three changes in `supabase/functions/extract-document/index.ts`:
 
-In `supabase/functions/extract-document/index.ts`, when an advance master Excel file is detected, replace the generic `sheet_to_csv()` with deterministic per-column parsing:
+### 1. Filter out sparse/junk columns more aggressively
+- Increase minimum non-empty cell threshold from 3 to 8 (real venue columns have 20+ populated rows)
+- Skip columns where the header looks like a date, number, or single character (not a venue/city name)
+- This should cut 37 columns down to ~15-20 real venues
 
-- Read the worksheet as a 2D array using `XLSX.utils.sheet_to_json(ws, { header: 1 })`
-- Identify column A as category labels (EVENT DETAILS, PRODUCTION CONTACT, etc.)
-- For each venue column (B, C, D...), build a structured key-value text block:
-  ```
-  VENUE COLUMN DATA:
-  EVENT DETAILS
-  Day and Date: Thursday, March 05, 2026
-  Venue: Allen War Memorial Coliseum
-  Onsale Capacity: 10,918 capacity. Sold out.
-  ...
-  PRODUCTION CONTACT
-  Name: Eric
-  Phone: Direct: 260-480-2129
-  ...
-  ```
-- Each venue column produces a clean, isolated text block with zero cross-venue contamination
+### 2. Increase batch size from 3 to 6
+- Per-column data is clean and compact (~3,000 chars per venue)
+- 6 venues per batch = ~18,000 chars, well within context limits
+- Cuts total batches roughly in half
 
-### 2. Batch Processing (3-4 Venues per AI Call)
+### 3. Process batches in parallel (Promise.all) instead of sequentially
+- Fire all batches concurrently
+- Each AI call runs independently
+- Total time = slowest single batch (~90-120s) instead of sum of all batches
+- Add error handling so one failed batch doesn't kill the others
 
-- Process venue columns in parallel batches of 3-4 to stay within context limits
-- Each batch uses the existing `ADVANCE_MASTER_VAN_PROMPT` (which already has the correct schema)
-- Merge all batch results into a single `{ venues: [...] }` response
-- Use `google/gemini-2.5-pro` for advance masters (accuracy over speed)
+### 4. Switch to gemini-2.5-flash for speed
+- The per-column parsing already gives the AI clean, structured data
+- Flash model is sufficient for structured extraction when input is well-formatted
+- Cuts per-call time from ~90s to ~20-30s
 
-### 3. Null Enforcement in VAN Prompt
+## Expected Result
 
-Add explicit instruction to the `ADVANCE_MASTER_VAN_PROMPT`:
-- "For EVERY field in the schema, if the data is not present in the source text, set the value to null. Do NOT omit any field from the output."
+- ~15-20 real venue columns (after better filtering)
+- ~3 batches of 6 (instead of 13 batches of 3)
+- All batches run in parallel
+- Total time: ~30-40 seconds (vs 1,170+ seconds before)
 
-### 4. Section Header Detection
+## Technical Details
 
-When building per-column text, detect section headers in column A (EVENT DETAILS, PRODUCTION CONTACT, HOUSE RIGGER CONTACT, SUMMARY, VENUE SCHEDULE, PLANT EQUIPMENT, LABOUR, STAGING, MISC, LIGHTING, VIDEO, NOTES, POWER) and group the key-value pairs under them. This gives the AI clear structural context.
+File: `supabase/functions/extract-document/index.ts`
 
-## Files Modified
+**Change 1 -- Column filtering (lines ~1458-1462)**:
+```typescript
+// Before: if (nonEmpty < 3) continue;
+// After:
+if (nonEmpty < 8) continue;
+// Also skip columns with numeric-only or single-char headers
+if (/^\d+$/.test(headerValue) || headerValue.length <= 2) continue;
+```
 
-- `supabase/functions/extract-document/index.ts`
-  - Lines ~1410-1420: Add per-column parsing branch for advance master Excel files
-  - Lines ~1448-1462: Add batched AI calls for per-column data
-  - Lines ~665-787: Add null-enforcement rule to VAN prompt, switch model to gemini-2.5-pro for advance masters
+**Change 2 -- Batch size and parallel execution (lines ~1571-1594)**:
+```typescript
+const BATCH_SIZE = 6;
+const extractModel = "google/gemini-2.5-flash";
+
+// Build all batch promises
+const batchPromises = [];
+for (let i = 0; i < venueBlocks.length; i += BATCH_SIZE) {
+  const batch = venueBlocks.slice(i, i + BATCH_SIZE);
+  const batchText = batch.join("\n\n---\n\n");
+  batchPromises.push(
+    aiExtractFromText(batchText, apiKey, extractPrompt, extractModel, 120000)
+      .then(result => result?.venues || [])
+      .catch(err => {
+        console.error(`[extract] Batch failed:`, err.message);
+        return [];
+      })
+  );
+}
+
+// Run all batches in parallel
+const batchResults = await Promise.all(batchPromises);
+const allVenues = batchResults.flat();
+```
 
 ## What Stays the Same
 
-- The VAN prompt schema (already maps to all your fields correctly)
-- VAN storage path (venue_advance_notes.van_data JSONB)
-- Contact extraction (production_contact + house_rigger_contact)
-- Schedule event insertion with multi-date support
-- Delta computation for version updates
-- Risk flag detection
-- The review dialog (ExtractionReviewDialog) -- no changes needed
+- Per-column parsing logic (section headers, key-value pairs)
+- VAN prompt and schema
+- VAN storage, contact extraction, schedule event insertion
+- Delta computation, risk flags
+- Review dialog
 
