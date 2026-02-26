@@ -1,73 +1,85 @@
 
-Goal: eliminate “Timed out / Load failed” during Advance Master extraction while keeping high-quality extraction and ensuring venue/date cross-linking still completes.
+I agree — this is a real data-quality regression, and the root cause is now clear from your current run.
 
-What I found from the current run:
-- The extraction did not actually fail in the backend.
-- For document `aecb4c08-b472-42a3-82d6-80ca23ebbc1f`, the database already contains:
-  - 36 venue advance note rows (all with city + event_date)
-  - 34 schedule events (city + venue mostly populated)
-- The failure is transport-level: request closes before response finishes (`Http: connection closed before message completed`) after a long run.
-- The frontend currently treats that as hard failure in `src/pages/bunk/BunkDocuments.tsx`, unlike `BunkSetup` which has timeout recovery polling.
+What I confirmed from your backend data:
+- The latest uploaded doc is `KOH26 Advance Master v3.xlsx` (`06602362-b73a-45b0-b3f0-0cfc87386dcb`).
+- Extracted rows for that doc have clearly wrong dates (example: `UBS Arena` = `2025-11-01`, `Lenovo Center` = `2026-07-22`).
+- In the stored VAN payload, `event_details.day_and_date` is often Excel serial text (`46086`, `46087`, `46096`, etc.).
+- Those serials map correctly to March 2026 (e.g. `46086 -> 2026-03-05`, `46103 -> 2026-03-22`), proving dates are available but being misinterpreted.
+- The uploaded spreadsheet itself shows plain human dates in the “Day and Date” row, so this should be deterministic.
 
-Implementation plan:
+Why this happened:
+1) In the column-based Excel parser path, cell values are read as raw values and written as strings directly, so date cells become serial numbers (`46086`) instead of formatted dates.
+2) The extraction then relies on AI to infer `event_date` from these serial strings, which produced incorrect dates.
+3) Schedule cleanup in advance-master insertion is date-based per tour, not source-doc scoped, so stale/wrong rows can survive or collide in bad ways.
 
-1) Add timeout-recovery polling to Bunk Documents extraction flow
-- File: `src/pages/bunk/BunkDocuments.tsx`
-- Bring over the resilient pattern already used in `BunkSetup`:
-  - If `invokeWithTimeout("extract-document")` returns network timeout / `Load failed` / aborted response, do not immediately show failure.
-  - Poll backend state (every 5s, bounded retries) and detect completion by checking:
-    - `documents.doc_type` changed from `UNKNOWN` OR
-    - fresh rows exist for `source_doc_id` in `venue_advance_notes` / `schedule_events` / `contacts`.
-  - On recovery, show success toast and open the appropriate review dialog instead of error.
-- This makes user experience robust even when long extraction completes after the HTTP connection dies.
+Implementation plan (high priority, deterministic-first):
 
-2) Add the same resilience to “Re-extract dates”
-- File: `src/pages/bunk/BunkDocuments.tsx`
-- For `backfill-schedule-events` call:
-  - On timeout/network close, poll for recently created/updated `schedule_events` for the selected tour.
-  - If updates are detected, show a recovered-success message.
-- This directly addresses “Re-extract fail” cases where work finished but response channel dropped.
-
-3) Reduce extraction runtime variance so responses are more likely to complete before connection cutoff
+1. Fix Excel date normalization in the column-based parser
 - File: `supabase/functions/extract-document/index.ts`
-- Keep high-accuracy model, but reduce per-request payload pressure:
-  - Lower Advance Master batch size (e.g., 6 → 4) to shorten slowest parallel call.
-  - Keep parallel execution but cap per-batch character payload conservatively.
-- Remove heavy response/log overhead:
-  - Stop logging the full `JSON.stringify(result)` for giant multi-venue payloads.
-  - Return a leaner response for Advance Master (summary/counts/ids), since review UI already loads full details from database tables by `source_doc_id`.
-- Net effect: lower chance of hitting gateway/proxy request lifetime limits while preserving data quality.
+- In the column-based loop, add a strict date normalizer for “Day and Date” / date-like labels:
+  - Detect numeric Excel serials and convert to ISO (`YYYY-MM-DD`) deterministically.
+  - Prefer worksheet formatted text when available.
+  - Preserve non-date numeric fields (capacity, counts) untouched.
+- Add helper(s) near parser utilities:
+  - `excelSerialToISO(serial: number): string`
+  - `normalizeDateCell(label: string, rawValue: unknown): { isoDate: string | null; display: string }`
 
-4) Strengthen venue-name backfill when date/tour match
+2. Stop trusting AI for primary event_date when deterministic date exists
 - File: `supabase/functions/extract-document/index.ts`
-- Extend reconciliation logic to fill `Unknown Venue` events more aggressively:
-  - Match by `tour_id + event_date + city` first, not just date.
-  - If multiple candidates on same date, break ties using show-time similarity from VAN `event_dates` / `venue_schedule`.
-  - If VAN `venue_name` is unknown but `event_details.venue` exists, use that as fallback before final insert.
-- This directly implements your requirement: same tour + same date/time should populate venue name automatically.
+- During advance-master per-column parsing, capture per-column deterministic date and venue hints (by index).
+- In VAN/schedule insertion:
+  - Use deterministic parsed date as source of truth when present.
+  - Use AI `event_date` only as fallback.
+  - If AI returns numeric `day_and_date`, normalize it before any date parsing/fallback logic.
 
-5) Keep cross-linking deterministic and auditable
+3. Make schedule cleanup source-doc scoped (prevent stale/partial cross-contamination)
 - File: `supabase/functions/extract-document/index.ts`
-- Add concise reconciliation counters in logs/response:
-  - `vans_city_backfilled`
-  - `vans_date_backfilled`
-  - `events_venue_backfilled`
-  - `events_city_backfilled`
-- This makes it clear whether smart matching actually ran and what it changed.
+- At start of advance-master branch:
+  - `DELETE schedule_events WHERE source_doc_id = document_id`
+- Replace current per-event delete (`tour_id + event_date`) with safer logic:
+  - Source-doc replacement first.
+  - Optional authority dedupe as a separate step (not broad date wipe).
+- This ensures a re-extract produces a clean, exact replacement for the same uploaded file.
 
-Validation plan:
-1. Upload the same Advance Master and run EXTRACT once.
-2. Confirm UI behavior:
-   - No final destructive error if transport drops.
-   - Recovery path auto-detects completed extraction and opens VAN review.
-3. Confirm data outputs:
-   - VAN rows count matches venue columns.
-   - `venue_advance_notes.city/event_date` populated.
-   - `schedule_events` has no `Unknown Venue` when same tour+date(+time/city) match exists.
-4. Run “Re-extract dates” and confirm recovered success behavior under long-running conditions.
-5. Verify one full end-to-end flow in `/bunk/documents`: upload → extract → review → approve.
+4. Harden venue fallback to avoid city-as-venue / Unknown Venue
+- File: `supabase/functions/extract-document/index.ts`
+- Persist per-column deterministic venue from the “Venue” row.
+- If AI venue is missing, equals city, or equals “Unknown Venue”, substitute deterministic venue.
+- Keep city from header as secondary fallback, not venue.
+
+5. Add extraction sanity checks + guardrails before final write
+- File: `supabase/functions/extract-document/index.ts`
+- Add lightweight validation counters and warnings in logs/response:
+  - `excel_serial_dates_converted`
+  - `deterministic_dates_used`
+  - `ai_dates_overridden`
+  - `unknown_venue_fallbacks`
+- Add a fail-safe warning path if date spread is implausible for a single tour segment (for visibility, not hard failure).
+
+6. Data repair for your current broken run
+- Backend data action after code fix:
+  - Re-run extraction for `06602362-b73a-45b0-b3f0-0cfc87386dcb`.
+  - Because of source-doc scoped cleanup, bad rows from this run get replaced cleanly.
+- Verify corrected outputs:
+  - `event_date` range should align with March 2026 sequence from the sheet.
+  - No leftover Nov/May/Jul outliers for this source doc.
+
+Validation checklist (using your exact file):
+1) Upload/use `KOH26_Advance_Master_v3.xlsx` and run EXTRACT.
+2) Confirm VANs:
+- `day_and_date` not raw serials in effective date logic.
+- `event_date` matches spreadsheet “Day and Date”.
+3) Confirm schedule:
+- Dates align to expected run (e.g. 3/5, 3/6, … 3/22).
+- No “Unknown Venue” where “Venue” row has data.
+4) Confirm idempotency:
+- Re-run extract on same file, row counts and dates remain stable (no drift, no duplicates, no stale leftovers).
+5) Check calendar view:
+- Cards display corrected dates/venues for this tour only, with no old-date artifacts.
 
 Technical notes:
-- No schema migration is required for this fix.
-- No auth/RLS changes are needed.
-- This is mainly reliability hardening in UI + extraction function runtime tuning + stronger reconciliation matching.
+- No schema migration required.
+- No auth/RLS changes required.
+- This is an extraction-engine correctness fix plus safe replacement behavior.
+
