@@ -1,18 +1,24 @@
 
-# Reduce Spacing Between Logo and Narrative
-
-## Problem
-The screenshot shows a large empty gap between the CONDO BUNK logo and the "It's the night before..." headline. This is caused by:
-- `mb-6` on the logo container (line 80)
-- `space-y-8` on the outer wrapper (line 78) adding 2rem gap between all children
-- `space-y-8` on the narrative container (line 88) adding more internal spacing
+# Mobile Login Page: Collapsible Checklist and Tighter Spacing
 
 ## Changes
 
-**File: `src/pages/Login.tsx`**
+### 1. Make the checklist collapsible on mobile (`src/pages/Login.tsx`)
 
-1. **Line 78** -- Change `space-y-8` to `space-y-4` on the outer `motion.div` wrapper to tighten the gap between the logo and the narrative section
-2. **Line 80** -- Change `mb-6` to `mb-2` on the logo container to reduce the bottom margin after the logo
-3. **Line 88** -- Change `space-y-8` to `space-y-6` on the narrative `motion.div` to slightly tighten the internal spacing between narrative sections while keeping it readable
+On mobile, wrap the "Before wheels down, you need:" section (lines 105-128) in a `Collapsible` component (already available at `@/components/ui/collapsible`). The heading "Before wheels down, you need:" becomes the trigger with a chevron icon. Tapping it expands/collapses the checklist items. On desktop (`sm:` and up), the checklist remains always visible without the collapsible wrapper.
 
-These three changes will significantly reduce the dead space while maintaining a clean, readable flow from logo into the story.
+Implementation approach:
+- Import `useIsMobile` from `@/hooks/use-mobile`
+- Import `Collapsible`, `CollapsibleTrigger`, `CollapsibleContent` from `@/components/ui/collapsible`
+- Import `ChevronDown` from `lucide-react`
+- On mobile: render the checklist inside a `Collapsible` (default closed), with the "Before wheels down" text as a tappable trigger showing a rotating chevron
+- On desktop: render exactly as-is (no collapsible behavior)
+
+### 2. Reduce remaining gap between logo and headline on mobile
+
+- **Line 78**: Change `space-y-4` to `space-y-2 sm:space-y-4` -- tighter on mobile, normal on desktop
+- **Line 80**: Change `mb-2` to `mb-0 sm:mb-2` -- eliminate bottom margin on mobile
+- **Line 88**: Change `space-y-6` to `space-y-4 sm:space-y-6` -- tighter narrative spacing on mobile
+
+### Files modified
+- `src/pages/Login.tsx` only
