@@ -1,59 +1,70 @@
 
-# Cascade UI Cleanup When a Tour AKB is Deleted
 
-## Current State
-
-**Database layer: Already correct.** All child tables (`schedule_events`, `contacts`, `direct_messages`, `documents`, `tela_threads`, `tela_messages`, `finance_lines`, `venue_advance_notes`, `calendar_conflicts`, `knowledge_gaps`, `tour_members`, etc.) use `ON DELETE CASCADE` referencing `tours(id)`. When a tour row is deleted, all associated data is automatically purged at the database level.
-
-**Frontend layer: Incomplete.** The `confirmDelete` function in `BunkOverview.tsx` only calls `reload()` (which re-fetches the tour list). It does NOT notify the sidebar contacts, calendar, TELA threads, DM unread counts, or other components that are caching stale data.
+# Rework Advance Master Per-Column Extraction
 
 ## Problem
 
-After deleting a tour (e.g., "BBots"), the sidebar still shows BBots contacts, the calendar may still show BBots events, TELA threads for that tour still appear, and unread DM badges may linger -- until the user does a full page refresh.
+The advance master spreadsheet (e.g. `KOH_Advance_Master-2.xlsx`) has venues across columns (B through Q+) and category labels down column A. The current extraction flattens the entire sheet into CSV text via `sheet_to_csv()`, which:
+
+1. Creates a massive text blob where the AI loses track of which data belongs to which venue
+2. Exceeds practical context limits for 16+ venue columns with dense labor notes, power specs, etc.
+3. Causes data loss and cross-venue contamination
+
+The VAN prompt schema already maps correctly to all the fields you listed (event_details, production_contact, house_rigger_contact, summary, venue_schedule, plant_equipment, labour, dock_and_logistics, power, staging, misc, lighting, video, notes). The issue is purely in how the spreadsheet data is fed to the AI.
 
 ## Solution
 
-Dispatch global refresh events after a successful tour deletion so all listening components re-fetch their data, and reset `selectedTourId` if the deleted tour was the active one.
+### 1. Per-Column Excel Parsing for Advance Masters
 
-### Changes
+In `supabase/functions/extract-document/index.ts`, when an advance master Excel file is detected, replace the generic `sheet_to_csv()` with deterministic per-column parsing:
 
-**File: `src/pages/bunk/BunkOverview.tsx`** -- `confirmDelete` function (~line 378)
+- Read the worksheet as a 2D array using `XLSX.utils.sheet_to_json(ws, { header: 1 })`
+- Identify column A as category labels (EVENT DETAILS, PRODUCTION CONTACT, etc.)
+- For each venue column (B, C, D...), build a structured key-value text block:
+  ```
+  VENUE COLUMN DATA:
+  EVENT DETAILS
+  Day and Date: Thursday, March 05, 2026
+  Venue: Allen War Memorial Coliseum
+  Onsale Capacity: 10,918 capacity. Sold out.
+  ...
+  PRODUCTION CONTACT
+  Name: Eric
+  Phone: Direct: 260-480-2129
+  ...
+  ```
+- Each venue column produces a clean, isolated text block with zero cross-venue contamination
 
-After the successful `reload()` call, add:
-1. Dispatch `akb-changed` event (already listened to by Calendar, Gaps, Overview counts)
-2. Dispatch `contacts-changed` event (already listened to by sidebar contacts)
-3. If the deleted tour was the currently selected tour, reset `selectedTourId` to the next available tour or empty string
-4. Force a brief timeout then dispatch events to ensure the tour list has updated first
+### 2. Batch Processing (3-4 Venues per AI Call)
 
-**File: `src/hooks/useTour.tsx`** -- `loadTours` function (~line 109)
+- Process venue columns in parallel batches of 3-4 to stay within context limits
+- Each batch uses the existing `ADVANCE_MASTER_VAN_PROMPT` (which already has the correct schema)
+- Merge all batch results into a single `{ venues: [...] }` response
+- Use `google/gemini-2.5-pro` for advance masters (accuracy over speed)
 
-After re-fetching tours, if the currently selected `selectedTourId` is no longer in the returned list, auto-switch to the first available tour (or clear it). This already partially exists (line 121) but only fires when `selectedTourId` is empty. Add an additional check: if `selectedTourId` is set but no longer in the fetched tour list, reset it.
+### 3. Null Enforcement in VAN Prompt
 
-**File: `src/hooks/useTelaThreads.ts`** -- Add a listener for `akb-changed` to re-fetch threads, so deleted-tour threads disappear from the sidebar.
+Add explicit instruction to the `ADVANCE_MASTER_VAN_PROMPT`:
+- "For EVERY field in the schema, if the data is not present in the source text, set the value to null. Do NOT omit any field from the output."
 
-**File: `src/hooks/useUnreadDMs.ts`** -- Add a listener for `akb-changed` to re-fetch unread counts, clearing badges for the deleted tour's DMs.
+### 4. Section Header Detection
 
-### Technical Detail
+When building per-column text, detect section headers in column A (EVENT DETAILS, PRODUCTION CONTACT, HOUSE RIGGER CONTACT, SUMMARY, VENUE SCHEDULE, PLANT EQUIPMENT, LABOUR, STAGING, MISC, LIGHTING, VIDEO, NOTES, POWER) and group the key-value pairs under them. This gives the AI clear structural context.
 
-```text
-confirmDelete (BunkOverview.tsx):
-  1. Delete tour from DB (already done)
-  2. Call reload() (already done)
-  3. NEW: Dispatch window events:
-     - "akb-changed"    -> refreshes Calendar, Gaps, Overview
-     - "contacts-changed" -> refreshes sidebar contact lists
-  4. NEW: If deletingTour.id === selectedTourId, call
-     setSelectedTourId("") so useTour picks the next tour
+## Files Modified
 
-loadTours (useTour.tsx):
-  - After fetching tours, if selectedTourId not in results,
-    reset to data[0]?.id or ""
+- `supabase/functions/extract-document/index.ts`
+  - Lines ~1410-1420: Add per-column parsing branch for advance master Excel files
+  - Lines ~1448-1462: Add batched AI calls for per-column data
+  - Lines ~665-787: Add null-enforcement rule to VAN prompt, switch model to gemini-2.5-pro for advance masters
 
-useTelaThreads.ts:
-  - Add useEffect listener for "akb-changed" that calls refetch
+## What Stays the Same
 
-useUnreadDMs.ts:
-  - Add useEffect listener for "akb-changed" that calls refetch
-```
+- The VAN prompt schema (already maps to all your fields correctly)
+- VAN storage path (venue_advance_notes.van_data JSONB)
+- Contact extraction (production_contact + house_rigger_contact)
+- Schedule event insertion with multi-date support
+- Delta computation for version updates
+- Risk flag detection
+- The review dialog (ExtractionReviewDialog) -- no changes needed
 
-This ensures that when any tour AKB is deleted, every component across the app -- calendar, sidebar (tour team + venue partners), TELA chat threads, unread DM badges, knowledge gaps, and overview stats -- all refresh asynchronously and stop showing data from the deleted tour.
