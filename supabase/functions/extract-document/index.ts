@@ -662,7 +662,9 @@ function parseFuzzyDatesFromText(text: string | null | undefined, yearHint: numb
 
 // ─── Advance Master VAN Extraction Prompt ───
 
-const ADVANCE_MASTER_VAN_PROMPT = `You are the Advance Master extraction engine for the live touring industry. This document is a columnar spreadsheet where CITIES are across the header row and CATEGORIES run down the left column. Your job is to extract ALL advance notes for EVERY venue/city into structured Venue Advance Notes (VANs).
+const ADVANCE_MASTER_VAN_PROMPT = `You are the Advance Master extraction engine for the live touring industry. You will receive pre-parsed venue data as structured key-value text blocks. Each block contains data for ONE or more venues, with section headers (EVENT DETAILS, PRODUCTION CONTACT, etc.) and their associated fields. Your job is to extract ALL advance notes into structured Venue Advance Notes (VANs).
+
+CRITICAL NULL ENFORCEMENT: For EVERY field in the schema below, if the data is not present in the source text, you MUST set the value to null. Do NOT omit any field from the output. Every venue object MUST contain ALL top-level keys and ALL nested keys, even if their values are null.
 
 Return a JSON object:
 {
@@ -677,89 +679,89 @@ Return a JSON object:
       ],
 
       "event_details": {
-        "day_and_date": "full day and date string",
-        "venue": "venue name",
-        "onsale_capacity": "capacity and sales info verbatim",
-        "production_rider_sent": "Yes/No/description",
-        "bus_arrival_time": "time or description"
+        "day_and_date": "full day and date string" or null,
+        "venue": "venue name" or null,
+        "onsale_capacity": "capacity and sales info verbatim" or null,
+        "production_rider_sent": "Yes/No/description" or null,
+        "bus_arrival_time": "time or description" or null
       },
 
-      "production_contact": {"name": "", "phone": "", "email": "", "notes": ""},
-      "house_rigger_contact": {"name": "", "phone": "", "email": "", "notes": ""},
+      "production_contact": {"name": null, "phone": null, "email": null, "notes": null},
+      "house_rigger_contact": {"name": null, "phone": null, "email": null, "notes": null},
 
       "summary": {
-        "cad_received": "verbatim response",
-        "rigging_overlay_done": "verbatim response",
-        "distance_to_low_steel": "verbatim measurement and notes"
+        "cad_received": "verbatim response" or null,
+        "rigging_overlay_done": "verbatim response" or null,
+        "distance_to_low_steel": "verbatim measurement and notes" or null
       },
 
       "venue_schedule": {
-        "chair_set": "time",
-        "show_times": "doors and show times verbatim"
+        "chair_set": "time" or null,
+        "show_times": "doors and show times verbatim" or null
       },
 
       "plant_equipment": {
-        "forklifts": "verbatim forklift description",
-        "co2_confirmed": "verbatim CO2 status"
+        "forklifts": "verbatim forklift description" or null,
+        "co2_confirmed": "verbatim CO2 status" or null
       },
 
       "labour": {
-        "union_venue": "verbatim union status",
-        "labor_notes": "FULL verbatim labor rules, minimums, meal penalties, overtime rules — capture EVERYTHING",
-        "labor_estimate_received": "verbatim response",
-        "labor_call": "verbatim description",
-        "number_to_feed": "verbatim feed count",
-        "house_electrician_catering": "verbatim",
-        "follow_spots": "verbatim description"
+        "union_venue": "verbatim union status" or null,
+        "labor_notes": "FULL verbatim labor rules, minimums, meal penalties, overtime rules — capture EVERYTHING" or null,
+        "labor_estimate_received": "verbatim response" or null,
+        "labor_call": "verbatim description" or null,
+        "number_to_feed": "verbatim feed count" or null,
+        "house_electrician_catering": "verbatim" or null,
+        "follow_spots": "verbatim description" or null
       },
 
       "dock_and_logistics": {
-        "loading_dock": "verbatim dock description with count and type",
-        "distance_dock_to_stage": "verbatim distance",
-        "trucks_parked": "verbatim parking rules",
-        "bus_trailer_unload": "verbatim",
-        "parking_situation": "verbatim parking description",
-        "catering_truck": "verbatim",
-        "merch_truck": "verbatim",
-        "vom_entry": "verbatim vom/entry description",
-        "height_to_seating": "verbatim measurement"
+        "loading_dock": "verbatim dock description with count and type" or null,
+        "distance_dock_to_stage": "verbatim distance" or null,
+        "trucks_parked": "verbatim parking rules" or null,
+        "bus_trailer_unload": "verbatim" or null,
+        "parking_situation": "verbatim parking description" or null,
+        "catering_truck": "verbatim" or null,
+        "merch_truck": "verbatim" or null,
+        "vom_entry": "verbatim vom/entry description" or null,
+        "height_to_seating": "verbatim measurement" or null
       },
 
       "power": {
-        "power_available": "FULL verbatim power description with amps, phases, locations",
-        "catering_power": "verbatim"
+        "power_available": "FULL verbatim power description with amps, phases, locations" or null,
+        "catering_power": "verbatim" or null
       },
 
       "staging": {
-        "foh_vip_risers": "verbatim",
-        "vip_riser_height": "verbatim measurement",
-        "handrails": "verbatim",
-        "foh_lighting_riser": "verbatim",
-        "camera_risers": "verbatim",
-        "preset_in_place": "verbatim",
-        "end_stage_curtain": "verbatim",
-        "bike_rack": "verbatim"
+        "foh_vip_risers": "verbatim" or null,
+        "vip_riser_height": "verbatim measurement" or null,
+        "handrails": "verbatim" or null,
+        "foh_lighting_riser": "verbatim" or null,
+        "camera_risers": "verbatim" or null,
+        "preset_in_place": "verbatim" or null,
+        "end_stage_curtain": "verbatim" or null,
+        "bike_rack": "verbatim" or null
       },
 
       "misc": {
-        "curfew": "verbatim",
-        "dead_case_storage": "verbatim description",
-        "haze_restrictions": "verbatim",
-        "audio_spl_restrictions": "verbatim"
+        "curfew": "verbatim" or null,
+        "dead_case_storage": "verbatim description" or null,
+        "haze_restrictions": "verbatim" or null,
+        "audio_spl_restrictions": "verbatim" or null
       },
 
       "lighting": {
-        "houselight_control": "verbatim dimmable/control/comms description"
+        "houselight_control": "verbatim dimmable/control/comms description" or null
       },
 
       "video": {
-        "flypack_location": "verbatim",
-        "hardline_internet": "verbatim",
-        "house_tv_patch": "verbatim with resolution",
-        "led_ribbon": "verbatim"
+        "flypack_location": "verbatim" or null,
+        "hardline_internet": "verbatim" or null,
+        "house_tv_patch": "verbatim with resolution" or null,
+        "led_ribbon": "verbatim" or null
       },
 
-      "notes": "any additional notes from the NOTES row for this venue",
+      "notes": "any additional notes from the NOTES row for this venue" or null,
 
       "risk_flags": [
         {
@@ -774,16 +776,16 @@ Return a JSON object:
 }
 
 CRITICAL RULES:
-- Extract EVERY venue/city column. Do NOT skip any venue.
+- Extract EVERY venue provided in the input. Do NOT skip any venue.
 - Each venue gets its own object in the "venues" array.
-- CAPTURE VERBATIM: Copy the exact text from each cell. Do NOT summarize, paraphrase, or truncate. The touring production team needs the EXACT words from the advance.
-- If a venue column has blank/empty cells, set those fields to null.
+- CAPTURE VERBATIM: Copy the exact text from each field. Do NOT summarize, paraphrase, or truncate. The touring production team needs the EXACT words from the advance.
+- NULL ENFORCEMENT: If a field's data is not present, set it to null. NEVER omit any field. Every venue MUST have ALL keys shown above.
 - For dates, use YYYY-MM-DD format.
 - For times in event_details and venue_schedule, keep the original format (e.g., "5:30pm doors 7pm show").
 - The labour.labor_notes field is CRITICAL — capture the COMPLETE labor rules including minimums, meal penalties, overtime, department rules, etc. This is often the longest field. Do NOT truncate.
 - Flag risks: no docks, long push distance (>200ft), restricted haze, complex union rules, limited power, no CO2, street load.
 - Return ONLY valid JSON, no markdown, no code blocks.
-- ZERO DATA LOSS. Every cell of data in every venue column must appear.
+- ZERO DATA LOSS. Every piece of data provided must appear in the output.
 - CRITICAL: Most venues have MULTIPLE dates (load-in day + show days + travel days). Extract ALL dates into the event_dates array. Do NOT collapse multiple dates into one. If a venue has "Wed Load-In, Thu Show, Fri Show", that is 3 entries in event_dates. If only one date is mentioned, still use the array format with one entry. Set event_date to the first SHOW date for backward compatibility.`;
 
 // ─── Multi-Venue Master Document Prompt (legacy non-advance-master) ───
@@ -1408,17 +1410,123 @@ Deno.serve(async (req) => {
 
       if (!dlErr && fileData) {
         if (isExcel) {
-          // Parse Excel to CSV text using SheetJS — Gemini doesn't support xlsx MIME type
           const arrayBuf = await fileData.arrayBuffer();
           const wb = XLSX.read(new Uint8Array(arrayBuf), { type: "array", dense: true });
-          const csvParts: string[] = [];
-          for (const sheetName of wb.SheetNames) {
-            const ws = wb.Sheets[sheetName];
-            csvParts.push(`--- Sheet: ${sheetName} ---`);
-            csvParts.push(XLSX.utils.sheet_to_csv(ws));
+
+          // Check if this is an advance master — if so, use per-column parsing
+          const fnLower = filename.toLowerCase();
+          const looksLikeAdvanceMaster = (fnLower.includes("advance") && fnLower.includes("master")) ||
+            fnLower.includes("advance_master") || fnLower.includes("advance master");
+
+          if (looksLikeAdvanceMaster) {
+            // ── Per-Column Parsing for Advance Masters ──
+            // Read worksheet as 2D array: rows[rowIdx][colIdx]
+            const ws = wb.Sheets[wb.SheetNames[0]];
+            const rows: (string | number | boolean | null | undefined)[][] = XLSX.utils.sheet_to_json(ws, { header: 1, defval: null });
+
+            if (rows.length > 0) {
+              // Section headers to detect in column A
+              const SECTION_HEADERS = [
+                "EVENT DETAILS", "PRODUCTION CONTACT", "HOUSE RIGGER CONTACT",
+                "SUMMARY", "VENUE SCHEDULE", "PLANT EQUIPMENT", "LABOUR", "LABOR",
+                "DOCK", "LOADING DOCK", "POWER", "STAGING", "MISC", "LIGHTING",
+                "VIDEO", "NOTES", "SCHEDULE",
+              ];
+
+              // Find how many columns have data (venue columns start at B = index 1)
+              let maxCol = 0;
+              for (const row of rows) {
+                if (row && row.length > maxCol) maxCol = row.length;
+              }
+
+              // Build per-column text blocks
+              const venueColumnTexts: string[] = [];
+              for (let col = 1; col < maxCol; col++) {
+                // Check if this column has a venue header (non-empty cell in first few rows)
+                let headerValue = "";
+                for (let r = 0; r < Math.min(5, rows.length); r++) {
+                  const cell = rows[r]?.[col];
+                  if (cell != null && String(cell).trim()) {
+                    headerValue = String(cell).trim();
+                    break;
+                  }
+                }
+                // Skip empty columns
+                if (!headerValue) continue;
+
+                // Count non-empty cells in this column to skip sparse columns
+                let nonEmpty = 0;
+                for (let r = 0; r < rows.length; r++) {
+                  if (rows[r]?.[col] != null && String(rows[r][col]).trim()) nonEmpty++;
+                }
+                if (nonEmpty < 3) continue; // Skip columns with fewer than 3 data cells
+
+                // Build structured text block for this venue column
+                const lines: string[] = [`VENUE COLUMN DATA:`];
+                let currentSection = "";
+
+                for (let r = 0; r < rows.length; r++) {
+                  const labelCell = rows[r]?.[0];
+                  const valueCell = rows[r]?.[col];
+                  const label = labelCell != null ? String(labelCell).trim() : "";
+                  const value = valueCell != null ? String(valueCell).trim() : "";
+
+                  // Check if this row is a section header
+                  const upperLabel = label.toUpperCase();
+                  const isSection = SECTION_HEADERS.some(h => upperLabel.includes(h));
+                  if (isSection && label) {
+                    currentSection = label.toUpperCase();
+                    lines.push(`\n${currentSection}`);
+                    // If the value cell also has data on the header row, include it
+                    if (value) {
+                      lines.push(`  ${value}`);
+                    }
+                    continue;
+                  }
+
+                  // Regular data row
+                  if (label && value) {
+                    lines.push(`${label}: ${value}`);
+                  } else if (!label && value) {
+                    // Continuation value (no label in col A)
+                    lines.push(`  ${value}`);
+                  } else if (label && !value) {
+                    // Label present but no data for this venue — will map to null
+                    lines.push(`${label}: [empty]`);
+                  }
+                }
+
+                venueColumnTexts.push(lines.join("\n"));
+              }
+
+              if (venueColumnTexts.length > 0) {
+                console.log("[extract] Per-column parsing found", venueColumnTexts.length, "venue columns");
+                // Store as special format — rawText will be used differently in the multi-venue path
+                // We tag it so the extraction path knows to use batched processing
+                rawText = `__ADVANCE_MASTER_COLUMNS__\n${venueColumnTexts.join("\n\n===VENUE_SEPARATOR===\n\n")}`;
+              } else {
+                // Fallback to CSV if per-column parsing found nothing
+                const csvParts: string[] = [];
+                for (const sheetName of wb.SheetNames) {
+                  const ws2 = wb.Sheets[sheetName];
+                  csvParts.push(`--- Sheet: ${sheetName} ---`);
+                  csvParts.push(XLSX.utils.sheet_to_csv(ws2));
+                }
+                rawText = csvParts.join("\n\n");
+              }
+            }
+            console.log("[extract] Advance master Excel per-column parsed, length:", rawText?.length || 0);
+          } else {
+            // Non-advance-master Excel: use standard CSV conversion
+            const csvParts: string[] = [];
+            for (const sheetName of wb.SheetNames) {
+              const ws = wb.Sheets[sheetName];
+              csvParts.push(`--- Sheet: ${sheetName} ---`);
+              csvParts.push(XLSX.utils.sheet_to_csv(ws));
+            }
+            rawText = csvParts.join("\n\n");
+            console.log("[extract] Excel parsed to CSV text, length:", rawText.length);
           }
-          rawText = csvParts.join("\n\n");
-          console.log("[extract] Excel parsed to CSV text, length:", rawText.length);
         } else if (isPdf) {
           const arrayBuf = await fileData.arrayBuffer();
           const bytes = new Uint8Array(arrayBuf);
@@ -1449,16 +1557,55 @@ Deno.serve(async (req) => {
     if (isMultiVenue && apiKey) {
       let multiResult: { venues: Array<Record<string, unknown>> } | null = null;
 
-      // Use flash model for speed (avoids timeout) — still high quality for structured extraction
-      const extractModel = "google/gemini-2.5-flash";
-      const maxChars = isAdvanceMaster ? 80000 : 60000;
       // Use dedicated VAN prompt for advance masters
       const extractPrompt = isAdvanceMaster ? ADVANCE_MASTER_VAN_PROMPT : MULTI_VENUE_PROMPT;
 
-      if (base64Data) {
-        multiResult = await aiExtractFromPdf(base64Data, apiKey, extractPrompt, base64MimeType) as typeof multiResult;
-      } else if (rawText) {
-        multiResult = await aiExtractFromText(rawText, apiKey, extractPrompt, extractModel, maxChars) as typeof multiResult;
+      // ── Batched per-column extraction for advance masters ──
+      if (isAdvanceMaster && rawText && rawText.startsWith("__ADVANCE_MASTER_COLUMNS__")) {
+        console.log("[extract] Using batched per-column extraction for advance master");
+        const columnData = rawText.replace("__ADVANCE_MASTER_COLUMNS__\n", "");
+        const venueBlocks = columnData.split("\n\n===VENUE_SEPARATOR===\n\n").filter(b => b.trim());
+        console.log("[extract] Found", venueBlocks.length, "venue column blocks to process");
+
+        // Process in parallel batches of 3-4 venues
+        const BATCH_SIZE = 3;
+        const allVenues: Array<Record<string, unknown>> = [];
+        const extractModel = "google/gemini-2.5-pro"; // Pro model for accuracy on advance masters
+
+        for (let i = 0; i < venueBlocks.length; i += BATCH_SIZE) {
+          const batch = venueBlocks.slice(i, i + BATCH_SIZE);
+          const batchText = batch.join("\n\n---\n\n");
+          console.log(`[extract] Processing batch ${Math.floor(i / BATCH_SIZE) + 1}/${Math.ceil(venueBlocks.length / BATCH_SIZE)}, ${batch.length} venues, ${batchText.length} chars`);
+
+          const batchResult = await aiExtractFromText(
+            batchText,
+            apiKey,
+            extractPrompt,
+            extractModel,
+            120000, // Generous char limit — per-column data is much cleaner
+          ) as { venues: Array<Record<string, unknown>> } | null;
+
+          if (batchResult?.venues) {
+            allVenues.push(...batchResult.venues);
+            console.log(`[extract] Batch ${Math.floor(i / BATCH_SIZE) + 1} extracted ${batchResult.venues.length} venues`);
+          } else {
+            console.error(`[extract] Batch ${Math.floor(i / BATCH_SIZE) + 1} returned no venues`);
+          }
+        }
+
+        if (allVenues.length > 0) {
+          multiResult = { venues: allVenues };
+        }
+      } else {
+        // Standard single-pass extraction (non-advance-master or PDF advance masters)
+        const extractModel = "google/gemini-2.5-flash";
+        const maxChars = isAdvanceMaster ? 80000 : 60000;
+
+        if (base64Data) {
+          multiResult = await aiExtractFromPdf(base64Data, apiKey, extractPrompt, base64MimeType) as typeof multiResult;
+        } else if (rawText) {
+          multiResult = await aiExtractFromText(rawText, apiKey, extractPrompt, extractModel, maxChars) as typeof multiResult;
+        }
       }
 
       if (multiResult && multiResult.venues && multiResult.venues.length > 0) {
