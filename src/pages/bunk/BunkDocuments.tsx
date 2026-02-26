@@ -1,5 +1,5 @@
-import { useEffect, useState, useCallback } from "react";
-import { useNavigate } from "react-router-dom";
+import { useEffect, useState, useCallback, useMemo } from "react";
+import { useNavigate, Link } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { invokeWithTimeout } from "@/lib/invoke-with-timeout";
 import { useAuth } from "@/hooks/useAuth";
@@ -21,6 +21,13 @@ import {
   Archive,
   RotateCcw,
   MessageSquare,
+  StickyNote,
+  Globe,
+  Users,
+  Lock,
+  Copy,
+  Printer,
+  Send,
 } from "lucide-react";
 import ExtractionReviewDialog from "@/components/bunk/ExtractionReviewDialog";
 import TechPackReviewDialog from "@/components/bunk/TechPackReviewDialog";
@@ -110,6 +117,11 @@ const BunkDocuments = () => {
   const [showArchived, setShowArchived] = useState(false);
   const [backfilling, setBackfilling] = useState(false);
   const [versionMatch, setVersionMatch] = useState<{ doc: DocRow; file: File } | null>(null);
+  const [showArtifacts, setShowArtifacts] = useState(false);
+  const [artifacts, setArtifacts] = useState<Array<{
+    id: string; title: string; content: string | null; artifact_type: string;
+    visibility: string; created_at: string; updated_at: string; user_id: string;
+  }>>([]);
 
   const normalize = (f: string) => f.toLowerCase().replace(/[^a-z0-9]/g, "");
 
@@ -151,9 +163,22 @@ const BunkDocuments = () => {
     }
   };
 
+  const loadArtifacts = useCallback(async () => {
+    if (!selectedTourId || !user) return;
+    const { data } = await supabase
+      .from("user_artifacts")
+      .select("id, title, content, artifact_type, visibility, created_at, updated_at, user_id")
+      .or(`tour_id.eq.${selectedTourId},tour_id.is.null`)
+      .order("updated_at", { ascending: false });
+    if (data) setArtifacts(data);
+  }, [selectedTourId, user]);
+
   useEffect(() => {
-    if (selectedTourId) loadDocuments();
-  }, [selectedTourId]);
+    if (selectedTourId) {
+      loadDocuments();
+      loadArtifacts();
+    }
+  }, [selectedTourId, loadArtifacts]);
 
   const loadDocuments = async () => {
     const { data } = await supabase
@@ -678,6 +703,60 @@ const BunkDocuments = () => {
           </div>
         )}
       </div>
+
+      {/* Artifacts (Pre-AKB notes & team docs) */}
+      <Collapsible open={showArtifacts} onOpenChange={setShowArtifacts}>
+        <CollapsibleTrigger asChild>
+          <button className="flex items-center gap-2 text-sm font-mono text-muted-foreground tracking-wider hover:text-foreground transition-colors w-full">
+            <StickyNote className="h-3.5 w-3.5" />
+            ARTIFACTS ({artifacts.length})
+            <ChevronDown className={`h-3 w-3 transition-transform ${showArtifacts ? "rotate-180" : ""}`} />
+            <Link
+              to="/bunk/artifacts"
+              onClick={(e) => e.stopPropagation()}
+              className="ml-auto text-[10px] text-primary hover:underline font-mono tracking-normal normal-case"
+            >
+              Open full view →
+            </Link>
+          </button>
+        </CollapsibleTrigger>
+        <CollapsibleContent>
+          <div className="space-y-2 mt-3">
+            {artifacts.length === 0 ? (
+              <div className="rounded-lg border border-border border-dashed bg-card/50 p-6 text-center">
+                <StickyNote className="h-6 w-6 text-muted-foreground/30 mx-auto mb-2" />
+                <p className="text-xs font-mono text-muted-foreground">No artifacts yet.</p>
+                <Link to="/bunk/artifacts" className="text-xs font-mono text-primary hover:underline mt-1 inline-block">
+                  Create one →
+                </Link>
+              </div>
+            ) : (
+              artifacts.slice(0, 10).map((a) => {
+                const VisIcon = a.visibility === "tourtext" ? Globe : a.visibility === "bunk_stash" ? Lock : Users;
+                const visColor = a.visibility === "tourtext" ? "text-green-500" : a.visibility === "bunk_stash" ? "text-amber-500" : "text-blue-500";
+                return (
+                  <div key={a.id} className="rounded-lg border border-border bg-card px-3 sm:px-4 py-3">
+                    <div className="flex items-center gap-2 overflow-hidden">
+                      <StickyNote className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                      <p className="text-sm font-medium truncate flex-1">{a.title}</p>
+                      <VisIcon className={`h-3 w-3 shrink-0 ${visColor}`} />
+                      <Badge variant="outline" className="font-mono text-[10px] shrink-0">{a.artifact_type.toUpperCase()}</Badge>
+                    </div>
+                    {a.content && (
+                      <p className="text-xs text-muted-foreground font-mono mt-1.5 pl-5.5 line-clamp-2">{a.content}</p>
+                    )}
+                  </div>
+                );
+              })
+            )}
+            {artifacts.length > 10 && (
+              <Link to="/bunk/artifacts" className="block text-center text-xs font-mono text-primary hover:underline py-2">
+                View all {artifacts.length} artifacts →
+              </Link>
+            )}
+          </div>
+        </CollapsibleContent>
+      </Collapsible>
 
       {/* Archived Documents */}
       {archivedDocuments.length > 0 && (
