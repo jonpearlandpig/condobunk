@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
-import { Plus, Trash2, Edit2, Save, X, FileText, Loader2, StickyNote, CheckSquare, Printer, Copy, Send, Globe, Users, Lock } from "lucide-react";
+import { useNavigate } from "react-router-dom";
+import { Plus, Trash2, Edit2, Save, X, FileText, Loader2, StickyNote, CheckSquare, Printer, Copy, Send, Globe, Users, Lock, Database, ExternalLink } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -13,7 +14,18 @@ import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 
 type Visibility = "tourtext" | "condobunk" | "bunk_stash";
+type ActiveTab = Visibility | "akb_docs";
 
+type AkbDoc = {
+  id: string;
+  filename: string | null;
+  doc_type: string;
+  version: number;
+  is_active: boolean;
+  created_at: string;
+  archived_at: string | null;
+  tour_id: string;
+};
 type Artifact = {
   id: string;
   title: string;
@@ -137,12 +149,14 @@ const ArtifactCard = ({
 const BunkArtifacts = () => {
   const { user } = useAuth();
   const { selectedTourId, isDemoMode } = useTour();
+  const navigate = useNavigate();
   const [artifacts, setArtifacts] = useState<Artifact[]>([]);
+  const [akbDocs, setAkbDocs] = useState<AkbDoc[]>([]);
   const [profiles, setProfiles] = useState<Record<string, Profile>>({});
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<Visibility>("condobunk");
+  const [activeTab, setActiveTab] = useState<ActiveTab>("condobunk");
 
   // New artifact form
   const [newTitle, setNewTitle] = useState("");
@@ -171,7 +185,7 @@ const BunkArtifacts = () => {
     setUserOverrodeVis(true);
   };
 
-  /* ── load artifacts ── */
+  /* ── load artifacts + AKB docs ── */
   const load = useCallback(async () => {
     if (!user) return;
     setLoading(true);
@@ -186,10 +200,24 @@ const BunkArtifacts = () => {
       query.or(`tour_id.eq.${selectedTourId},tour_id.is.null`);
     }
 
-    const { data, error } = await query;
-    if (error) toast.error(error.message);
+    // Fetch AKB documents for the selected tour
+    const docsQuery = selectedTourId
+      ? supabase
+          .from("documents")
+          .select("id, filename, doc_type, version, is_active, created_at, archived_at, tour_id")
+          .eq("tour_id", selectedTourId)
+          .is("archived_at", null)
+          .order("created_at", { ascending: false })
+      : null;
+
+    const [artifactRes, docsRes] = await Promise.all([
+      query,
+      docsQuery,
+    ]);
+
+    if (artifactRes.error) toast.error(artifactRes.error.message);
     else {
-      const items = (data || []) as Artifact[];
+      const items = (artifactRes.data || []) as Artifact[];
       setArtifacts(items);
 
       // Fetch profiles for shared items
@@ -206,6 +234,11 @@ const BunkArtifacts = () => {
         }
       }
     }
+
+    if (docsRes && !docsRes.error) {
+      setAkbDocs((docsRes.data || []) as AkbDoc[]);
+    }
+
     setLoading(false);
   }, [user, selectedTourId]);
 
@@ -284,7 +317,22 @@ const BunkArtifacts = () => {
     tourtext: artifacts.filter((a) => (a as Artifact).visibility === "tourtext").length,
     condobunk: artifacts.filter((a) => (a as Artifact).visibility === "condobunk").length,
     bunk_stash: artifacts.filter((a) => (a as Artifact).visibility === "bunk_stash").length,
-  }), [artifacts]);
+    akb_docs: akbDocs.length,
+  }), [artifacts, akbDocs]);
+
+  const DOC_TYPE_COLORS: Record<string, string> = {
+    SCHEDULE: "bg-blue-500/10 text-blue-600 border-blue-500/20",
+    CONTACTS: "bg-green-500/10 text-green-600 border-green-500/20",
+    TECH: "bg-purple-500/10 text-purple-600 border-purple-500/20",
+    FINANCE: "bg-amber-500/10 text-amber-600 border-amber-500/20",
+    VENUE: "bg-rose-500/10 text-rose-600 border-rose-500/20",
+    TRAVEL: "bg-cyan-500/10 text-cyan-600 border-cyan-500/20",
+    LOGISTICS: "bg-orange-500/10 text-orange-600 border-orange-500/20",
+    HOSPITALITY: "bg-pink-500/10 text-pink-600 border-pink-500/20",
+    RUN_OF_SHOW: "bg-indigo-500/10 text-indigo-600 border-indigo-500/20",
+    CAST: "bg-teal-500/10 text-teal-600 border-teal-500/20",
+    UNKNOWN: "bg-muted text-muted-foreground border-border",
+  };
 
   return (
     <div className="space-y-6 max-w-3xl">
@@ -295,11 +343,11 @@ const BunkArtifacts = () => {
             Tour info, team notes, and your private stash
           </p>
         </div>
-        {!isDemoMode && (
+        {!isDemoMode && activeTab !== "akb_docs" && (
           <Button
             size="sm"
             variant="outline"
-            onClick={() => { setCreating(true); setNewVisibility(activeTab); setUserOverrodeVis(false); }}
+            onClick={() => { setCreating(true); setNewVisibility((activeTab as string) === "akb_docs" ? "condobunk" : activeTab as Visibility); setUserOverrodeVis(false); }}
             disabled={creating}
           >
             <Plus className="h-4 w-4 mr-1" /> New Artifact
@@ -378,7 +426,7 @@ const BunkArtifacts = () => {
       )}
 
       {/* Tabs */}
-      <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as Visibility)}>
+      <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as ActiveTab)}>
         <TabsList className="w-full">
           {(["tourtext", "condobunk", "bunk_stash"] as Visibility[]).map((v) => {
             const meta = VIS_META[v];
@@ -393,6 +441,13 @@ const BunkArtifacts = () => {
               </TabsTrigger>
             );
           })}
+          <TabsTrigger value="akb_docs" className="flex-1 gap-1.5 text-xs font-mono">
+            <Database className="h-3.5 w-3.5" />
+            AKB Docs
+            {tabCounts.akb_docs > 0 && (
+              <span className="ml-1 text-muted-foreground">({tabCounts.akb_docs})</span>
+            )}
+          </TabsTrigger>
         </TabsList>
 
         {(["tourtext", "condobunk", "bunk_stash"] as Visibility[]).map((v) => (
@@ -456,6 +511,80 @@ const BunkArtifacts = () => {
             )}
           </TabsContent>
         ))}
+
+        {/* AKB Documents tab */}
+        <TabsContent value="akb_docs">
+          {loading ? (
+            <div className="flex items-center gap-3 py-8">
+              <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+              <span className="text-sm font-mono text-muted-foreground">Loading…</span>
+            </div>
+          ) : !selectedTourId ? (
+            <Card className="p-12 text-center border-dashed">
+              <Database className="h-10 w-10 text-muted-foreground/30 mx-auto mb-3" />
+              <p className="text-sm font-mono text-muted-foreground">Select a tour to view AKB documents.</p>
+            </Card>
+          ) : akbDocs.length === 0 ? (
+            <Card className="p-12 text-center border-dashed">
+              <Database className="h-10 w-10 text-muted-foreground/30 mx-auto mb-3" />
+              <p className="text-sm font-mono text-muted-foreground">No AKB documents uploaded yet.</p>
+              <p className="text-xs text-muted-foreground/60 mt-1">
+                Upload documents via the AKB Builder to extract tour data.
+              </p>
+              <Button
+                size="sm"
+                variant="outline"
+                className="mt-4"
+                onClick={() => navigate("/bunk/documents")}
+              >
+                <FileText className="h-4 w-4 mr-1" /> Go to AKB Builder
+              </Button>
+            </Card>
+          ) : (
+            <div className="space-y-3">
+              {akbDocs.map((doc) => (
+                <Card key={doc.id} className="p-4 space-y-2">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <FileText className="h-4 w-4 text-primary shrink-0" />
+                      <h3 className="text-sm font-semibold truncate font-mono">
+                        {doc.filename || "Untitled Document"}
+                      </h3>
+                      <Badge
+                        variant="outline"
+                        className={`text-xs font-mono shrink-0 border ${DOC_TYPE_COLORS[doc.doc_type] || DOC_TYPE_COLORS.UNKNOWN}`}
+                      >
+                        {doc.doc_type.replace(/_/g, " ")}
+                      </Badge>
+                    </div>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => navigate("/bunk/documents")}
+                      title="View in AKB Builder"
+                    >
+                      <ExternalLink className="h-4 w-4" />
+                    </Button>
+                  </div>
+                  <div className="flex items-center gap-3 pl-6">
+                    <Badge
+                      variant={doc.is_active ? "default" : "secondary"}
+                      className="text-[10px] font-mono"
+                    >
+                      {doc.is_active ? "ACTIVE" : "PENDING"}
+                    </Badge>
+                    <span className="text-xs text-muted-foreground/70 font-mono">
+                      v{doc.version}
+                    </span>
+                    <span className="text-xs text-muted-foreground/50 font-mono">
+                      Uploaded {new Date(doc.created_at).toLocaleDateString()}
+                    </span>
+                  </div>
+                </Card>
+              ))}
+            </div>
+          )}
+        </TabsContent>
       </Tabs>
     </div>
   );
