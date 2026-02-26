@@ -141,7 +141,7 @@ const Login = () => {
             className="space-y-2"
           >
             <p className="text-base sm:text-lg text-foreground leading-relaxed">
-              The Tour Manager is on <span className="text-primary font-bold">CondoBunk</span> and had already sent you the <span className="text-primary font-bold">TourText</span> number.
+              The Tour Manager is on <span className="text-primary font-bold">CondoBunk</span> and had already sent you the <span className="text-primary font-bold">TourText</span> number. One number, one text, endless tour intelligence, brought to you by <span className="text-primary font-bold">TELA</span>.
             </p>
             <p className="text-sm text-muted-foreground italic">
               Optional: download <span className="text-primary font-bold not-italic">CondoBunkCrew</span> for the same information as TourText but in a visual display for Calendar, Travel and other read-only details set from TM in the tour AKB.
