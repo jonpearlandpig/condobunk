@@ -662,7 +662,12 @@ function parseFuzzyDatesFromText(text: string | null | undefined, yearHint: numb
 
 // ─── Advance Master VAN Extraction Prompt ───
 
-const ADVANCE_MASTER_VAN_PROMPT = `You are the Advance Master extraction engine for the live touring industry. You will receive pre-parsed venue data as structured key-value text blocks. Each block contains data for ONE or more venues, with section headers (EVENT DETAILS, PRODUCTION CONTACT, etc.) and their associated fields. Your job is to extract ALL advance notes into structured Venue Advance Notes (VANs).
+const ADVANCE_MASTER_VAN_PROMPT = `You are the Advance Master extraction engine for the live touring industry. You will receive pre-parsed venue data as structured key-value text blocks. Each block (separated by "---") contains data for EXACTLY ONE venue, with section headers (EVENT DETAILS, PRODUCTION CONTACT, etc.) and their associated fields. Your job is to extract ALL advance notes into structured Venue Advance Notes (VANs).
+
+IMPORTANT: Each text block separated by "---" represents EXACTLY ONE venue.
+The "Column Header" line at the top of each block identifies the venue. Do NOT create multiple venue objects from a single text block. Extract exactly ONE venue per block.
+If you see a "City (from header)" line, use that as the city field.
+The "Column Header" and any "Venue" field under EVENT DETAILS refer to the SAME venue — do NOT split them into separate venues.
 
 CRITICAL NULL ENFORCEMENT: For EVERY field in the schema below, if the data is not present in the source text, you MUST set the value to null. Do NOT omit any field from the output. Every venue object MUST contain ALL top-level keys and ALL nested keys, even if their values are null.
 
@@ -1429,8 +1434,9 @@ Deno.serve(async (req) => {
               const SECTION_HEADERS = [
                 "EVENT DETAILS", "PRODUCTION CONTACT", "HOUSE RIGGER CONTACT",
                 "SUMMARY", "VENUE SCHEDULE", "PLANT EQUIPMENT", "LABOUR", "LABOR",
-                "DOCK", "LOADING DOCK", "POWER", "STAGING", "MISC", "LIGHTING",
-                "VIDEO", "NOTES", "SCHEDULE",
+                "DOCK AND LOGISTICS", "LOADING DOCK AND LOGISTICS", "LOADING DOCK",
+                "POWER", "STAGING", "MISC", "LIGHTING",
+                "VIDEO", "NOTES",
               ];
 
               // Find how many columns have data (venue columns start at B = index 1)
@@ -1464,10 +1470,18 @@ Deno.serve(async (req) => {
                 if (/^\d+$/.test(headerValue) || headerValue.length <= 2) continue;
 
                 // Build structured text block for this venue column
-                const lines: string[] = [`VENUE COLUMN DATA:`];
+                // Parse city from header (strip leading numbers like "2. Cleveland, OH")
+                const cityMatch = headerValue.match(/^(?:\d+\.\s*)?(.+)/);
+                const parsedCity = cityMatch ? cityMatch[1].trim() : headerValue;
+                const lines: string[] = [
+                  `=== SINGLE VENUE ===`,
+                  `Column Header: ${headerValue}`,
+                  `City (from header): ${parsedCity}`,
+                ];
                 let currentSection = "";
 
-                for (let r = 0; r < rows.length; r++) {
+                // Start at row 1 to skip the raw header row (often #VALUE! or column title)
+                for (let r = 1; r < rows.length; r++) {
                   const labelCell = rows[r]?.[0];
                   const valueCell = rows[r]?.[col];
                   const label = labelCell != null ? String(labelCell).trim() : "";
@@ -1475,7 +1489,7 @@ Deno.serve(async (req) => {
 
                   // Check if this row is a section header
                   const upperLabel = label.toUpperCase();
-                  const isSection = SECTION_HEADERS.some(h => upperLabel.includes(h));
+                  const isSection = SECTION_HEADERS.some(h => upperLabel === h || upperLabel.startsWith(h + " ") || upperLabel.startsWith(h + ":"));
                   if (isSection && label) {
                     currentSection = label.toUpperCase();
                     lines.push(`\n${currentSection}`);
@@ -1571,7 +1585,7 @@ Deno.serve(async (req) => {
 
         // Process in parallel batches of 6 venues using flash model for speed
         const BATCH_SIZE = 6;
-        const extractModel = "google/gemini-2.5-flash";
+        const extractModel = "google/gemini-2.5-pro";
 
         const batchPromises: Promise<Array<Record<string, unknown>>>[] = [];
         const totalBatches = Math.ceil(venueBlocks.length / BATCH_SIZE);
