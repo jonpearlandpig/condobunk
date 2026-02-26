@@ -1459,7 +1459,9 @@ Deno.serve(async (req) => {
                 for (let r = 0; r < rows.length; r++) {
                   if (rows[r]?.[col] != null && String(rows[r][col]).trim()) nonEmpty++;
                 }
-                if (nonEmpty < 3) continue; // Skip columns with fewer than 3 data cells
+                if (nonEmpty < 8) continue; // Skip columns with fewer than 8 data cells (real venues have 20+)
+                // Skip columns with numeric-only or single-char headers (not venue/city names)
+                if (/^\d+$/.test(headerValue) || headerValue.length <= 2) continue;
 
                 // Build structured text block for this venue column
                 const lines: string[] = [`VENUE COLUMN DATA:`];
@@ -1567,31 +1569,42 @@ Deno.serve(async (req) => {
         const venueBlocks = columnData.split("\n\n===VENUE_SEPARATOR===\n\n").filter(b => b.trim());
         console.log("[extract] Found", venueBlocks.length, "venue column blocks to process");
 
-        // Process in parallel batches of 3-4 venues
-        const BATCH_SIZE = 3;
-        const allVenues: Array<Record<string, unknown>> = [];
-        const extractModel = "google/gemini-2.5-pro"; // Pro model for accuracy on advance masters
+        // Process in parallel batches of 6 venues using flash model for speed
+        const BATCH_SIZE = 6;
+        const extractModel = "google/gemini-2.5-flash";
 
+        const batchPromises: Promise<Array<Record<string, unknown>>>[] = [];
+        const totalBatches = Math.ceil(venueBlocks.length / BATCH_SIZE);
         for (let i = 0; i < venueBlocks.length; i += BATCH_SIZE) {
           const batch = venueBlocks.slice(i, i + BATCH_SIZE);
           const batchText = batch.join("\n\n---\n\n");
-          console.log(`[extract] Processing batch ${Math.floor(i / BATCH_SIZE) + 1}/${Math.ceil(venueBlocks.length / BATCH_SIZE)}, ${batch.length} venues, ${batchText.length} chars`);
+          const batchNum = Math.floor(i / BATCH_SIZE) + 1;
+          console.log(`[extract] Queuing batch ${batchNum}/${totalBatches}, ${batch.length} venues, ${batchText.length} chars`);
 
-          const batchResult = await aiExtractFromText(
-            batchText,
-            apiKey,
-            extractPrompt,
-            extractModel,
-            120000, // Generous char limit — per-column data is much cleaner
-          ) as { venues: Array<Record<string, unknown>> } | null;
-
-          if (batchResult?.venues) {
-            allVenues.push(...batchResult.venues);
-            console.log(`[extract] Batch ${Math.floor(i / BATCH_SIZE) + 1} extracted ${batchResult.venues.length} venues`);
-          } else {
-            console.error(`[extract] Batch ${Math.floor(i / BATCH_SIZE) + 1} returned no venues`);
-          }
+          batchPromises.push(
+            aiExtractFromText(
+              batchText,
+              apiKey,
+              extractPrompt,
+              extractModel,
+              120000,
+            )
+              .then((result: any) => {
+                const venues = result?.venues || [];
+                console.log(`[extract] Batch ${batchNum} extracted ${venues.length} venues`);
+                return venues;
+              })
+              .catch((err: any) => {
+                console.error(`[extract] Batch ${batchNum} failed:`, err.message);
+                return [] as Array<Record<string, unknown>>;
+              })
+          );
         }
+
+        // Run all batches in parallel
+        console.log(`[extract] Firing ${batchPromises.length} batches in parallel`);
+        const batchResults = await Promise.all(batchPromises);
+        const allVenues: Array<Record<string, unknown>> = batchResults.flat();
 
         if (allVenues.length > 0) {
           multiResult = { venues: allVenues };
