@@ -75,9 +75,9 @@ const Login = () => {
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.5 }}
-        className="w-full max-w-2xl space-y-8 px-6"
+        className="w-full max-w-2xl space-y-4 px-6"
       >
-        <div className="text-center mb-6">
+        <div className="text-center mb-2">
           <img src={logoWhite} alt="Condo Bunk" className="w-full max-w-lg mx-auto" />
         </div>
 
@@ -85,7 +85,7 @@ const Login = () => {
           initial="hidden"
           animate="visible"
           variants={{ hidden: {}, visible: { transition: { staggerChildren: 0.2, delayChildren: 0.3 } } }}
-          className="space-y-8 text-left"
+          className="space-y-6 text-left"
         >
           <motion.h2
             variants={{ hidden: { opacity: 0, y: 16 }, visible: { opacity: 1, y: 0 } }}
