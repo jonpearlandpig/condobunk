@@ -377,12 +377,20 @@ const BunkOverview = () => {
 
   const confirmDelete = async () => {
     if (!deletingTour) return;
-    const { error } = await supabase.from("tours").delete().eq("id", deletingTour.id);
+    const deletedId = deletingTour.id;
+    const { error } = await supabase.from("tours").delete().eq("id", deletedId);
     if (error) {
       toast({ title: "Error", description: error.message, variant: "destructive" });
     } else {
       toast({ title: "Tour deleted" });
-      reload();
+      // Reset selected tour if it was the one deleted
+      setSelectedTourId("");
+      await reload();
+      // Dispatch global events so all components clear stale data
+      setTimeout(() => {
+        window.dispatchEvent(new Event("akb-changed"));
+        window.dispatchEvent(new Event("contacts-changed"));
+      }, 100);
     }
     setDeletingTour(null);
   };

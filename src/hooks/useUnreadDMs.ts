@@ -60,6 +60,13 @@ export function useUnreadDMs() {
     };
   }, [user, fetchUnread]);
 
+  // Re-fetch when a tour AKB is deleted
+  useEffect(() => {
+    const handler = () => fetchUnread();
+    window.addEventListener("akb-changed", handler);
+    return () => window.removeEventListener("akb-changed", handler);
+  }, [fetchUnread]);
+
   /**
    * Given a contact's appUserId, return how many unread messages they've sent us.
    */

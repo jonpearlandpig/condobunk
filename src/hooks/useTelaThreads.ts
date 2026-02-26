@@ -55,6 +55,13 @@ export function useTelaThreads() {
     return () => { supabase.removeChannel(channel); };
   }, [user, fetchThreads]);
 
+  // Re-fetch when a tour AKB is deleted
+  useEffect(() => {
+    const handler = () => fetchThreads();
+    window.addEventListener("akb-changed", handler);
+    return () => window.removeEventListener("akb-changed", handler);
+  }, [fetchThreads]);
+
   const createThread = useCallback(
     async (tourId: string, title: string): Promise<string | null> => {
       if (!user) return null;
