@@ -1,106 +1,96 @@
 
+Goal: fix the “big fail” so extraction failures are honest, actionable, and never silently reported as successful “CONTACTS — 0 items” when AI processing actually failed.
 
-# Fix: Advance Master Authority Deduplication
+What I found (root cause)
+1) The backend is receiving AI provider failures (402 “Not enough credits”) during extraction.
+- Edge logs clearly show:
+  - `PDF extraction failed: 402 {"type":"payment_required","message":"Not enough credits"}`
+  - `Text extraction API error: 402`
+2) Those failures are currently swallowed.
+- `aiExtractFromPdf` / `aiExtractFromText` log the status and return `null` instead of propagating a typed error.
+3) After null AI result, the function falls through into generic/fallback paths.
+- In multi-venue path: “returned no venues, falling through”
+- In general path: if `rawText` exists, it returns a 200 domain-only result with `extracted_count: 0`
+- This is why users can see misleading success states like `Extracted CONTACTS — 0 items`.
+4) Frontend error handling is too generic.
+- `invokeWithTimeout` wraps non-200 responses as plain `Error(text)`, making it harder to branch on status (402 vs timeout vs 422).
 
-## Problem
+Implementation plan
 
-The calendar shows every venue duplicated because two source documents both created schedule events:
-- **Advance Master** (`KOH26 Advance Master v3.xlsx`, doc_type=SCHEDULE) -- the authority source
-- **TourText PDF** (`L2.1_TourText__Layer_2_AKB_(TRUTH).pdf`, doc_type=CONTACTS) -- lower authority
+Phase 1 — Make backend errors explicit and structured
+A) Introduce a typed extraction error shape in `supabase/functions/extract-document/index.ts`
+- Example fields:
+  - `status` (number)
+  - `code` (`AI_PAYMENT_REQUIRED`, `AI_RATE_LIMIT`, `AI_PROVIDER_ERROR`, `EXTRACTION_EMPTY_RESULT`)
+  - `message` (human-readable)
+  - `provider_status` (original HTTP status)
+  - `provider_body` (trimmed)
+B) Update `aiExtractFromPdf` and `aiExtractFromText`
+- Instead of returning `null` on non-OK responses:
+  - map 402 => `AI_PAYMENT_REQUIRED`
+  - map 429 => `AI_RATE_LIMIT`
+  - map 5xx/other => `AI_PROVIDER_ERROR`
+- Return a typed result object (or throw a typed error) so caller can distinguish:
+  - “provider failed” vs “model returned empty/invalid JSON”
+C) Preserve current JSON sanitation/parsing behavior for successful responses.
 
-Both insert schedule_events independently with no cross-document venue deduplication, so Allen War Memorial Coliseum, Wolstein Center, TD Garden, etc. each appear twice on the same date.
+Phase 2 — Stop silent fallback for authority/AI-dependent document types
+A) In multi-venue/advance-master path:
+- If extraction failed due typed AI provider error (402/429/etc), immediately return that status and error payload (do not fall through).
+- If extraction technically succeeds but returns zero venues, return 422 with explicit `EXTRACTION_EMPTY_RESULT` for these document types.
+B) In tech-pack path:
+- same strategy: no silent fallthrough when provider failure is known.
+C) In general path:
+- keep domain-only fallback only for truly safe cases (plain text heuristic use), not when a known provider error occurred.
+- If provider error occurred earlier in the request, return that error directly.
 
-## Solution
+Phase 3 — Improve frontend classification and UX
+A) Update `src/lib/invoke-with-timeout.ts`
+- Parse non-OK response body as JSON when possible.
+- Return an error object containing:
+  - `status`
+  - `code`
+  - `message`
+  - raw body fallback
+B) Update extraction callers (`BunkSetup.tsx` and `BunkDocuments.tsx`)
+- Branch by error status/code:
+  - 402 / `AI_PAYMENT_REQUIRED`: show clear message (“Extraction paused: AI credits exhausted. Retry after credits refresh/top-up.”)
+  - 429 / `AI_RATE_LIMIT`: show retry-after guidance
+  - timeout/network: keep existing recovery polling
+  - 422 empty-result: show “No extractable structure found” guidance
+- Do not run “timeout recovery polling” for known provider errors (402/429), because extraction did not complete in background.
 
-Two changes in `supabase/functions/extract-document/index.ts`:
+Phase 4 — Guardrails for authority workflows (Advance Master first)
+A) For Advance Master uploads specifically:
+- treat `isAdvanceMaster` extraction as strict mode:
+  - if no venues extracted, fail explicitly
+  - never return misleading success with zero extracted entities
+B) Keep current authority dedup logic intact; this plan only hardens failure behavior and observability.
 
-### 1. Advance Master extraction: purge lower-authority duplicates after insert
+Phase 5 — Validation checklist
+1) Re-run extraction on Advance Master with normal credits:
+- expect successful venue/event extraction and dedup behavior unchanged.
+2) Simulate/observe 402 condition:
+- backend returns 402 JSON with `AI_PAYMENT_REQUIRED` (not 200 fallback).
+- frontend toast clearly says credits issue; no “Extracted CONTACTS — 0 items”.
+3) Simulate/observe 429:
+- clear rate-limit message and retry guidance.
+4) Ensure timeout path still works:
+- network abort still enters polling recovery.
+5) Regression checks:
+- non-AI-safe text-only docs still classify properly when intended.
+- no schema or auth changes required.
 
-After the Advance Master finishes inserting its schedule_events (around line 2131), add a cleanup step that deletes schedule_events from OTHER source documents for the same tour where the venue fuzzy-matches an Advance Master venue on the same date.
+Technical notes
+- Files impacted:
+  - `supabase/functions/extract-document/index.ts`
+  - `src/lib/invoke-with-timeout.ts`
+  - `src/pages/bunk/BunkSetup.tsx`
+  - `src/pages/bunk/BunkDocuments.tsx`
+- No database migration needed.
+- No RLS/auth policy change needed.
+- This is mainly error propagation + fallback control + clearer UX messaging.
 
-This uses the same `normalizeForMatch` / `fuzzyMatch` helpers already present in the reconciliation block. The logic:
-- Fetch all schedule_events for this tour that are NOT from this source_doc_id
-- For each, check if the Advance Master already has an event with matching venue (fuzzy) and same event_date
-- If yes, delete the lower-authority duplicate
-
-### 2. Non-Advance-Master extraction: skip insert if Advance Master already has the venue+date
-
-At the two non-advance-master schedule_events insert points (line ~2363 for multi-venue tech packs, and line ~2742 for single-doc CONTACTS), add a pre-insert check:
-- Query schedule_events for the same tour_id + event_date where source_doc_id belongs to a SCHEDULE-type document
-- If found, skip the insert (Advance Master is authoritative)
-
-### 3. One-time data cleanup
-
-Delete the duplicate CONTACTS-sourced events that overlap with existing Advance Master events via a targeted query on the current data.
-
-## Technical Details
-
-### File: `supabase/functions/extract-document/index.ts`
-
-**After line ~2131 (post-Advance-Master insert, before reconciliation):**
-
-```typescript
-// Authority dedup: remove lower-authority schedule_events that duplicate this Advance Master
-const { data: amEvents } = await adminClient.from("schedule_events")
-  .select("venue, event_date")
-  .eq("tour_id", doc.tour_id)
-  .eq("source_doc_id", document_id);
-
-if (amEvents && amEvents.length > 0) {
-  const { data: otherEvents } = await adminClient.from("schedule_events")
-    .select("id, venue, event_date, source_doc_id")
-    .eq("tour_id", doc.tour_id)
-    .neq("source_doc_id", document_id);
-
-  if (otherEvents) {
-    const toDelete: string[] = [];
-    for (const other of otherEvents) {
-      const matchesAM = amEvents.some(am =>
-        am.event_date === other.event_date &&
-        am.venue && other.venue &&
-        fuzzyMatch(am.venue, other.venue)
-      );
-      if (matchesAM) toDelete.push(other.id);
-    }
-    if (toDelete.length > 0) {
-      await adminClient.from("schedule_events").delete().in("id", toDelete);
-      console.log(`[extract] Authority dedup: removed ${toDelete.length} lower-authority duplicates`);
-    }
-  }
-}
-```
-
-**At line ~2338 and ~2742 (non-AM insert points), add pre-insert guard:**
-
-```typescript
-// Check if Advance Master already has this venue+date
-const { data: existingAM } = await adminClient.from("schedule_events")
-  .select("id")
-  .eq("tour_id", doc.tour_id)
-  .eq("event_date", eventDate)
-  .limit(1);
-
-// Check if any of those are from a SCHEDULE-type doc (Advance Master)
-if (existingAM && existingAM.length > 0) {
-  const { data: amDoc } = await adminClient.from("documents")
-    .select("id")
-    .eq("id", existingAM[0].source_doc_id) // need source_doc_id in select
-    .eq("doc_type", "SCHEDULE")
-    .limit(1);
-  if (amDoc && amDoc.length > 0) {
-    // Skip — Advance Master is authoritative
-    continue; // or skip this insert
-  }
-}
-```
-
-**Data cleanup query (run once):**
-
-Delete CONTACTS-sourced events where the Advance Master already covers the same tour+date+venue.
-
-### Scope of changes
-- Single file: `supabase/functions/extract-document/index.ts`
-- No schema changes
-- No auth/RLS changes
-- Redeploy edge function after edit
-
+Optional follow-up (separate small fix)
+- Console warning indicates `MobileBottomNav` passes refs to a non-forwardRef function component.
+- I can provide a separate patch plan to wrap the relevant component with `React.forwardRef` and remove those warnings.
