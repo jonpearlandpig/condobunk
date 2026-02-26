@@ -118,10 +118,11 @@ export const TourProvider = ({ children }: { children: React.ReactNode }) => {
       .eq("status", "ACTIVE");
     if (data) {
       setTours(data as Tour[]);
-      if (!selectedTourId && data.length > 0) {
-        setSelectedTourId(data[0].id);
+      const ids = data.map(t => t.id);
+      if (!selectedTourId || !ids.includes(selectedTourId)) {
+        setSelectedTourId(data.length > 0 ? data[0].id : "");
       }
-      await checkDemoMode(data.map(t => t.id));
+      await checkDemoMode(ids);
     }
     setLoading(false);
   };
