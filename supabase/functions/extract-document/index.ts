@@ -1445,88 +1445,206 @@ Deno.serve(async (req) => {
                 "LIGHTING", "VIDEO", "NOTES", "SCHEDULE", "DOCK",
               ];
 
-              // Find how many columns have data (venue columns start at B = index 1)
+              // Find how many columns have data
               let maxCol = 0;
               for (const row of rows) {
                 if (row && row.length > maxCol) maxCol = row.length;
               }
 
-              // Build per-column text blocks
+              // ── Detect layout: ROW-based vs COLUMN-based ──
+              // ROW-based: column headers are field names (venue_name, onsale_capacity, production_contact_name...)
+              // COLUMN-based: column headers are city/venue names with section headers in column A
+              const ROW_FIELD_INDICATORS = [
+                "venue_name", "venue", "onsale", "capacity", "production_contact",
+                "house_rigger", "bus_arrival", "chair_set", "show_time", "load_in",
+                "curfew", "forklift", "power", "dock", "labor", "labour",
+                "rigging", "staging", "haze", "catering", "parking",
+              ];
+
+              // Check if column headers (row 0) look like field names
+              const headerRow = rows[0] || [];
+              let fieldNameMatches = 0;
+              const colHeaders: string[] = [];
+              for (let c = 0; c < maxCol; c++) {
+                const h = headerRow[c] != null ? String(headerRow[c]).trim().toLowerCase() : "";
+                colHeaders.push(h);
+                if (h && ROW_FIELD_INDICATORS.some(f => h.includes(f))) fieldNameMatches++;
+              }
+              const isRowBased = fieldNameMatches >= 3;
+              console.log("[extract] Layout detection: fieldNameMatches=", fieldNameMatches, "isRowBased=", isRowBased);
+
               const venueColumnTexts: string[] = [];
-              const venueColumnCities: string[] = []; // Track parsedCity per venue for deterministic injection
-              for (let col = 1; col < maxCol; col++) {
-                // Check if this column has a venue header (non-empty cell in first few rows)
-                let headerValue = "";
-                for (let r = 0; r < Math.min(5, rows.length); r++) {
-                  const cell = rows[r]?.[col];
-                  if (cell != null && String(cell).trim()) {
-                    headerValue = String(cell).trim();
-                    break;
-                  }
+              const venueColumnCities: string[] = [];
+
+              if (isRowBased) {
+                // ── ROW-BASED: each row is a venue, columns are fields ──
+                console.log("[extract] Using ROW-based parsing (venues in rows, fields in columns)");
+
+                // Find which column has venue_name
+                const venueColIdx = colHeaders.findIndex(h => h.includes("venue_name") || h === "venue");
+                // Find date column (often column A or a column named event_date)
+                const dateColIdx = colHeaders.findIndex(h => h.includes("event_date") || h.includes("date"));
+
+                // Map column headers to semantic section groupings
+                const SECTION_MAP: Record<string, string> = {};
+                for (let c = 0; c < colHeaders.length; c++) {
+                  const h = colHeaders[c];
+                  if (!h) continue;
+                  if (h.includes("production_contact")) SECTION_MAP[String(c)] = "PRODUCTION CONTACT";
+                  else if (h.includes("house_rigger")) SECTION_MAP[String(c)] = "HOUSE RIGGER CONTACT";
+                  else if (h.includes("onsale") || h.includes("capacity") || h.includes("bus_arrival") || h.includes("rider") || h.includes("day_and_date") || h.includes("show_time") || h.includes("venue_name") || h === "venue") SECTION_MAP[String(c)] = "EVENT DETAILS";
+                  else if (h.includes("dock") || h.includes("loading") || h.includes("parking") || h.includes("truck") || h.includes("merch") || h.includes("vom") || h.includes("catering_truck")) SECTION_MAP[String(c)] = "DOCK AND LOGISTICS";
+                  else if (h.includes("labor") || h.includes("labour") || h.includes("union") || h.includes("feed") || h.includes("follow_spot") || h.includes("electrician")) SECTION_MAP[String(c)] = "LABOUR";
+                  else if (h.includes("power")) SECTION_MAP[String(c)] = "POWER";
+                  else if (h.includes("staging") || h.includes("riser") || h.includes("handrail") || h.includes("curtain") || h.includes("preset") || h.includes("bike_rack") || h.includes("camera")) SECTION_MAP[String(c)] = "STAGING";
+                  else if (h.includes("curfew") || h.includes("dead_case") || h.includes("haze") || h.includes("spl") || h === "misc") SECTION_MAP[String(c)] = "MISC";
+                  else if (h.includes("houselight") || h.includes("lighting")) SECTION_MAP[String(c)] = "LIGHTING";
+                  else if (h.includes("flypack") || h.includes("hardline") || h.includes("tv_patch") || h.includes("led_ribbon") || h.includes("video")) SECTION_MAP[String(c)] = "VIDEO";
+                  else if (h.includes("rigging") || h.includes("low_steel") || h.includes("cad") || h.includes("overlay")) SECTION_MAP[String(c)] = "SUMMARY";
+                  else if (h.includes("forklift") || h.includes("co2")) SECTION_MAP[String(c)] = "PLANT EQUIPMENT";
+                  else if (h.includes("chair_set") || h.includes("doors")) SECTION_MAP[String(c)] = "VENUE SCHEDULE";
+                  else if (h.includes("note")) SECTION_MAP[String(c)] = "NOTES";
                 }
-                // Skip empty columns
-                if (!headerValue) continue;
 
-                // Count non-empty cells in this column to skip sparse columns
-                let nonEmpty = 0;
-                for (let r = 0; r < rows.length; r++) {
-                  if (rows[r]?.[col] != null && String(rows[r][col]).trim()) nonEmpty++;
-                }
-                if (nonEmpty < 8) continue; // Skip columns with fewer than 8 data cells (real venues have 20+)
-                // Skip columns with numeric-only or single-char headers (not venue/city names)
-                if (/^\d+$/.test(headerValue) || headerValue.length <= 2) continue;
-
-                // Build structured text block for this venue column
-                // Parse city from header (strip leading numbers like "2. Cleveland, OH")
-                const cityMatch = headerValue.match(/^(?:\d+\.\s*)?(.+)/);
-                const parsedCity = cityMatch ? cityMatch[1].trim() : headerValue;
-                const lines: string[] = [
-                  `=== SINGLE VENUE ===`,
-                  `Column Header: ${headerValue}`,
-                  `City (from header): ${parsedCity}`,
-                ];
-                let currentSection = "";
-
-                // Conditionally skip row 0: only if it matches the column header (duplicate)
-                for (let r = 0; r < rows.length; r++) {
-                  // Skip row 0 only if its value matches the header (it's a duplicate)
-                  if (r === 0) {
-                    const row0Val = rows[0]?.[col] != null ? String(rows[0][col]).trim() : "";
-                    if (!row0Val || row0Val === headerValue || row0Val === "#VALUE!" || row0Val === "0") continue;
+                // Helper to convert Excel serial date to ISO string
+                const excelDateToISO = (val: unknown): string | null => {
+                  if (val == null) return null;
+                  const num = Number(val);
+                  if (!isNaN(num) && num > 40000 && num < 60000) {
+                    // Excel serial date: days since 1899-12-30
+                    const d = new Date((num - 25569) * 86400000);
+                    return d.toISOString().split("T")[0];
                   }
-                  const labelCell = rows[r]?.[0];
-                  const valueCell = rows[r]?.[col];
-                  const label = labelCell != null ? String(labelCell).trim() : "";
-                  const value = valueCell != null ? String(valueCell).trim() : "";
+                  const s = String(val).trim();
+                  if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
+                  return null;
+                };
 
-                  // Check if this row is a section header
-                  const upperLabel = label.toUpperCase();
-                  const isSection = LONG_SECTION_HEADERS.some(h => upperLabel === h || upperLabel.startsWith(h + " ") || upperLabel.startsWith(h + ":")) ||
-                    SHORT_SECTION_HEADERS.some(h => upperLabel.includes(h));
-                  if (isSection && label) {
-                    currentSection = label.toUpperCase();
-                    lines.push(`\n${currentSection}`);
-                    // If the value cell also has data on the header row, include it
-                    if (value) {
-                      lines.push(`  ${value}`);
+                // Process each data row (skip header row 0)
+                for (let r = 1; r < rows.length; r++) {
+                  const row = rows[r];
+                  if (!row) continue;
+
+                  // Get venue name
+                  const venueName = venueColIdx >= 0 && row[venueColIdx] != null ? String(row[venueColIdx]).trim() : "";
+                  if (!venueName || venueName === "[empty]" || venueName === "#VALUE!") continue;
+
+                  // Get event date
+                  const rawDate = dateColIdx >= 0 ? row[dateColIdx] : null;
+                  const isoDate = excelDateToISO(rawDate);
+
+                  // Build text block grouped by section
+                  const sectionData: Record<string, string[]> = {};
+                  for (let c = 0; c < maxCol; c++) {
+                    if (c === 0 && dateColIdx === 0) continue; // Skip date-only column A
+                    const header = colHeaders[c];
+                    if (!header) continue;
+                    const val = row[c] != null ? String(row[c]).trim() : "";
+                    if (!val || val === "[empty]" || val === "#VALUE!") continue;
+
+                    // Convert serial dates in value
+                    let displayVal = val;
+                    const possibleDate = excelDateToISO(row[c]);
+                    if (possibleDate && /^\d{5}$/.test(val)) displayVal = possibleDate;
+
+                    // Prettify the header for AI consumption
+                    const prettyHeader = header.replace(/_/g, " ").replace(/\b\w/g, l => l.toUpperCase());
+                    const section = SECTION_MAP[String(c)] || "EVENT DETAILS";
+                    if (!sectionData[section]) sectionData[section] = [];
+                    sectionData[section].push(`${prettyHeader}: ${displayVal}`);
+                  }
+
+                  // Compose the text block
+                  const lines: string[] = [
+                    `=== SINGLE VENUE ===`,
+                    `Venue Name: ${venueName}`,
+                  ];
+                  if (isoDate) lines.push(`Event Date: ${isoDate}`);
+
+                  // Output sections in standard order
+                  const sectionOrder = [
+                    "EVENT DETAILS", "PRODUCTION CONTACT", "HOUSE RIGGER CONTACT",
+                    "SUMMARY", "VENUE SCHEDULE", "PLANT EQUIPMENT", "LABOUR",
+                    "DOCK AND LOGISTICS", "POWER", "STAGING", "MISC",
+                    "LIGHTING", "VIDEO", "NOTES",
+                  ];
+                  for (const sec of sectionOrder) {
+                    if (sectionData[sec] && sectionData[sec].length > 0) {
+                      lines.push(`\n${sec}`);
+                      for (const line of sectionData[sec]) {
+                        lines.push(`  ${line}`);
+                      }
                     }
-                    continue;
                   }
 
-                  // Regular data row
-                  if (label && value) {
-                    lines.push(`${label}: ${value}`);
-                  } else if (!label && value) {
-                    // Continuation value (no label in col A)
-                    lines.push(`  ${value}`);
-                  } else if (label && !value) {
-                    // Label present but no data for this venue — will map to null
-                    lines.push(`${label}: [empty]`);
-                  }
+                  venueColumnTexts.push(lines.join("\n"));
+                  venueColumnCities.push(""); // City will be extracted from the data by AI
                 }
+                console.log("[extract] Row-based parsing found", venueColumnTexts.length, "venue rows");
 
-                venueColumnTexts.push(lines.join("\n"));
-                venueColumnCities.push(parsedCity);
+              } else {
+                // ── COLUMN-BASED: original path (venues in columns, section headers in col A) ──
+                console.log("[extract] Using COLUMN-based parsing (venues in columns, sections in rows)");
+
+                for (let col = 1; col < maxCol; col++) {
+                  let headerValue = "";
+                  for (let r = 0; r < Math.min(5, rows.length); r++) {
+                    const cell = rows[r]?.[col];
+                    if (cell != null && String(cell).trim()) {
+                      headerValue = String(cell).trim();
+                      break;
+                    }
+                  }
+                  if (!headerValue) continue;
+
+                  let nonEmpty = 0;
+                  for (let r = 0; r < rows.length; r++) {
+                    if (rows[r]?.[col] != null && String(rows[r][col]).trim()) nonEmpty++;
+                  }
+                  if (nonEmpty < 8) continue;
+                  if (/^\d+$/.test(headerValue) || headerValue.length <= 2) continue;
+
+                  const cityMatch = headerValue.match(/^(?:\d+\.\s*)?(.+)/);
+                  const parsedCity = cityMatch ? cityMatch[1].trim() : headerValue;
+                  const lines: string[] = [
+                    `=== SINGLE VENUE ===`,
+                    `Column Header: ${headerValue}`,
+                    `City (from header): ${parsedCity}`,
+                  ];
+                  let currentSection = "";
+
+                  for (let r = 0; r < rows.length; r++) {
+                    if (r === 0) {
+                      const row0Val = rows[0]?.[col] != null ? String(rows[0][col]).trim() : "";
+                      if (!row0Val || row0Val === headerValue || row0Val === "#VALUE!" || row0Val === "0") continue;
+                    }
+                    const labelCell = rows[r]?.[0];
+                    const valueCell = rows[r]?.[col];
+                    const label = labelCell != null ? String(labelCell).trim() : "";
+                    const value = valueCell != null ? String(valueCell).trim() : "";
+
+                    const upperLabel = label.toUpperCase();
+                    const isSection = LONG_SECTION_HEADERS.some(h => upperLabel === h || upperLabel.startsWith(h + " ") || upperLabel.startsWith(h + ":")) ||
+                      SHORT_SECTION_HEADERS.some(h => upperLabel.includes(h));
+                    if (isSection && label) {
+                      currentSection = label.toUpperCase();
+                      lines.push(`\n${currentSection}`);
+                      if (value) lines.push(`  ${value}`);
+                      continue;
+                    }
+
+                    if (label && value) {
+                      lines.push(`${label}: ${value}`);
+                    } else if (!label && value) {
+                      lines.push(`  ${value}`);
+                    } else if (label && !value) {
+                      lines.push(`${label}: [empty]`);
+                    }
+                  }
+
+                  venueColumnTexts.push(lines.join("\n"));
+                  venueColumnCities.push(parsedCity);
+                }
               }
 
               if (venueColumnTexts.length > 0) {
