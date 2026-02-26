@@ -1,110 +1,61 @@
 
 
-# iCal Feed + Google Drive File Picker
+# Login Page Narrative Redesign -- Bold, Eye-Catching, Story-Driven
 
-Two additive features. Zero changes to existing systems.
+## Goal
+Replace the current tagline and branding block with a large, immersive narrative that immediately tells the user what CondoBunk solves. The copy should feel like a briefing -- scannable, punchy, and impossible to ignore. By the time they hit the login form, they already understand the value and are thinking about how to talk to TELA.
 
----
+## Layout Change
 
-## Feature 1: iCal (.ics) Calendar Feed
+The current `max-w-md` container is too narrow for impactful storytelling. The page will be restructured into a **scrollable single-column layout** with the narrative section wider (`max-w-2xl`) and the login form staying compact (`max-w-md`) below it, both centered.
 
-### How it works
-- A new edge function `calendar-feed` serves an iCal (.ics) file per tour
-- URL format: `https://{project}.supabase.co/functions/v1/calendar-feed?tour_id={uuid}`
-- Uses the service role to read `schedule_events` (no auth required for subscribable feeds -- secured by tour_id UUID obscurity, same pattern as invite tokens)
-- Users paste the URL into Google Calendar "Add by URL" and get a read-only overlay that auto-refreshes
+## Content Structure (lines 72-125 replacement)
 
-### Edge function: `supabase/functions/calendar-feed/index.ts`
-- Accepts `GET` with query param `tour_id`
-- Queries `schedule_events` for that tour, ordered by `event_date`
-- Fetches `tours.name` for the calendar title
-- Generates RFC 5545 compliant iCal output:
-  - `VCALENDAR` wrapper with `PRODID`, `X-WR-CALNAME` (tour name)
-  - One `VEVENT` per schedule event with `DTSTART` (date or datetime from `show_time`), `DTEND` (from `end_time`), `SUMMARY` (venue), `LOCATION` (city), `DESCRIPTION` (notes, load-in time)
-- Returns with `Content-Type: text/calendar; charset=utf-8` and `Content-Disposition: inline`
-- CORS headers included for browser access
+The page will flow top-to-bottom:
 
-### Config update: `supabase/config.toml`
-```toml
-[functions.calendar-feed]
-verify_jwt = false
-```
+1. **Logo** -- unchanged, full-width within container
+2. **Hero headline** -- large, bold: "It's the night before you land with a new touring team."
+3. **Scene-setting paragraph** -- medium text, high contrast: stepping in cold, no history, no margin
+4. **"Before wheels down, you need:" checklist** -- styled as a two-column grid of bold items with subtle left-border accent, large enough to scan instantly
+5. **Resolution block** -- "You don't chase texts..." lines as a punchy trio
+6. **Product reveal** -- "The Tour Manager is on **CondoBunk** and had already sent you the **TourText** number."
+7. **Optional CTA line** -- smaller text about CondoBunkCrew app for visual display
+8. **Login form card** -- unchanged
 
-### Frontend: "Subscribe" button on Calendar page
-- Add a small button/icon in `BunkCalendar.tsx` header (next to the existing view controls)
-- On click, shows a popover/dialog with:
-  - The feed URL (pre-built using `selectedTourId`)
-  - A "Copy URL" button
-  - Brief instructions: "Paste this URL in Google Calendar > Other calendars > From URL"
-  - A direct `webcal://` link for one-click subscribe on supported clients
-- Only visible to non-demo users
+## Styling Approach
 
-### What stays untouched
-- All existing calendar rendering, data loading, realtime subscriptions
-- No database changes
-- No new tables
+- Hero headline: `text-2xl sm:text-3xl font-bold text-foreground` with `leading-tight`
+- Scene paragraph: `text-base sm:text-lg text-foreground/80 leading-relaxed`
+- Checklist: `grid grid-cols-1 sm:grid-cols-2 gap-2` with each item using `text-sm sm:text-base text-foreground font-medium` and a `border-l-2 border-primary pl-3` accent
+- Resolution lines: `text-base sm:text-lg font-semibold text-foreground` -- tight, declarative
+- Brand names (CondoBunk, TourText, TELA): `text-primary font-bold`
+- CondoBunkCrew line: `text-sm text-muted-foreground italic`
+- Gentle staggered fade-in animation using framer-motion for sections (not per-word)
 
----
+## File Changes
 
-## Feature 2: Google Drive File Picker
+### 1. `src/pages/Login.tsx`
 
-### Architecture
-Google Picker API runs entirely in the browser. It needs:
-1. A Google API Client ID (OAuth2, for the picker UI)
-2. A Google API Key (for Drive read access)
-3. The user authorizes via a popup, picks a file, and we get a temporary download URL
-4. We download the file content and feed it into the existing upload + extraction flow
+**Remove** (lines 78-125):
+- The `max-w-md` width constraint on the outer wrapper
+- The tagline "Close the curtain..."
+- The entire staggered `motion.div` block (TOUR LAW, WORKSPACE, TELA, TOURTEXT)
 
-### Implementation approach
+**Replace with**:
+- Outer wrapper becomes `max-w-2xl` with the narrative content
+- A `motion.div` containing the narrative sections with simple stagger animation
+- The login form card wrapped in its own `max-w-md mx-auto` to stay compact
+- Content exactly as specified by the user, with the corrected TourText line
 
-#### Step 1: Store Google credentials
-- Use the secrets tool to request two secrets from the user:
-  - `GOOGLE_PICKER_API_KEY` -- API key for Google Drive API
-  - `GOOGLE_PICKER_CLIENT_ID` -- OAuth client ID
-- These are PUBLIC-facing keys (used in browser), so they can be stored as `VITE_` env vars or fetched via a tiny edge function
+### 2. `src/components/site/SiteFooter.tsx` (line 23)
 
-#### Step 2: Edge function `google-drive-proxy/index.ts`
-- Accepts POST with `{ file_id, access_token }` (the OAuth token from the Picker)
-- Downloads the file from Google Drive API using the access token
-- Uploads it to the `document-files` storage bucket under the appropriate tour path
-- Returns the storage path
-- This avoids CORS issues with direct browser-to-Drive downloads
+Update tagline from "Close the curtain. Get schtuff done!" to: "Your tour knowledge base. Ask TELA."
 
-#### Step 3: Frontend component `GoogleDrivePickerButton.tsx`
-- Loads the Google Picker API script dynamically
-- On click: authenticates the user via Google OAuth popup (using the client ID), opens the file picker
-- On file selection: calls the `google-drive-proxy` edge function with the file ID and access token
-- Then creates the `documents` row and triggers extraction -- reusing the exact same `handleFileUpload` logic from `BunkSetup.tsx`
+### 3. `src/pages/site/SiteLanding.tsx` (line 78)
 
-#### Step 4: Integration points (additive only)
-- Add the picker button alongside the existing file upload zone in `BunkSetup.tsx` (the "Click or drop a file" area)
-- Add it to `BunkDocuments.tsx` if there's an upload area there
-- Styled as a secondary option: "Or import from Google Drive"
+Update hero subtitle from "Close the curtain. Get schtuff done!" to: "Hop in your CondoBunk and Ask TELA."
 
-### Config
-```toml
-[functions.google-drive-proxy]
-verify_jwt = false
-```
+### 4. Memory update
 
-### What stays untouched
-- Existing file upload flow unchanged
-- Existing extraction pipeline unchanged
-- No database schema changes
-- The picker is purely additive UI
-
----
-
-## Implementation Order
-
-| Step | What | Risk |
-|------|------|------|
-| 1 | Build `calendar-feed` edge function | None -- new endpoint, no existing code touched |
-| 2 | Add "Subscribe" UI to BunkCalendar | Minimal -- additive button in header |
-| 3 | Request Google API credentials from user | Blocking -- need keys before Drive picker works |
-| 4 | Build `google-drive-proxy` edge function | None -- new endpoint |
-| 5 | Build `GoogleDrivePickerButton` component | None -- new component |
-| 6 | Wire picker into BunkSetup upload zone | Minimal -- additive alongside existing input |
-
-I recommend building the iCal feed first (steps 1-2) since it has zero dependencies and ships immediately. The Google Drive picker (steps 3-6) requires API credentials from you before it can work.
+Update the style/aesthetic memory to reflect the new narrative-driven login page positioning instead of the old "Tour Law" tagline approach.
 
