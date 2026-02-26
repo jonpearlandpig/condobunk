@@ -258,7 +258,7 @@ const Login = () => {
               onClick={() => setIsSignUp(!isSignUp)}
               className="text-xs font-mono text-muted-foreground hover:text-primary transition-colors"
             >
-              {isSignUp ? "ALREADY HAVE ACCESS? SIGN IN" : "REQUEST NEW ACCESS"}
+              {isSignUp ? "ALREADY HAVE ACCESS? SIGN IN" : "TOUR MGMT TEAM SIGN IN"}
             </button>
           </div>
         </div>
