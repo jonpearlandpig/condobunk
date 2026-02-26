@@ -563,6 +563,54 @@ CRITICAL RULES:
 - Return ONLY valid JSON, no markdown formatting, no code blocks.
 - ZERO DATA LOSS. If you can read it, it must appear in the output.`;
 
+// ─── Excel Serial Date Converter ───
+
+/** Convert an Excel serial date number to ISO YYYY-MM-DD deterministically.
+ *  Excel epoch is 1899-12-30 (serial 0), but has a Lotus-123 bug treating 1900 as leap year.
+ *  Valid range: roughly 40000–60000 covers years ~2009–2064. */
+function excelSerialToISO(serial: number): string | null {
+  if (!Number.isFinite(serial) || serial < 1 || serial > 100000) return null;
+  // Only treat as date if in plausible touring range (2020-2040 → ~43831-51501)
+  if (serial < 40000 || serial > 60000) return null;
+  const utcMs = Math.round((serial - 25569) * 86400000);
+  const d = new Date(utcMs);
+  if (isNaN(d.getTime())) return null;
+  const yyyy = d.getUTCFullYear();
+  const mm = String(d.getUTCMonth() + 1).padStart(2, "0");
+  const dd = String(d.getUTCDate()).padStart(2, "0");
+  return `${yyyy}-${mm}-${dd}`;
+}
+
+/** Labels that indicate a date-type field in the spreadsheet */
+const DATE_LABEL_PATTERNS = /^(day[_ ]?and[_ ]?date|date|event[_ ]?date|show[_ ]?date|day\/date)/i;
+
+/** Normalize a cell value that may be an Excel serial date.
+ *  Only converts if the label suggests it's a date field OR the raw value is a 5-digit number. */
+function normalizeDateCell(label: string, rawValue: unknown): { isoDate: string | null; display: string } {
+  if (rawValue == null) return { isoDate: null, display: "" };
+  
+  const num = Number(rawValue);
+  const strVal = String(rawValue).trim();
+  
+  // If it's a number that looks like an Excel serial and the label is date-like
+  if (!isNaN(num) && num > 40000 && num < 60000) {
+    const iso = excelSerialToISO(num);
+    if (iso) return { isoDate: iso, display: iso };
+  }
+  
+  // If it's already ISO formatted
+  const isoMatch = strVal.match(/^(\d{4}-\d{2}-\d{2})/);
+  if (isoMatch) return { isoDate: isoMatch[1], display: strVal };
+  
+  // 5-digit string that could be an Excel serial even without a date label
+  if (/^\d{5}$/.test(strVal)) {
+    const iso = excelSerialToISO(parseInt(strVal, 10));
+    if (iso) return { isoDate: iso, display: iso };
+  }
+  
+  return { isoDate: null, display: strVal };
+}
+
 // ─── Deterministic Date Parser for VAN text fields ───
 
 interface ParsedDateEntry {
@@ -1613,6 +1661,11 @@ Deno.serve(async (req) => {
                   ];
                   let currentSection = "";
 
+                  // Track deterministic date and venue per column
+                  let colDeterministicDate: string | null = null;
+                  let colDeterministicVenue: string | null = null;
+                  let excelSerialDatesConverted = 0;
+
                   for (let r = 0; r < rows.length; r++) {
                     if (r === 0) {
                       const row0Val = rows[0]?.[col] != null ? String(rows[0][col]).trim() : "";
@@ -1621,7 +1674,23 @@ Deno.serve(async (req) => {
                     const labelCell = rows[r]?.[0];
                     const valueCell = rows[r]?.[col];
                     const label = labelCell != null ? String(labelCell).trim() : "";
-                    const value = valueCell != null ? String(valueCell).trim() : "";
+                    let value = valueCell != null ? String(valueCell).trim() : "";
+
+                    // ── Excel serial date normalization ──
+                    // Check if this cell value is a 5-digit number that could be an Excel serial date
+                    const normalized = normalizeDateCell(label, valueCell);
+                    if (normalized.isoDate && /^\d{5}$/.test(value)) {
+                      value = normalized.display; // Replace serial with ISO date
+                      excelSerialDatesConverted++;
+                    }
+                    // Capture deterministic date from "Day and Date" or similar labels
+                    if (DATE_LABEL_PATTERNS.test(label) && normalized.isoDate) {
+                      colDeterministicDate = normalized.isoDate;
+                    }
+                    // Capture deterministic venue from "Venue" label
+                    if (/^venue$/i.test(label) && value && value !== "[empty]" && value !== "#VALUE!") {
+                      colDeterministicVenue = value;
+                    }
 
                     const upperLabel = label.toUpperCase();
                     const isSection = LONG_SECTION_HEADERS.some(h => upperLabel === h || upperLabel.startsWith(h + " ") || upperLabel.startsWith(h + ":")) ||
@@ -1640,6 +1709,17 @@ Deno.serve(async (req) => {
                     } else if (label && !value) {
                       lines.push(`${label}: [empty]`);
                     }
+                  }
+
+                  // Inject deterministic date and venue into the text block for AI context
+                  if (colDeterministicDate) {
+                    lines.splice(2, 0, `Deterministic Event Date: ${colDeterministicDate}`);
+                  }
+                  if (colDeterministicVenue) {
+                    lines.splice(colDeterministicDate ? 3 : 2, 0, `Deterministic Venue: ${colDeterministicVenue}`);
+                  }
+                  if (excelSerialDatesConverted > 0) {
+                    console.log(`[extract] Column ${col}: converted ${excelSerialDatesConverted} Excel serial dates, det_date=${colDeterministicDate}, det_venue=${colDeterministicVenue}`);
                   }
 
                   venueColumnTexts.push(lines.join("\n"));
@@ -1794,8 +1874,17 @@ Deno.serve(async (req) => {
 
         // ── If advance master, store VANs ──
         if (isAdvanceMaster) {
-          // Delete old VANs from same document
+          // Source-doc scoped cleanup: delete ALL old data from this document first
+          // This prevents stale/wrong rows from surviving across re-extractions
           await adminClient.from("venue_advance_notes").delete().eq("source_doc_id", document_id);
+          await adminClient.from("schedule_events").delete().eq("source_doc_id", document_id);
+          console.log("[extract] Source-doc scoped cleanup: deleted old VANs and schedule_events for doc", document_id);
+
+          // Extraction sanity counters
+          let excel_serial_dates_converted = 0;
+          let deterministic_dates_used = 0;
+          let ai_dates_overridden = 0;
+          let unknown_venue_fallbacks = 0;
 
           for (let vi = 0; vi < multiResult.venues.length; vi++) {
             const v = multiResult.venues[vi];
@@ -1808,12 +1897,55 @@ Deno.serve(async (req) => {
               const cityLineMatch = venueBlocks[vi].match(/City \(from header\):\s*(.+)/);
               if (cityLineMatch) city = cityLineMatch[1].trim();
             }
-            const eventDate = (v.event_date as string) || null;
+            // ── Normalize AI event_date: catch Excel serials AI may have left as-is ──
+            let eventDate = (v.event_date as string) || null;
+            if (eventDate && /^\d{5}$/.test(eventDate)) {
+              const fixedDate = excelSerialToISO(parseInt(eventDate, 10));
+              if (fixedDate) {
+                console.log(`[extract] Fixed AI event_date serial ${eventDate} → ${fixedDate} for ${venueName}`);
+                eventDate = fixedDate;
+                excel_serial_dates_converted++;
+              }
+            }
+
+            // ── Extract deterministic date/venue from the source text block ──
+            let deterministicDate: string | null = null;
+            let deterministicVenue: string | null = null;
+            if (venueBlocks && vi < venueBlocks.length) {
+              const detDateMatch = venueBlocks[vi].match(/Deterministic Event Date:\s*(\d{4}-\d{2}-\d{2})/);
+              if (detDateMatch) deterministicDate = detDateMatch[1];
+              const detVenueMatch = venueBlocks[vi].match(/Deterministic Venue:\s*(.+)/);
+              if (detVenueMatch) deterministicVenue = detVenueMatch[1].trim();
+            }
+
+            // ── Override AI event_date with deterministic date when available ──
+            if (deterministicDate) {
+              if (eventDate && eventDate !== deterministicDate) {
+                console.log(`[extract] Overriding AI event_date ${eventDate} with deterministic ${deterministicDate} for ${venueName}`);
+                ai_dates_overridden++;
+              }
+              eventDate = deterministicDate;
+              deterministic_dates_used++;
+            }
+
+            // ── Harden venue name: replace "Unknown Venue" or city-as-venue ──
+            if (deterministicVenue) {
+              const aiVenue = venueName;
+              if (aiVenue === "Unknown Venue" || (city && aiVenue.toLowerCase() === city.toLowerCase())) {
+                console.log(`[extract] Venue fallback: replacing "${aiVenue}" with deterministic "${deterministicVenue}"`);
+                unknown_venue_fallbacks++;
+                // Override venueName and normalizedName for the rest of this iteration
+                Object.assign(v, { venue_name: deterministicVenue });
+              }
+            }
+            // Re-read potentially updated venue name
+            const finalVenueName = (v.venue_name as string) || "Unknown Venue";
+            const finalNormalizedName = finalVenueName.toLowerCase().replace(/[^a-z0-9]+/g, "-");
 
             // Dedup existing VANs for same venue+tour
             await adminClient.from("venue_advance_notes").delete()
               .eq("tour_id", doc.tour_id)
-              .eq("normalized_venue_name", normalizedName);
+              .eq("normalized_venue_name", finalNormalizedName);
 
             // Build the full VAN data object — store EVERYTHING
             const vanData: Record<string, unknown> = {};
@@ -1838,15 +1970,15 @@ Deno.serve(async (req) => {
             const { error: vanErr } = await adminClient.from("venue_advance_notes").insert({
               tour_id: doc.tour_id,
               source_doc_id: document_id,
-              venue_name: venueName,
-              normalized_venue_name: normalizedName,
+              venue_name: finalVenueName,
+              normalized_venue_name: finalNormalizedName,
               city,
               event_date: eventDate,
               van_data: vanData,
             });
 
             if (vanErr) {
-              console.error("[extract] VAN insert error for", venueName, vanErr);
+              console.error("[extract] VAN insert error for", finalVenueName, vanErr);
             } else {
               totalVans++;
             }
@@ -1872,7 +2004,7 @@ Deno.serve(async (req) => {
                 email: c.email || null,
                 source_doc_id: document_id,
                 scope: "VENUE" as const,
-                venue: venueName,
+                venue: finalVenueName,
               }));
               const { error: cErr } = await adminClient.from("contacts").insert(contactRows);
               if (!cErr) totalContacts += venueContacts.length;
@@ -1896,7 +2028,7 @@ Deno.serve(async (req) => {
               }
 
               if (parsed.length > 0) {
-                console.log(`[extract] Deterministic parser found ${parsed.length} dates for ${venueName} from VAN text`);
+                console.log(`[extract] Deterministic parser found ${parsed.length} dates for ${finalVenueName} from VAN text`);
                 eventDates = parsed;
 
                 // Also backfill event_date on the VAN if it was null
@@ -1906,7 +2038,7 @@ Deno.serve(async (req) => {
                     await adminClient.from("venue_advance_notes")
                       .update({ event_date: firstShow.date })
                       .eq("tour_id", doc.tour_id)
-                      .eq("normalized_venue_name", normalizedName);
+                      .eq("normalized_venue_name", finalNormalizedName);
                   }
                 }
               }
@@ -1926,10 +2058,17 @@ Deno.serve(async (req) => {
               const entryDate = dateEntry.date!;
               const entryType = (dateEntry.type || "SHOW").toUpperCase();
 
-              // Dedup by date + tour
-              await adminClient.from("schedule_events").delete()
-                .eq("tour_id", doc.tour_id)
-                .eq("event_date", entryDate);
+              // Normalize dateEntry.date if it's an Excel serial
+              let normalizedEntryDate = entryDate;
+              if (/^\d{5}$/.test(entryDate)) {
+                const fixed = excelSerialToISO(parseInt(entryDate, 10));
+                if (fixed) {
+                  normalizedEntryDate = fixed;
+                  excel_serial_dates_converted++;
+                }
+              }
+
+              // No broad date-based dedup needed — source-doc scoped cleanup was done above
 
               // Build notes
               const notesParts: string[] = [];
@@ -1951,7 +2090,7 @@ Deno.serve(async (req) => {
                 // Try HH:MM 24h format first
                 const hhmm = timeSource.match(/^(\d{1,2}):(\d{2})$/);
                 if (hhmm) {
-                  showTimeTs = `${entryDate}T${String(hhmm[1]).padStart(2, "0")}:${hhmm[2]}:00`;
+                  showTimeTs = `${normalizedEntryDate}T${String(hhmm[1]).padStart(2, "0")}:${hhmm[2]}:00`;
                 } else {
                   // Try 12h format
                   const showMatch = timeSource.match(/(?:show\s*(?:at\s*)?|start\s*)?(\d{1,2}(?::?\d{2})?\s*(?:am|pm))/i);
@@ -1962,16 +2101,16 @@ Deno.serve(async (req) => {
                     let [h, m] = nums.includes(":") ? nums.split(":").map(Number) : [Number(nums), 0];
                     if (isPM && h < 12) h += 12;
                     if (!isPM && h === 12) h = 0;
-                    showTimeTs = `${entryDate}T${String(h).padStart(2, "0")}:${String(m || 0).padStart(2, "0")}:00`;
+                    showTimeTs = `${normalizedEntryDate}T${String(h).padStart(2, "0")}:${String(m || 0).padStart(2, "0")}:00`;
                   }
                 }
               }
 
               const { error: evtErr } = await adminClient.from("schedule_events").insert({
                 tour_id: doc.tour_id,
-                event_date: entryDate,
+                event_date: normalizedEntryDate,
                 city: city || null,
-                venue: venueName,
+                venue: finalVenueName,
                 show_time: showTimeTs,
                 source_doc_id: document_id,
                 confidence_score: 0.95,
@@ -1987,6 +2126,9 @@ Deno.serve(async (req) => {
               totalRisks += risks.length;
             }
           }
+
+          // Log extraction sanity counters
+          console.log("[extract] Extraction sanity:", JSON.stringify({ excel_serial_dates_converted, deterministic_dates_used, ai_dates_overridden, unknown_venue_fallbacks }));
 
           // ── Cross-link reconciliation: backfill missing data between VANs and schedule_events ──
           console.log("[extract] Running cross-link reconciliation for tour", doc.tour_id);
@@ -2256,6 +2398,8 @@ Deno.serve(async (req) => {
           ...(isAdvanceMaster ? {} : { risk_flags: allRiskFlags }),
           // Include reconciliation counters
           reconciliation: { vans_city_backfilled, vans_date_backfilled, events_venue_backfilled, events_city_backfilled },
+          // Include extraction sanity counters (only for advance master)
+          ...(isAdvanceMaster ? { extraction_sanity: { excel_serial_dates_converted, deterministic_dates_used, ai_dates_overridden, unknown_venue_fallbacks } } : {}),
         };
 
         // ── Delta detection for version updates ──
