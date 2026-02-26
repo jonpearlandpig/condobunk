@@ -1,85 +1,106 @@
 
-I agree — this is a real data-quality regression, and the root cause is now clear from your current run.
 
-What I confirmed from your backend data:
-- The latest uploaded doc is `KOH26 Advance Master v3.xlsx` (`06602362-b73a-45b0-b3f0-0cfc87386dcb`).
-- Extracted rows for that doc have clearly wrong dates (example: `UBS Arena` = `2025-11-01`, `Lenovo Center` = `2026-07-22`).
-- In the stored VAN payload, `event_details.day_and_date` is often Excel serial text (`46086`, `46087`, `46096`, etc.).
-- Those serials map correctly to March 2026 (e.g. `46086 -> 2026-03-05`, `46103 -> 2026-03-22`), proving dates are available but being misinterpreted.
-- The uploaded spreadsheet itself shows plain human dates in the “Day and Date” row, so this should be deterministic.
+# Fix: Advance Master Authority Deduplication
 
-Why this happened:
-1) In the column-based Excel parser path, cell values are read as raw values and written as strings directly, so date cells become serial numbers (`46086`) instead of formatted dates.
-2) The extraction then relies on AI to infer `event_date` from these serial strings, which produced incorrect dates.
-3) Schedule cleanup in advance-master insertion is date-based per tour, not source-doc scoped, so stale/wrong rows can survive or collide in bad ways.
+## Problem
 
-Implementation plan (high priority, deterministic-first):
+The calendar shows every venue duplicated because two source documents both created schedule events:
+- **Advance Master** (`KOH26 Advance Master v3.xlsx`, doc_type=SCHEDULE) -- the authority source
+- **TourText PDF** (`L2.1_TourText__Layer_2_AKB_(TRUTH).pdf`, doc_type=CONTACTS) -- lower authority
 
-1. Fix Excel date normalization in the column-based parser
-- File: `supabase/functions/extract-document/index.ts`
-- In the column-based loop, add a strict date normalizer for “Day and Date” / date-like labels:
-  - Detect numeric Excel serials and convert to ISO (`YYYY-MM-DD`) deterministically.
-  - Prefer worksheet formatted text when available.
-  - Preserve non-date numeric fields (capacity, counts) untouched.
-- Add helper(s) near parser utilities:
-  - `excelSerialToISO(serial: number): string`
-  - `normalizeDateCell(label: string, rawValue: unknown): { isoDate: string | null; display: string }`
+Both insert schedule_events independently with no cross-document venue deduplication, so Allen War Memorial Coliseum, Wolstein Center, TD Garden, etc. each appear twice on the same date.
 
-2. Stop trusting AI for primary event_date when deterministic date exists
-- File: `supabase/functions/extract-document/index.ts`
-- During advance-master per-column parsing, capture per-column deterministic date and venue hints (by index).
-- In VAN/schedule insertion:
-  - Use deterministic parsed date as source of truth when present.
-  - Use AI `event_date` only as fallback.
-  - If AI returns numeric `day_and_date`, normalize it before any date parsing/fallback logic.
+## Solution
 
-3. Make schedule cleanup source-doc scoped (prevent stale/partial cross-contamination)
-- File: `supabase/functions/extract-document/index.ts`
-- At start of advance-master branch:
-  - `DELETE schedule_events WHERE source_doc_id = document_id`
-- Replace current per-event delete (`tour_id + event_date`) with safer logic:
-  - Source-doc replacement first.
-  - Optional authority dedupe as a separate step (not broad date wipe).
-- This ensures a re-extract produces a clean, exact replacement for the same uploaded file.
+Two changes in `supabase/functions/extract-document/index.ts`:
 
-4. Harden venue fallback to avoid city-as-venue / Unknown Venue
-- File: `supabase/functions/extract-document/index.ts`
-- Persist per-column deterministic venue from the “Venue” row.
-- If AI venue is missing, equals city, or equals “Unknown Venue”, substitute deterministic venue.
-- Keep city from header as secondary fallback, not venue.
+### 1. Advance Master extraction: purge lower-authority duplicates after insert
 
-5. Add extraction sanity checks + guardrails before final write
-- File: `supabase/functions/extract-document/index.ts`
-- Add lightweight validation counters and warnings in logs/response:
-  - `excel_serial_dates_converted`
-  - `deterministic_dates_used`
-  - `ai_dates_overridden`
-  - `unknown_venue_fallbacks`
-- Add a fail-safe warning path if date spread is implausible for a single tour segment (for visibility, not hard failure).
+After the Advance Master finishes inserting its schedule_events (around line 2131), add a cleanup step that deletes schedule_events from OTHER source documents for the same tour where the venue fuzzy-matches an Advance Master venue on the same date.
 
-6. Data repair for your current broken run
-- Backend data action after code fix:
-  - Re-run extraction for `06602362-b73a-45b0-b3f0-0cfc87386dcb`.
-  - Because of source-doc scoped cleanup, bad rows from this run get replaced cleanly.
-- Verify corrected outputs:
-  - `event_date` range should align with March 2026 sequence from the sheet.
-  - No leftover Nov/May/Jul outliers for this source doc.
+This uses the same `normalizeForMatch` / `fuzzyMatch` helpers already present in the reconciliation block. The logic:
+- Fetch all schedule_events for this tour that are NOT from this source_doc_id
+- For each, check if the Advance Master already has an event with matching venue (fuzzy) and same event_date
+- If yes, delete the lower-authority duplicate
 
-Validation checklist (using your exact file):
-1) Upload/use `KOH26_Advance_Master_v3.xlsx` and run EXTRACT.
-2) Confirm VANs:
-- `day_and_date` not raw serials in effective date logic.
-- `event_date` matches spreadsheet “Day and Date”.
-3) Confirm schedule:
-- Dates align to expected run (e.g. 3/5, 3/6, … 3/22).
-- No “Unknown Venue” where “Venue” row has data.
-4) Confirm idempotency:
-- Re-run extract on same file, row counts and dates remain stable (no drift, no duplicates, no stale leftovers).
-5) Check calendar view:
-- Cards display corrected dates/venues for this tour only, with no old-date artifacts.
+### 2. Non-Advance-Master extraction: skip insert if Advance Master already has the venue+date
 
-Technical notes:
-- No schema migration required.
-- No auth/RLS changes required.
-- This is an extraction-engine correctness fix plus safe replacement behavior.
+At the two non-advance-master schedule_events insert points (line ~2363 for multi-venue tech packs, and line ~2742 for single-doc CONTACTS), add a pre-insert check:
+- Query schedule_events for the same tour_id + event_date where source_doc_id belongs to a SCHEDULE-type document
+- If found, skip the insert (Advance Master is authoritative)
+
+### 3. One-time data cleanup
+
+Delete the duplicate CONTACTS-sourced events that overlap with existing Advance Master events via a targeted query on the current data.
+
+## Technical Details
+
+### File: `supabase/functions/extract-document/index.ts`
+
+**After line ~2131 (post-Advance-Master insert, before reconciliation):**
+
+```typescript
+// Authority dedup: remove lower-authority schedule_events that duplicate this Advance Master
+const { data: amEvents } = await adminClient.from("schedule_events")
+  .select("venue, event_date")
+  .eq("tour_id", doc.tour_id)
+  .eq("source_doc_id", document_id);
+
+if (amEvents && amEvents.length > 0) {
+  const { data: otherEvents } = await adminClient.from("schedule_events")
+    .select("id, venue, event_date, source_doc_id")
+    .eq("tour_id", doc.tour_id)
+    .neq("source_doc_id", document_id);
+
+  if (otherEvents) {
+    const toDelete: string[] = [];
+    for (const other of otherEvents) {
+      const matchesAM = amEvents.some(am =>
+        am.event_date === other.event_date &&
+        am.venue && other.venue &&
+        fuzzyMatch(am.venue, other.venue)
+      );
+      if (matchesAM) toDelete.push(other.id);
+    }
+    if (toDelete.length > 0) {
+      await adminClient.from("schedule_events").delete().in("id", toDelete);
+      console.log(`[extract] Authority dedup: removed ${toDelete.length} lower-authority duplicates`);
+    }
+  }
+}
+```
+
+**At line ~2338 and ~2742 (non-AM insert points), add pre-insert guard:**
+
+```typescript
+// Check if Advance Master already has this venue+date
+const { data: existingAM } = await adminClient.from("schedule_events")
+  .select("id")
+  .eq("tour_id", doc.tour_id)
+  .eq("event_date", eventDate)
+  .limit(1);
+
+// Check if any of those are from a SCHEDULE-type doc (Advance Master)
+if (existingAM && existingAM.length > 0) {
+  const { data: amDoc } = await adminClient.from("documents")
+    .select("id")
+    .eq("id", existingAM[0].source_doc_id) // need source_doc_id in select
+    .eq("doc_type", "SCHEDULE")
+    .limit(1);
+  if (amDoc && amDoc.length > 0) {
+    // Skip — Advance Master is authoritative
+    continue; // or skip this insert
+  }
+}
+```
+
+**Data cleanup query (run once):**
+
+Delete CONTACTS-sourced events where the Advance Master already covers the same tour+date+venue.
+
+### Scope of changes
+- Single file: `supabase/functions/extract-document/index.ts`
+- No schema changes
+- No auth/RLS changes
+- Redeploy edge function after edit
 
