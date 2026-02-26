@@ -1872,6 +1872,12 @@ Deno.serve(async (req) => {
         let events_venue_backfilled = 0;
         let events_city_backfilled = 0;
 
+        // Extraction sanity counters (declared outside isAdvanceMaster so they're in scope for the response)
+        let excel_serial_dates_converted = 0;
+        let deterministic_dates_used = 0;
+        let ai_dates_overridden = 0;
+        let unknown_venue_fallbacks = 0;
+
         // ── If advance master, store VANs ──
         if (isAdvanceMaster) {
           // Source-doc scoped cleanup: delete ALL old data from this document first
@@ -1879,12 +1885,6 @@ Deno.serve(async (req) => {
           await adminClient.from("venue_advance_notes").delete().eq("source_doc_id", document_id);
           await adminClient.from("schedule_events").delete().eq("source_doc_id", document_id);
           console.log("[extract] Source-doc scoped cleanup: deleted old VANs and schedule_events for doc", document_id);
-
-          // Extraction sanity counters
-          let excel_serial_dates_converted = 0;
-          let deterministic_dates_used = 0;
-          let ai_dates_overridden = 0;
-          let unknown_venue_fallbacks = 0;
 
           for (let vi = 0; vi < multiResult.venues.length; vi++) {
             const v = multiResult.venues[vi];
