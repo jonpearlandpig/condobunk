@@ -75,56 +75,81 @@ const Login = () => {
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.5 }}
-        className="w-full max-w-md space-y-6 px-6"
+        className="w-full max-w-2xl space-y-8 px-6"
       >
-        <div className="text-center mb-4">
-          <img src={logoWhite} alt="Condo Bunk" className="w-full max-w-md mx-auto" />
-          <p className="text-sm text-muted-foreground tracking-wide mt-3">
-            Close the curtain. Get schtuff done!
-          </p>
-
-          <motion.div
-            initial="hidden"
-            animate="visible"
-            variants={{ hidden: {}, visible: { transition: { staggerChildren: 0.18, delayChildren: 0.3 } } }}
-            className="mt-8 max-w-sm mx-auto space-y-5 text-center"
-          >
-            <motion.h2
-              variants={{ hidden: { opacity: 0, y: 12 }, visible: { opacity: 1, y: 0 } }}
-              className="text-2xl font-bold font-mono tracking-widest text-foreground"
-            >
-              TOUR LAW LIVES HERE.
-            </motion.h2>
-
-            <motion.p
-              variants={{ hidden: { opacity: 0, y: 12 }, visible: { opacity: 1, y: 0 } }}
-              className="text-lg font-mono font-semibold tracking-tight text-foreground/80"
-            >
-              YOUR WORKSPACE. YOUR KNOWLEDGE BASE.
-            </motion.p>
-
-            <motion.p
-              variants={{ hidden: { opacity: 0, y: 12 }, visible: { opacity: 1, y: 0 } }}
-              className="text-xs text-muted-foreground font-mono tracking-wide"
-            >
-              POWERED BY <span className="text-foreground font-bold">TELA</span> — TOUR INTELLIGENCE
-            </motion.p>
-
-            <motion.div
-              variants={{ hidden: { opacity: 0, y: 12 }, visible: { opacity: 1, y: 0 } }}
-              className="pt-2 border-t border-border/40 space-y-1"
-            >
-              <h3 className="text-lg font-bold font-mono tracking-wider text-primary">
-                TOURTEXT
-              </h3>
-              <p className="text-xs text-muted-foreground font-mono tracking-wide">
-                ONE NUMBER. ONE TEXT. EVERY ANSWER.
-              </p>
-            </motion.div>
-          </motion.div>
+        <div className="text-center mb-6">
+          <img src={logoWhite} alt="Condo Bunk" className="w-full max-w-lg mx-auto" />
         </div>
 
-        <div className="rounded-lg border border-border bg-card p-6 shadow-lg" style={{ boxShadow: 'var(--shadow-card)' }}>
+        <motion.div
+          initial="hidden"
+          animate="visible"
+          variants={{ hidden: {}, visible: { transition: { staggerChildren: 0.2, delayChildren: 0.3 } } }}
+          className="space-y-8 text-left"
+        >
+          <motion.h2
+            variants={{ hidden: { opacity: 0, y: 16 }, visible: { opacity: 1, y: 0 } }}
+            className="text-2xl sm:text-3xl font-bold text-foreground leading-tight"
+          >
+            It's the night before you land with a new touring team.
+          </motion.h2>
+
+          <motion.p
+            variants={{ hidden: { opacity: 0, y: 16 }, visible: { opacity: 1, y: 0 } }}
+            className="text-base sm:text-lg text-foreground/80 leading-relaxed"
+          >
+            You're stepping in cold — covering for someone out for a few days.
+            No history. No rhythm. No margin for confusion.
+          </motion.p>
+
+          <motion.div
+            variants={{ hidden: { opacity: 0, y: 16 }, visible: { opacity: 1, y: 0 } }}
+            className="space-y-3"
+          >
+            <p className="text-base sm:text-lg font-semibold text-foreground">
+              Before wheels down, you need:
+            </p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              {[
+                "Tomorrow's full schedule — load-in, soundcheck, doors, show, curfew",
+                "Bus arrival, dock access, credentials, parking",
+                "Key contacts — TM, PM, FOH, LD, local crew chief",
+                "Venue specs — stage size, rigging limits, power",
+                "Labor calls and local rules",
+                "Hospitality flow",
+                "Known issues or red flags",
+                "Emergency chain of command",
+              ].map((item) => (
+                <p key={item} className="border-l-2 border-primary pl-3 text-sm sm:text-base text-foreground font-medium">
+                  {item}
+                </p>
+              ))}
+            </div>
+          </motion.div>
+
+          <motion.div
+            variants={{ hidden: { opacity: 0, y: 16 }, visible: { opacity: 1, y: 0 } }}
+            className="space-y-1"
+          >
+            <p className="text-base sm:text-lg font-semibold text-foreground">You don't chase texts.</p>
+            <p className="text-base sm:text-lg font-semibold text-foreground">You don't scroll old email threads.</p>
+            <p className="text-base sm:text-lg font-semibold text-foreground">You don't interrupt five departments.</p>
+          </motion.div>
+
+          <motion.div
+            variants={{ hidden: { opacity: 0, y: 16 }, visible: { opacity: 1, y: 0 } }}
+            className="space-y-2"
+          >
+            <p className="text-base sm:text-lg text-foreground leading-relaxed">
+              The Tour Manager is on <span className="text-primary font-bold">CondoBunk</span> and had already sent you the <span className="text-primary font-bold">TourText</span> number.
+            </p>
+            <p className="text-sm text-muted-foreground italic">
+              Optional: download <span className="text-primary font-bold not-italic">CondoBunkCrew</span> for the same information as TourText but in a visual display for Calendar, Travel and other read-only details set from TM in the tour AKB.
+            </p>
+          </motion.div>
+        </motion.div>
+
+        <div className="mx-auto max-w-md rounded-lg border border-border bg-card p-6 shadow-lg" style={{ boxShadow: 'var(--shadow-card)' }}>
           <form onSubmit={handleAuth} className="space-y-4">
             <div className="space-y-2">
               <Label htmlFor="email" className="text-sm text-muted-foreground font-mono">

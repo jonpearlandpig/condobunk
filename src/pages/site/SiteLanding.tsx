@@ -61,8 +61,8 @@ const SiteLanding = () => (
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.3, duration: 0.6 }}
         >
-          Close the curtain.{" "}
-          <span className="text-gradient-amber">Get schtuff done!</span>
+          Hop in your CondoBunk and{" "}
+          <span className="text-gradient-amber">Ask TELA.</span>
         </motion.h1>
         <motion.p
           className="mb-8 font-mono text-lg tracking-widest text-muted-foreground"
