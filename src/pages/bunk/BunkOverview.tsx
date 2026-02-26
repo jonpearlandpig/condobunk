@@ -527,6 +527,7 @@ const BunkOverview = () => {
         </motion.div>
       )}
 
+      {(tours.length > 0 || isDemoMode) && (<>
       {/* TLDR Briefing */}
       <motion.div
         initial={{ opacity: 0, y: 12 }}
@@ -975,6 +976,8 @@ const BunkOverview = () => {
           </motion.div>
         ))}
       </div>
+
+      </>)}
 
       {/* Tour List */}
       <div>
