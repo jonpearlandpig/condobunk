@@ -2130,6 +2130,50 @@ Deno.serve(async (req) => {
           // Log extraction sanity counters
           console.log("[extract] Extraction sanity:", JSON.stringify({ excel_serial_dates_converted, deterministic_dates_used, ai_dates_overridden, unknown_venue_fallbacks }));
 
+          // ── Authority dedup: remove lower-authority schedule_events that duplicate this Advance Master ──
+          {
+            const normForDedup = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, "");
+            const fuzzyDedup = (a: string, b: string): boolean => {
+              const na = normForDedup(a);
+              const nb = normForDedup(b);
+              if (na === nb) return true;
+              if (na.includes(nb) || nb.includes(na)) return true;
+              const wordsA = na.split(/\s+/).filter(Boolean);
+              const wordsB = nb.split(/\s+/).filter(Boolean);
+              if (wordsA.length === 0 || wordsB.length === 0) return false;
+              const overlap = wordsA.filter(w => wordsB.includes(w)).length;
+              return overlap / Math.max(wordsA.length, wordsB.length) >= 0.7;
+            };
+
+            const { data: amEvents } = await adminClient.from("schedule_events")
+              .select("venue, event_date")
+              .eq("tour_id", doc.tour_id)
+              .eq("source_doc_id", document_id);
+
+            if (amEvents && amEvents.length > 0) {
+              const { data: otherEvents } = await adminClient.from("schedule_events")
+                .select("id, venue, event_date, source_doc_id")
+                .eq("tour_id", doc.tour_id)
+                .neq("source_doc_id", document_id);
+
+              if (otherEvents) {
+                const toDelete: string[] = [];
+                for (const other of otherEvents) {
+                  const matchesAM = amEvents.some(am =>
+                    am.event_date === other.event_date &&
+                    am.venue && other.venue &&
+                    fuzzyDedup(am.venue, other.venue)
+                  );
+                  if (matchesAM) toDelete.push(other.id);
+                }
+                if (toDelete.length > 0) {
+                  await adminClient.from("schedule_events").delete().in("id", toDelete);
+                  console.log(`[extract] Authority dedup: removed ${toDelete.length} lower-authority duplicates`);
+                }
+              }
+            }
+          }
+
           // ── Cross-link reconciliation: backfill missing data between VANs and schedule_events ──
           console.log("[extract] Running cross-link reconciliation for tour", doc.tour_id);
           
@@ -2333,9 +2377,31 @@ Deno.serve(async (req) => {
               if (!cErr) totalContacts += venueContacts.length;
             }
 
-            // Insert schedule event if date exists
+            // Insert schedule event if date exists (skip if Advance Master already has this venue+date)
             const eventDate = v.event_date as string | undefined;
             if (eventDate) {
+              // Authority guard: check if a SCHEDULE-type doc already owns this date
+              const { data: existingSchedEvents } = await adminClient.from("schedule_events")
+                .select("id, source_doc_id")
+                .eq("tour_id", doc.tour_id)
+                .eq("event_date", eventDate);
+              let skipInsert = false;
+              if (existingSchedEvents && existingSchedEvents.length > 0) {
+                const sourceDocIds = [...new Set(existingSchedEvents.map(e => e.source_doc_id).filter(Boolean))];
+                if (sourceDocIds.length > 0) {
+                  const { data: schedDocs } = await adminClient.from("documents")
+                    .select("id")
+                    .in("id", sourceDocIds)
+                    .eq("doc_type", "SCHEDULE");
+                  if (schedDocs && schedDocs.length > 0) {
+                    skipInsert = true;
+                    console.log(`[extract] Skipping tech-pack schedule insert for ${eventDate} — Advance Master is authoritative`);
+                  }
+                }
+              }
+              if (skipInsert) {
+                // Skip this venue's schedule insert entirely
+              } else {
               const toTs = (d: string, t: string | undefined | null): string | null => {
                 if (!t) return null;
                 if (/^\d{1,2}:\d{2}$/.test(t)) return `${d}T${t}:00`;
@@ -2372,6 +2438,7 @@ Deno.serve(async (req) => {
                 notes: notesParts.join(" | ") || null,
               });
               if (!evtErr) totalEvents++;
+              }
             }
           }
         }
@@ -2721,27 +2788,67 @@ Deno.serve(async (req) => {
 
     const events = aiResult?.schedule_events || [];
     if (events.length > 0) {
+      // Authority guard: check if any SCHEDULE-type doc already has events for this tour
+      const allEventDates = [...new Set(events.map(e => e.event_date).filter(Boolean))];
+      let amDates: Set<string> = new Set();
+      if (allEventDates.length > 0) {
+        const { data: existingSchedEvents } = await adminClient.from("schedule_events")
+          .select("event_date, source_doc_id")
+          .eq("tour_id", doc.tour_id)
+          .in("event_date", allEventDates);
+        if (existingSchedEvents && existingSchedEvents.length > 0) {
+          const sourceDocIds = [...new Set(existingSchedEvents.map(e => e.source_doc_id).filter(Boolean))];
+          if (sourceDocIds.length > 0) {
+            const { data: schedDocs } = await adminClient.from("documents")
+              .select("id")
+              .in("id", sourceDocIds)
+              .eq("doc_type", "SCHEDULE");
+            if (schedDocs && schedDocs.length > 0) {
+              const schedDocIds = new Set(schedDocs.map(d => d.id));
+              for (const se of existingSchedEvents) {
+                if (se.source_doc_id && schedDocIds.has(se.source_doc_id) && se.event_date) {
+                  amDates.add(se.event_date);
+                }
+              }
+            }
+          }
+        }
+      }
+
       const toTimestamp = (date: string | undefined, time: string | undefined): string | null => {
         if (!date || !time) return null;
         return `${date}T${time}:00`;
       };
 
-      const rows = events.map(evt => ({
-        tour_id: doc.tour_id,
-        city: evt.city || null,
-        venue: evt.venue || null,
-        event_date: evt.event_date || null,
-        load_in: toTimestamp(evt.event_date, evt.load_in),
-        show_time: toTimestamp(evt.event_date, evt.show_time),
-        end_time: toTimestamp(evt.event_date, evt.end_time),
-        confidence_score: 0.85,
-        source_doc_id: document_id,
-        notes: evt.notes || null,
-      }));
+      // Filter out events whose date is already covered by an Advance Master
+      const filteredEvents = events.filter(evt => {
+        if (evt.event_date && amDates.has(evt.event_date)) {
+          console.log(`[extract] Skipping single-doc schedule insert for ${evt.event_date} — Advance Master is authoritative`);
+          return false;
+        }
+        return true;
+      });
 
-      const { error: evtErr } = await adminClient.from("schedule_events").insert(rows);
-      if (evtErr) console.error("[extract] schedule_events insert error:", evtErr);
-      else console.log("[extract] Inserted", events.length, "schedule events");
+      if (filteredEvents.length > 0) {
+        const rows = filteredEvents.map(evt => ({
+          tour_id: doc.tour_id,
+          city: evt.city || null,
+          venue: evt.venue || null,
+          event_date: evt.event_date || null,
+          load_in: toTimestamp(evt.event_date, evt.load_in),
+          show_time: toTimestamp(evt.event_date, evt.show_time),
+          end_time: toTimestamp(evt.event_date, evt.end_time),
+          confidence_score: 0.85,
+          source_doc_id: document_id,
+          notes: evt.notes || null,
+        }));
+
+        const { error: evtErr } = await adminClient.from("schedule_events").insert(rows);
+        if (evtErr) console.error("[extract] schedule_events insert error:", evtErr);
+        else console.log("[extract] Inserted", filteredEvents.length, "schedule events (skipped", events.length - filteredEvents.length, "AM-covered)");
+      } else {
+        console.log("[extract] All", events.length, "schedule events skipped — Advance Master covers all dates");
+      }
       totalExtracted += events.length;
     }
 
