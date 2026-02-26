@@ -1786,6 +1786,12 @@ Deno.serve(async (req) => {
         let totalVans = 0;
         const allRiskFlags: Array<Record<string, string>> = [];
 
+        // Reconciliation counters (declared outside if/else so they're accessible in result)
+        let vans_city_backfilled = 0;
+        let vans_date_backfilled = 0;
+        let events_venue_backfilled = 0;
+        let events_city_backfilled = 0;
+
         // ── If advance master, store VANs ──
         if (isAdvanceMaster) {
           // Delete old VANs from same document
@@ -1985,11 +1991,11 @@ Deno.serve(async (req) => {
           // ── Cross-link reconciliation: backfill missing data between VANs and schedule_events ──
           console.log("[extract] Running cross-link reconciliation for tour", doc.tour_id);
           
-          // Reconciliation counters
-          let vans_city_backfilled = 0;
-          let vans_date_backfilled = 0;
-          let events_venue_backfilled = 0;
-          let events_city_backfilled = 0;
+          // Reset reconciliation counters for this branch
+          vans_city_backfilled = 0;
+          vans_date_backfilled = 0;
+          events_venue_backfilled = 0;
+          events_city_backfilled = 0;
 
           // Fetch all VANs and schedule_events for this tour
           const { data: allVans } = await adminClient.from("venue_advance_notes")
