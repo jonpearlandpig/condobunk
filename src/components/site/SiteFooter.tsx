@@ -16,7 +16,7 @@ const SiteFooter = () => (
         <div className="space-y-3">
           <img src={logo} alt="CondoBunk" className="h-8" />
           <p className="text-sm text-muted-foreground">
-            Close the curtain. Get schtuff done!
+            Your tour knowledge base. Ask TELA.
           </p>
         </div>
 
