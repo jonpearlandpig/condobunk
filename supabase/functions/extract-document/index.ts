@@ -1715,8 +1715,8 @@ Deno.serve(async (req) => {
         venueBlocks = columnData.split("\n\n===VENUE_SEPARATOR===\n\n").filter(b => b.trim());
         console.log("[extract] Found", venueBlocks.length, "venue column blocks to process");
 
-        // Process in parallel batches of 6 venues using flash model for speed
-        const BATCH_SIZE = 6;
+        // Process in parallel batches of 4 venues to reduce per-batch runtime
+        const BATCH_SIZE = 4;
         const extractModel = "google/gemini-2.5-pro";
 
         const batchPromises: Promise<Array<Record<string, unknown>>>[] = [];
@@ -1985,12 +1985,18 @@ Deno.serve(async (req) => {
           // ── Cross-link reconciliation: backfill missing data between VANs and schedule_events ──
           console.log("[extract] Running cross-link reconciliation for tour", doc.tour_id);
           
+          // Reconciliation counters
+          let vans_city_backfilled = 0;
+          let vans_date_backfilled = 0;
+          let events_venue_backfilled = 0;
+          let events_city_backfilled = 0;
+
           // Fetch all VANs and schedule_events for this tour
           const { data: allVans } = await adminClient.from("venue_advance_notes")
             .select("id, venue_name, normalized_venue_name, city, event_date")
             .eq("tour_id", doc.tour_id);
           const { data: allEvents } = await adminClient.from("schedule_events")
-            .select("id, venue, city, event_date")
+            .select("id, venue, city, event_date, show_time")
             .eq("tour_id", doc.tour_id);
 
           if (allVans && allEvents) {
@@ -2016,7 +2022,7 @@ Deno.serve(async (req) => {
                 );
                 if (matchEvent) {
                   await adminClient.from("venue_advance_notes").update({ city: matchEvent.city }).eq("id", van.id);
-                  console.log("[crosslink] Backfilled city for VAN", van.venue_name, "->", matchEvent.city);
+                  vans_city_backfilled++;
                 }
               }
 
@@ -2027,7 +2033,7 @@ Deno.serve(async (req) => {
                 );
                 if (matchEvent) {
                   await adminClient.from("venue_advance_notes").update({ event_date: matchEvent.event_date }).eq("id", van.id);
-                  console.log("[crosslink] Backfilled date for VAN", van.venue_name, "->", matchEvent.event_date);
+                  vans_date_backfilled++;
                 }
               }
 
@@ -2038,20 +2044,32 @@ Deno.serve(async (req) => {
                 );
                 if (matchEvent) {
                   await adminClient.from("venue_advance_notes").update({ city: matchEvent.city }).eq("id", van.id);
-                  console.log("[crosslink] Backfilled city by date for VAN", van.venue_name, "->", matchEvent.city);
+                  vans_city_backfilled++;
                 }
               }
             }
 
             // Backfill schedule_events with null/unknown venue from VANs
+            // Strengthened: match by tour_id + event_date + city first, then date-only
             for (const evt of allEvents) {
               if ((!evt.venue || evt.venue === "Unknown Venue") && evt.event_date) {
-                const matchVan = allVans.find(v => 
-                  v.event_date === evt.event_date && v.venue_name && v.venue_name !== "Unknown Venue"
-                );
+                // Try matching by date + city first (most precise)
+                let matchVan = evt.city
+                  ? allVans.find(v =>
+                      v.event_date === evt.event_date &&
+                      v.venue_name && v.venue_name !== "Unknown Venue" &&
+                      v.city && normalizeForMatch(v.city).includes(normalizeForMatch(evt.city!))
+                    )
+                  : null;
+                // Fall back to date-only match
+                if (!matchVan) {
+                  matchVan = allVans.find(v => 
+                    v.event_date === evt.event_date && v.venue_name && v.venue_name !== "Unknown Venue"
+                  );
+                }
                 if (matchVan) {
                   await adminClient.from("schedule_events").update({ venue: matchVan.venue_name, city: matchVan.city || evt.city }).eq("id", evt.id);
-                  console.log("[crosslink] Backfilled venue for event", evt.event_date, "->", matchVan.venue_name);
+                  events_venue_backfilled++;
                 }
               }
               // Backfill event city from VAN
@@ -2061,11 +2079,11 @@ Deno.serve(async (req) => {
                 );
                 if (matchVan) {
                   await adminClient.from("schedule_events").update({ city: matchVan.city }).eq("id", evt.id);
-                  console.log("[crosslink] Backfilled city for event", evt.venue, "->", matchVan.city);
+                  events_city_backfilled++;
                 }
               }
             }
-            console.log("[extract] Cross-link reconciliation complete");
+            console.log("[extract] Cross-link reconciliation complete:", JSON.stringify({ vans_city_backfilled, vans_date_backfilled, events_venue_backfilled, events_city_backfilled }));
           }
 
         } else {
@@ -2210,7 +2228,7 @@ Deno.serve(async (req) => {
           }
         }
 
-        const result = {
+        const result: Record<string, unknown> = {
           doc_type: multiVenueDocType,
           is_tech_pack: !isAdvanceMaster,
           is_advance_master: isAdvanceMaster,
@@ -2228,18 +2246,22 @@ Deno.serve(async (req) => {
             vans: totalVans,
             risk_flags: totalRisks,
           },
-          risk_flags: allRiskFlags,
+          // Only include risk_flags array for non-advance-master (tech packs need it for review dialog)
+          ...(isAdvanceMaster ? {} : { risk_flags: allRiskFlags }),
+          // Include reconciliation counters
+          reconciliation: { vans_city_backfilled, vans_date_backfilled, events_venue_backfilled, events_city_backfilled },
         };
 
         // ── Delta detection for version updates ──
         if (oldSnapshot) {
           const changes = await computeDelta(oldSnapshot, document_id, adminClient);
-          (result as any).changes = changes;
+          result.changes = changes;
           console.log("[extract] Delta detected:", changes.length, "changes");
           await logDeltaChanges(changes, adminClient, doc.tour_id, user.id, filename, doc.version - 1, doc.version);
         }
 
-        console.log("[extract] Multi-venue result:", JSON.stringify(result));
+        // Lean log: only counts, not full payload
+        console.log("[extract] Multi-venue result: venues=", multiResult.venues.length, "events=", totalEvents, "vans=", totalVans, "contacts=", totalContacts);
 
         return new Response(JSON.stringify(result), {
           headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -2436,7 +2458,7 @@ Deno.serve(async (req) => {
           await logDeltaChanges(changes, adminClient, doc.tour_id, user.id, filename, doc.version - 1, doc.version);
         }
 
-        console.log("[extract] Tech pack result:", JSON.stringify(result));
+        console.log("[extract] Tech pack result: venue=", techResult.venue_name, "risks=", riskCount, "contacts=", contactCount);
 
         return new Response(JSON.stringify(result), {
           headers: { ...corsHeaders, "Content-Type": "application/json" },
