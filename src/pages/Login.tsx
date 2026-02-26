@@ -7,11 +7,14 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
+import { useIsMobile } from "@/hooks/use-mobile";
+import { Collapsible, CollapsibleTrigger, CollapsibleContent } from "@/components/ui/collapsible";
 import { motion } from "framer-motion";
-import { Shield } from "lucide-react";
+import { Shield, ChevronDown } from "lucide-react";
 import logoWhite from "@/assets/WHITE_TEXT_CONDO_BUNK_LOGO.png";
 
 const Login = () => {
+  const isMobile = useIsMobile();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [isSignUp, setIsSignUp] = useState(false);
@@ -75,9 +78,9 @@ const Login = () => {
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.5 }}
-        className="w-full max-w-2xl space-y-4 px-6"
+        className="w-full max-w-2xl space-y-2 sm:space-y-4 px-6"
       >
-        <div className="text-center mb-2">
+        <div className="text-center mb-0 sm:mb-2">
           <img src={logoWhite} alt="Condo Bunk" className="w-full max-w-lg mx-auto" />
         </div>
 
@@ -85,7 +88,7 @@ const Login = () => {
           initial="hidden"
           animate="visible"
           variants={{ hidden: {}, visible: { transition: { staggerChildren: 0.2, delayChildren: 0.3 } } }}
-          className="space-y-6 text-left"
+          className="space-y-4 sm:space-y-6 text-left"
         >
           <motion.h2
             variants={{ hidden: { opacity: 0, y: 16 }, visible: { opacity: 1, y: 0 } }}
@@ -102,30 +105,52 @@ const Login = () => {
             No history. No rhythm. No margin for confusion.
           </motion.p>
 
-          <motion.div
-            variants={{ hidden: { opacity: 0, y: 16 }, visible: { opacity: 1, y: 0 } }}
-            className="space-y-3"
-          >
-            <p className="text-base sm:text-lg font-semibold text-foreground">
-              Before wheels down, you need:
-            </p>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-              {[
-                "Tomorrow's full schedule — load-in, soundcheck, doors, show, curfew",
-                "Bus arrival, dock access, credentials, parking",
-                "Key contacts — TM, PM, FOH, LD, local crew chief",
-                "Venue specs — stage size, rigging limits, power",
-                "Labor calls and local rules",
-                "Hospitality flow",
-                "Known issues or red flags",
-                "Emergency chain of command",
-              ].map((item) => (
-                <p key={item} className="border-l-2 border-primary pl-3 text-sm sm:text-base text-foreground font-medium">
-                  {item}
+          {(() => {
+            const items = [
+              "Tomorrow's full schedule — load-in, soundcheck, doors, show, curfew",
+              "Bus arrival, dock access, credentials, parking",
+              "Key contacts — TM, PM, FOH, LD, local crew chief",
+              "Venue specs — stage size, rigging limits, power",
+              "Labor calls and local rules",
+              "Hospitality flow",
+              "Known issues or red flags",
+              "Emergency chain of command",
+            ];
+            const listContent = (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                {items.map((item) => (
+                  <p key={item} className="border-l-2 border-primary pl-3 text-sm sm:text-base text-foreground font-medium">
+                    {item}
+                  </p>
+                ))}
+              </div>
+            );
+
+            if (isMobile) {
+              return (
+                <Collapsible>
+                  <CollapsibleTrigger className="flex items-center gap-2 w-full text-left">
+                    <p className="text-base font-semibold text-foreground">
+                      Before wheels down, you need:
+                    </p>
+                    <ChevronDown className="h-4 w-4 text-muted-foreground shrink-0 transition-transform duration-200 [[data-state=open]>&]:rotate-180" />
+                  </CollapsibleTrigger>
+                  <CollapsibleContent className="mt-3">
+                    {listContent}
+                  </CollapsibleContent>
+                </Collapsible>
+              );
+            }
+
+            return (
+              <div className="space-y-3">
+                <p className="text-base sm:text-lg font-semibold text-foreground">
+                  Before wheels down, you need:
                 </p>
-              ))}
-            </div>
-          </motion.div>
+                {listContent}
+              </div>
+            );
+          })()}
 
           <motion.div
             variants={{ hidden: { opacity: 0, y: 16 }, visible: { opacity: 1, y: 0 } }}
