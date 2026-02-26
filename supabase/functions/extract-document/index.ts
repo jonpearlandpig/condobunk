@@ -788,6 +788,7 @@ CRITICAL RULES:
 - For dates, use YYYY-MM-DD format.
 - For times in event_details and venue_schedule, keep the original format (e.g., "5:30pm doors 7pm show").
 - The labour.labor_notes field is CRITICAL — capture the COMPLETE labor rules including minimums, meal penalties, overtime, department rules, etc. This is often the longest field. Do NOT truncate.
+- PRODUCTION CONTACT and HOUSE RIGGER CONTACT sections: The name, phone, and email may appear as separate rows under the section header (e.g., "Name: John Smith", "Phone: 555-1234", "Email: john@venue.com") OR as a single combined value on the section header row itself. Extract ALL contact details you find. If a phone number or email appears anywhere in the section, capture it. Do NOT return null for these if any contact info exists in the data.
 - Flag risks: no docks, long push distance (>200ft), restricted haze, complex union rules, limited power, no CO2, street load.
 - Return ONLY valid JSON, no markdown, no code blocks.
 - ZERO DATA LOSS. Every piece of data provided must appear in the output.
@@ -1431,12 +1432,17 @@ Deno.serve(async (req) => {
 
             if (rows.length > 0) {
               // Section headers to detect in column A
-              const SECTION_HEADERS = [
+              // Two-tier section header matching:
+              // Long headers (>=10 chars): use startsWith (safe, no false positives)
+              // Short headers (<10 chars): use includes (unique enough)
+              const LONG_SECTION_HEADERS = [
                 "EVENT DETAILS", "PRODUCTION CONTACT", "HOUSE RIGGER CONTACT",
-                "SUMMARY", "VENUE SCHEDULE", "PLANT EQUIPMENT", "LABOUR", "LABOR",
+                "VENUE SCHEDULE", "PLANT EQUIPMENT",
                 "DOCK AND LOGISTICS", "LOADING DOCK AND LOGISTICS", "LOADING DOCK",
-                "POWER", "STAGING", "MISC", "LIGHTING",
-                "VIDEO", "NOTES",
+              ];
+              const SHORT_SECTION_HEADERS = [
+                "SUMMARY", "LABOUR", "LABOR", "POWER", "STAGING", "MISC",
+                "LIGHTING", "VIDEO", "NOTES", "SCHEDULE", "DOCK",
               ];
 
               // Find how many columns have data (venue columns start at B = index 1)
@@ -1447,6 +1453,7 @@ Deno.serve(async (req) => {
 
               // Build per-column text blocks
               const venueColumnTexts: string[] = [];
+              const venueColumnCities: string[] = []; // Track parsedCity per venue for deterministic injection
               for (let col = 1; col < maxCol; col++) {
                 // Check if this column has a venue header (non-empty cell in first few rows)
                 let headerValue = "";
@@ -1480,8 +1487,13 @@ Deno.serve(async (req) => {
                 ];
                 let currentSection = "";
 
-                // Start at row 1 to skip the raw header row (often #VALUE! or column title)
-                for (let r = 1; r < rows.length; r++) {
+                // Conditionally skip row 0: only if it matches the column header (duplicate)
+                for (let r = 0; r < rows.length; r++) {
+                  // Skip row 0 only if its value matches the header (it's a duplicate)
+                  if (r === 0) {
+                    const row0Val = rows[0]?.[col] != null ? String(rows[0][col]).trim() : "";
+                    if (!row0Val || row0Val === headerValue || row0Val === "#VALUE!" || row0Val === "0") continue;
+                  }
                   const labelCell = rows[r]?.[0];
                   const valueCell = rows[r]?.[col];
                   const label = labelCell != null ? String(labelCell).trim() : "";
@@ -1489,7 +1501,8 @@ Deno.serve(async (req) => {
 
                   // Check if this row is a section header
                   const upperLabel = label.toUpperCase();
-                  const isSection = SECTION_HEADERS.some(h => upperLabel === h || upperLabel.startsWith(h + " ") || upperLabel.startsWith(h + ":"));
+                  const isSection = LONG_SECTION_HEADERS.some(h => upperLabel === h || upperLabel.startsWith(h + " ") || upperLabel.startsWith(h + ":")) ||
+                    SHORT_SECTION_HEADERS.some(h => upperLabel.includes(h));
                   if (isSection && label) {
                     currentSection = label.toUpperCase();
                     lines.push(`\n${currentSection}`);
@@ -1513,6 +1526,7 @@ Deno.serve(async (req) => {
                 }
 
                 venueColumnTexts.push(lines.join("\n"));
+                venueColumnCities.push(parsedCity);
               }
 
               if (venueColumnTexts.length > 0) {
@@ -1572,7 +1586,7 @@ Deno.serve(async (req) => {
     // ═══ MULTI-VENUE MASTER EXTRACTION PATH ═══
     if (isMultiVenue && apiKey) {
       let multiResult: { venues: Array<Record<string, unknown>> } | null = null;
-
+      let venueBlocks: string[] | null = null; // Track venue text blocks for deterministic city injection
       // Use dedicated VAN prompt for advance masters
       const extractPrompt = isAdvanceMaster ? ADVANCE_MASTER_VAN_PROMPT : MULTI_VENUE_PROMPT;
 
@@ -1580,7 +1594,7 @@ Deno.serve(async (req) => {
       if (isAdvanceMaster && rawText && rawText.startsWith("__ADVANCE_MASTER_COLUMNS__")) {
         console.log("[extract] Using batched per-column extraction for advance master");
         const columnData = rawText.replace("__ADVANCE_MASTER_COLUMNS__\n", "");
-        const venueBlocks = columnData.split("\n\n===VENUE_SEPARATOR===\n\n").filter(b => b.trim());
+        venueBlocks = columnData.split("\n\n===VENUE_SEPARATOR===\n\n").filter(b => b.trim());
         console.log("[extract] Found", venueBlocks.length, "venue column blocks to process");
 
         // Process in parallel batches of 6 venues using flash model for speed
@@ -1659,10 +1673,17 @@ Deno.serve(async (req) => {
           // Delete old VANs from same document
           await adminClient.from("venue_advance_notes").delete().eq("source_doc_id", document_id);
 
-          for (const v of multiResult.venues) {
+          for (let vi = 0; vi < multiResult.venues.length; vi++) {
+            const v = multiResult.venues[vi];
             const venueName = (v.venue_name as string) || "Unknown Venue";
             const normalizedName = (v.normalized_venue_name as string) || venueName.toLowerCase().replace(/[^a-z0-9]+/g, "-");
-            const city = (v.city as string) || null;
+            
+            // Deterministic city injection: if AI returned null city, try to extract from the venue block's "City (from header)" line
+            let city = (v.city as string) || null;
+            if (!city && venueBlocks && vi < venueBlocks.length) {
+              const cityLineMatch = venueBlocks[vi].match(/City \(from header\):\s*(.+)/);
+              if (cityLineMatch) city = cityLineMatch[1].trim();
+            }
             const eventDate = (v.event_date as string) || null;
 
             // Dedup existing VANs for same venue+tour
@@ -1842,6 +1863,93 @@ Deno.serve(async (req) => {
               totalRisks += risks.length;
             }
           }
+
+          // ── Cross-link reconciliation: backfill missing data between VANs and schedule_events ──
+          console.log("[extract] Running cross-link reconciliation for tour", doc.tour_id);
+          
+          // Fetch all VANs and schedule_events for this tour
+          const { data: allVans } = await adminClient.from("venue_advance_notes")
+            .select("id, venue_name, normalized_venue_name, city, event_date")
+            .eq("tour_id", doc.tour_id);
+          const { data: allEvents } = await adminClient.from("schedule_events")
+            .select("id, venue, city, event_date")
+            .eq("tour_id", doc.tour_id);
+
+          if (allVans && allEvents) {
+            const normalizeForMatch = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, "");
+            const fuzzyMatch = (a: string, b: string): boolean => {
+              const na = normalizeForMatch(a);
+              const nb = normalizeForMatch(b);
+              if (na === nb) return true;
+              if (na.includes(nb) || nb.includes(na)) return true;
+              // Word-token overlap >= 70%
+              const wordsA = na.split(/\s+/).filter(Boolean);
+              const wordsB = nb.split(/\s+/).filter(Boolean);
+              if (wordsA.length === 0 || wordsB.length === 0) return false;
+              const overlap = wordsA.filter(w => wordsB.includes(w)).length;
+              return overlap / Math.max(wordsA.length, wordsB.length) >= 0.7;
+            };
+
+            for (const van of allVans) {
+              // Backfill VAN city from schedule_event
+              if (!van.city && van.venue_name) {
+                const matchEvent = allEvents.find(e => 
+                  e.venue && fuzzyMatch(van.venue_name, e.venue) && e.city
+                );
+                if (matchEvent) {
+                  await adminClient.from("venue_advance_notes").update({ city: matchEvent.city }).eq("id", van.id);
+                  console.log("[crosslink] Backfilled city for VAN", van.venue_name, "->", matchEvent.city);
+                }
+              }
+
+              // Backfill VAN event_date from schedule_event
+              if (!van.event_date && van.venue_name) {
+                const matchEvent = allEvents.find(e => 
+                  e.venue && fuzzyMatch(van.venue_name, e.venue) && e.event_date
+                );
+                if (matchEvent) {
+                  await adminClient.from("venue_advance_notes").update({ event_date: matchEvent.event_date }).eq("id", van.id);
+                  console.log("[crosslink] Backfilled date for VAN", van.venue_name, "->", matchEvent.event_date);
+                }
+              }
+
+              // Backfill VAN city from schedule_event by date match
+              if (!van.city && van.event_date) {
+                const matchEvent = allEvents.find(e => 
+                  e.event_date === van.event_date && e.city
+                );
+                if (matchEvent) {
+                  await adminClient.from("venue_advance_notes").update({ city: matchEvent.city }).eq("id", van.id);
+                  console.log("[crosslink] Backfilled city by date for VAN", van.venue_name, "->", matchEvent.city);
+                }
+              }
+            }
+
+            // Backfill schedule_events with null/unknown venue from VANs
+            for (const evt of allEvents) {
+              if ((!evt.venue || evt.venue === "Unknown Venue") && evt.event_date) {
+                const matchVan = allVans.find(v => 
+                  v.event_date === evt.event_date && v.venue_name && v.venue_name !== "Unknown Venue"
+                );
+                if (matchVan) {
+                  await adminClient.from("schedule_events").update({ venue: matchVan.venue_name, city: matchVan.city || evt.city }).eq("id", evt.id);
+                  console.log("[crosslink] Backfilled venue for event", evt.event_date, "->", matchVan.venue_name);
+                }
+              }
+              // Backfill event city from VAN
+              if (!evt.city && evt.venue) {
+                const matchVan = allVans.find(v => 
+                  v.venue_name && fuzzyMatch(evt.venue, v.venue_name) && v.city
+                );
+                if (matchVan) {
+                  await adminClient.from("schedule_events").update({ city: matchVan.city }).eq("id", evt.id);
+                  console.log("[crosslink] Backfilled city for event", evt.venue, "->", matchVan.city);
+                }
+              }
+            }
+            console.log("[extract] Cross-link reconciliation complete");
+          }
+
         } else {
           // ── Non-advance-master multi-venue (legacy path) ──
           for (const v of multiResult.venues) {
