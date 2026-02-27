@@ -226,7 +226,7 @@ function extractRelevanceFromMessage(
 async function matchPhoneToTour(
   admin: ReturnType<typeof createClient>,
   normalized: string,
-): Promise<{ tourId: string | null; senderName: string }> {
+): Promise<{ tourId: string | null; senderName: string; senderRole: string | null }> {
   const today = new Date().toISOString().split("T")[0];
 
   // 1. Search contacts on ACTIVE tours with TOUR scope only
@@ -244,7 +244,7 @@ async function matchPhoneToTour(
     });
 
     if (phoneMatches.length === 1) {
-      return { tourId: phoneMatches[0].tour_id, senderName: phoneMatches[0].name };
+      return { tourId: phoneMatches[0].tour_id, senderName: phoneMatches[0].name, senderRole: phoneMatches[0].role || null };
     }
 
     if (phoneMatches.length > 1) {
@@ -259,7 +259,7 @@ async function matchPhoneToTour(
 
       const preferredTourId = events?.[0]?.tour_id || tourIds[0];
       const match = phoneMatches.find((m: any) => m.tour_id === preferredTourId) || phoneMatches[0];
-      return { tourId: match.tour_id, senderName: match.name };
+      return { tourId: match.tour_id, senderName: match.name, senderRole: match.role || null };
     }
   }
 
@@ -283,7 +283,7 @@ async function matchPhoneToTour(
           const memberTourIds = memberships.map((m: any) => m.tour_id);
 
           if (memberTourIds.length === 1) {
-            return { tourId: memberTourIds[0], senderName: profile.display_name || "Team Member" };
+            return { tourId: memberTourIds[0], senderName: profile.display_name || "Team Member", senderRole: null };
           }
 
           const { data: events } = await admin
@@ -295,14 +295,14 @@ async function matchPhoneToTour(
             .limit(1);
 
           const preferredTourId = events?.[0]?.tour_id || memberTourIds[0];
-          return { tourId: preferredTourId, senderName: profile.display_name || "Team Member" };
+          return { tourId: preferredTourId, senderName: profile.display_name || "Team Member", senderRole: null };
         }
         break;
       }
     }
   }
 
-  return { tourId: null, senderName: "Unknown" };
+  return { tourId: null, senderName: "Unknown", senderRole: null };
 }
 
 Deno.serve(async (req) => {
@@ -365,7 +365,7 @@ Deno.serve(async (req) => {
 
     // --- Match phone number to contact → tour ---
     const normalized = normalizePhone(fromPhone);
-    const { tourId: matchedTourId, senderName } = await matchPhoneToTour(admin, normalized);
+    const { tourId: matchedTourId, senderName, senderRole } = await matchPhoneToTour(admin, normalized);
 
     // Log inbound SMS
     const { error: inboundErr } = await admin.from("sms_inbound").insert({
@@ -626,6 +626,80 @@ If the message says "+1" or "plus one" after a name, that means 2 tickets total 
     }
     historyMessages.sort((a, b) => a.ts.localeCompare(b.ts));
     const recentHistory = historyMessages.slice(-6);
+
+    // --- FIRST-CONTACT IDENTITY CONFIRMATION ---
+    // Exclude the message we just logged (it's already in sms_inbound) from history count
+    // recentHistory includes the current inbound message we just inserted, so check if there's only 1 (the current one)
+    const priorMessages = historyMessages.filter(m => {
+      // The current message was just inserted; prior messages are everything else
+      return !(m.role === "user" && m.content === messageBody);
+    });
+    const isFirstContact = priorMessages.length === 0;
+
+    if (isFirstContact) {
+      // Fetch tour code / abbreviation
+      const { data: tourMeta } = await admin
+        .from("tour_metadata")
+        .select("tour_code, akb_id")
+        .eq("tour_id", matchedTourId)
+        .maybeSingle();
+
+      const tourLabel = tourMeta?.tour_code || tourMeta?.akb_id || tourName;
+      const roleLabel = senderRole || "team member";
+
+      const confirmMsg = `Hey ${senderName}! This is TELA for ${tourLabel}. I have you as ${roleLabel}. Text YES to confirm, or let me know if anything's off.`;
+
+      await sendTwilioSms(fromPhone, confirmMsg, TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_PHONE_NUMBER);
+      await admin.from("sms_outbound").insert({
+        to_phone: fromPhone,
+        message_text: confirmMsg,
+        tour_id: matchedTourId,
+        status: "sent",
+      });
+
+      console.log(`First-contact confirmation sent to ${senderName} (${fromPhone}) for tour ${tourLabel}`);
+      return emptyTwiml();
+    }
+
+    // --- CONFIRMATION RESPONSE HANDLER ---
+    // Check if the most recent outbound message was an identity confirmation
+    const lastOutbound = (recentOutbound.data || [])[0];
+    const confirmationPattern = /This is TELA for .+\. I have you as .+\. Text YES to confirm/i;
+    
+    if (lastOutbound && confirmationPattern.test(lastOutbound.message_text)) {
+      const msgLower = messageBody.toLowerCase().trim();
+      const affirmatives = /^(yes|yeah|yep|yup|correct|confirmed|that's me|thats me|that's right|si|confirm|y|ya|ye|right|affirmative)$/i;
+      const negatives = /^(no|nope|nah|wrong|incorrect|not me|that's wrong|thats wrong|not right)$/i;
+
+      if (affirmatives.test(msgLower)) {
+        const welcomeMsg = "Confirmed! You're all set. Ask me anything about the tour — schedule, venues, contacts, hotels. I'm here 24/7.";
+        await sendTwilioSms(fromPhone, welcomeMsg, TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_PHONE_NUMBER);
+        await admin.from("sms_outbound").insert({
+          to_phone: fromPhone,
+          message_text: welcomeMsg,
+          tour_id: matchedTourId,
+          status: "sent",
+        });
+        console.log(`Identity confirmed by ${senderName} (${fromPhone})`);
+        return emptyTwiml();
+      }
+
+      if (negatives.test(msgLower)) {
+        const deniedMsg = "No worries. Reach out to your Tour Admin to update your info.";
+        await sendTwilioSms(fromPhone, deniedMsg, TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_PHONE_NUMBER);
+        await admin.from("sms_outbound").insert({
+          to_phone: fromPhone,
+          message_text: deniedMsg,
+          tour_id: matchedTourId,
+          status: "sent",
+        });
+        console.log(`Identity denied by ${fromPhone}`);
+        return emptyTwiml();
+      }
+
+      // Neither affirmative nor negative — they're engaging with a question, treat as confirmed and fall through
+      console.log(`User ${senderName} skipped confirmation, treating as confirmed and processing message`);
+    }
 
     // Build focused context
     const scheduleSection = JSON.stringify(eventsRes.data || [], null, 1);
