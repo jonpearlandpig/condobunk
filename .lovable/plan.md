@@ -1,75 +1,65 @@
 
 
-## Progressive Depth for TourText SMS Responses
+## First-Contact Identity Confirmation for TourText
 
 ### What Changes
 
-Add a "Progressive Depth" protocol so that TELA rewards curiosity. Simple first-time questions get a quick, punchy answer. Follow-up questions on the same topic automatically unlock more detail.
+When a user texts TourText for the first time (no prior conversation history), TELA will respond with an identity confirmation message before processing their question. This ensures the right person is on the right tour before any data is shared.
 
 ### How It Works
 
-**Depth 1 (Default)** -- First question on a topic
-- Single most important fact, 1-2 lines
-- Example: "Haze for Boston?" -> "Haze OK at MGM, just heads up FOH before starting."
+After matching the phone number and building conversation history, check if `recentHistory` is empty (no prior inbound or outbound messages for this phone + tour). If so:
 
-**Depth 2** -- Second question on same topic (or "tell me more", "details", "what else")
-- Operational context, 3-5 lines
-- Example: "What about the haze machine specs?" -> "MGM allows MDG theONE or Ultratec Radiance. No oil-based. Venue requires 30min pre-show burn-off. FOH has final say on density. Union stagehand must operate."
-
-**Depth 3** -- Third question or explicit "everything" / "full rundown"
-- Full detail dump, up to 1500 chars
-- Example: "Give me the full haze rundown" -> Complete haze policy, machine specs, union rules, ventilation notes, emergency shutoff protocol, contact for questions
-
-### Detection Logic
-
-The depth level is determined by analyzing the conversation history (last 6 messages) that is already fetched:
-
-1. **Topic extraction**: Use a lightweight keyword match to identify the topic of the current message (haze, labor, rigging, hotel, load-in, doors, etc.)
-2. **History scan**: Count how many of the recent messages touch the same topic
-3. **Explicit depth triggers**: Phrases like "tell me more", "details", "full rundown", "everything about", "what else" immediately bump to Depth 2 or 3
-
-### System Prompt Update
-
-The current system prompt tells TELA to "keep it under 300 characters when possible." This changes to a depth-aware instruction:
-
-```
-RESPONSE DEPTH PROTOCOL:
-- Depth 1 (first ask): One punchy line, under 160 chars. Just the key fact.
-- Depth 2 (follow-up or "tell me more"): 2-4 lines of operational context, under 480 chars.
-- Depth 3 (third ask or "full rundown"/"everything"): Complete detail, up to 1500 chars.
-
-Current depth level: {depth}
-```
-
-The depth value is computed before the AI call and injected into the system prompt.
-
-### max_tokens Scaling
-
-- Depth 1: `max_tokens: 150`
-- Depth 2: `max_tokens: 300`
-- Depth 3: `max_tokens: 600`
-
-This saves AI cost on simple questions and gives room for detail on deep dives.
+1. Fetch the sender's **role** from the matched contact record (already available from `matchPhoneToTour`, just not returned currently)
+2. Send a confirmation message like: *"Hey [Name]! This is TELA for [Tour Abbreviation]. I have you as [Role]. Text back YES to confirm, or let me know if anything's off."*
+3. Log the outbound message and return — do NOT process their original question yet
+4. On next text, if they confirm (YES/yeah/correct/that's me), proceed normally. If they say something is wrong, instruct them to contact their Tour Admin.
 
 ### Implementation Details
 
 **File: `supabase/functions/tourtext-inbound/index.ts`**
 
-1. Add a `detectDepth()` function after the conversation history is built:
-   - Extract topic keywords from the current message (venue-specific terms, schedule terms, contact terms)
-   - Scan the `recentHistory` array for messages with overlapping topic keywords
-   - Count same-topic exchanges; check for explicit depth triggers ("more", "details", "everything", "full rundown", "elaborate")
-   - Return depth level: 1, 2, or 3
+1. **Update `matchPhoneToTour`** to also return the sender's `role` from the contact record (it already has this data, just discards it). Return signature becomes `{ tourId, senderName, senderRole }`.
 
-2. Before the AI call, compute depth and inject it into the system prompt:
-   - Replace the static "keep it under 300 characters" line with the depth-aware protocol
-   - Set `max_tokens` based on depth level
+2. **Add first-contact detection** after conversation history is built (around line 628). Check if `recentHistory.length === 0` (no prior messages exist for this phone + tour combo).
 
-3. The topic detection uses simple keyword groups (not AI) to keep latency zero:
-   - Schedule: load-in, doors, soundcheck, curfew, show time, set time
-   - Venue tech: haze, rigging, steel, power, docks, labor, union, staging, SPL
-   - Logistics: hotel, routing, bus, truck, travel, drive, fly
-   - Contacts: PM, TM, LD, FOH, name-based lookups
-   - Guest list: tickets, guest, comp, will call
+3. **Add confirmation handler**: If it IS first contact:
+   - Fetch the tour's abbreviated name from `tour_metadata` (the `tour_code` or `akb_id` field), falling back to the full tour name if no abbreviation exists
+   - Send identity confirmation SMS: "Hey [Name]! This is TELA for [TourCode]. I have you as [Role]. Text YES to confirm or let me know if anything's off."
+   - Log the outbound, return empty TwiML, skip the AI call entirely
 
-No database changes required. No new tables or columns needed. This is purely a logic change within the existing edge function.
+4. **Add confirmation response handler**: Before the main AI flow, check if the most recent outbound message to this user contains the identity confirmation pattern. If the user's reply is affirmative (YES, yeah, correct, yep, that's me, confirmed), send a brief welcome: "Confirmed! You're all set. Ask me anything about the tour -- schedule, venues, contacts, hotels. I'm here 24/7." Then fall through to process normally on subsequent texts. If they reply negatively, send: "No worries. Reach out to your Tour Admin to update your info."
+
+### Flow Diagram
+
+```text
+First text arrives
+  |
+  v
+Match phone -> tour + name + role
+  |
+  v
+Check conversation history
+  |
+  +-- History exists? --> Normal TELA flow (Progressive Depth, etc.)
+  |
+  +-- No history (first contact)?
+        |
+        v
+      Send: "Hey [Name]! This is TELA for [TourCode]. I have you as [Role]. Text YES to confirm."
+        |
+        v
+      User replies YES --> "Confirmed! You're all set."
+      User replies NO  --> "No worries. Contact your Tour Admin."
+```
+
+### Edge Cases
+
+- **User's first text IS a confirmation reply (e.g. "yes")**: Won't trigger since there's no prior outbound confirmation message to match against
+- **User ignores confirmation and asks a question**: After the confirmation was sent, if their next message is not affirmative/negative, treat it as confirmed (they're engaging with the system) and process normally
+- **Tour code not set**: Fall back to the full tour name from the `tours` table
+
+### No Database Changes Required
+
+All data needed (name, role, tour code) already exists in the contacts, tours, and tour_metadata tables.
+
