@@ -1,50 +1,35 @@
 
 
-## Fix: TELA Not Finding Labor Notes (City Matching + Date Window Bug)
+## Critical Security Fix: Bunk Stash Privacy Leak in TELA
 
-### Root Cause
+### Problem
+The TELA chat backend (`akb-chat` edge function) uses the **service-role admin client** to fetch `user_artifacts`, which **bypasses all Row-Level Security**. This means when any user asks TELA a question, ALL artifacts from the tour are loaded into the AI context — including other users' private Bunk Stash items (financial data, HR notes, NDAs, etc.).
 
-Two linked bugs prevent TELA from returning VAN data when a user asks about a specific venue by partial city name:
+Line 124 of `supabase/functions/akb-chat/index.ts`:
+```text
+admin.from("user_artifacts").select("...").eq("tour_id", tid).limit(20)
+```
+No visibility or user_id filter is applied.
 
-1. **City matching is too strict**: The user texted "Search labor notes for Belmont" but the known city is "Belmont Park, NY". The matching logic checks if the full `cityName` ("belmont park") is contained in the message — but the message only contains "belmont", not "belmont park". So `targetCities` comes back empty.
+### Fix
 
-2. **Date window excludes the venue**: With no city match, the system falls back to "next 5 upcoming events" (March 5-13), which excludes UBS Arena on March 15. The VAN data — which contains extensive labor notes — is never fetched.
+**File: `supabase/functions/akb-chat/index.ts`**
 
-The VAN database already has all the labor data (full union rules, straight-time, split calls, show calls, meal breaks, cancellation policies, camera ops notes). TELA just can't see it.
+1. **Filter out `bunk_stash` artifacts that don't belong to the requesting user**
+   - The function already has access to the authenticated user's ID (from JWT validation)
+   - Modify the artifacts query to only include:
+     - Artifacts with visibility `tourtext` or `condobunk` (shared with the team)
+     - Artifacts with visibility `bunk_stash` **only if** `user_id` matches the requesting user
+   - Implementation: Use an `.or()` filter:
+     ```text
+     .or(`visibility.in.(tourtext,condobunk),and(visibility.eq.bunk_stash,user_id.eq.${userId})`)
+     ```
 
-### Solution
+2. **Label Bunk Stash artifacts in the prompt context** so TELA knows not to share private content in responses visible to others (defense-in-depth).
 
-**File: `supabase/functions/tourtext-inbound/index.ts`**
+### What This Changes
+- Only 1 line in the artifacts query + minor prompt adjustment
+- No database changes needed — RLS policies are already correct for direct client access
+- The leak only exists because the admin client bypasses RLS
 
-#### 1. Fix city matching to support partial/substring matches (lines 210-219)
-
-Current logic: `msgLower.includes(cityName)` where `cityName` = "belmont park"
-- This requires the FULL city name to appear in the message
-
-New logic: Also check if ANY word from the cityName (3+ chars) appears in the message, and if that word is unique enough to avoid false positives. Specifically:
-- Keep exact substring match as primary
-- Add fallback: split `cityName` into words, if the FIRST word (3+ chars) matches and it's not a common word, count it as a match
-- Example: "belmont" matches "Belmont Park, NY" via the first-word rule
-
-#### 2. Use `effectiveCities` (not just `targetCities`) for date window calculation (lines 605-633)
-
-Currently the date window logic uses `targetCities` but the city-carryover populates `effectiveCities`. The date window branch should use `effectiveCities` so carried-over cities also expand the window correctly.
-
-#### 3. Increase the default "no city" event window from 5 to 8 (line 639)
-
-When no city/venue/date is mentioned, the system currently shows the next 5 upcoming events. Increasing to 8 ensures broader coverage for generic queries like "Labor notes" that don't specify a venue.
-
-### Technical Details
-
-| Change | Lines | Description |
-|--------|-------|-------------|
-| City matching | 210-219 | Add first-word partial match for multi-word city names |
-| Date window | 605 | Use `effectiveCities` instead of `targetCities` |
-| Default window | 639 | Change `Math.min(4, ...)` to `Math.min(7, ...)` for 8 events |
-
-### Expected Result
-- "Search labor notes for Belmont" -- matches "Belmont Park, NY", date window includes March 15, VAN labor data returned
-- "Labor notes" (no city) -- wider default window now includes March 15, all VANs in range shown
-- Existing exact matches (e.g., "Boston", "Cleveland") continue to work unchanged
-
-### Single file change + redeploy. No database changes.
+### Single file edit + redeploy. No database migration needed.
