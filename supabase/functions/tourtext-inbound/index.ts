@@ -672,7 +672,7 @@ If the message says "+1" or "plus one" after a name, that means 2 tickets total 
     console.log("Date window:", { startDate, endDate });
 
     // --- Filtered AKB data fetches ---
-    const [eventsRes, contactsRes, vansRes, tourRes, routingRes, policiesRes, recentInbound, recentOutbound] = await Promise.all([
+    const [eventsRes, contactsRes, vansRes, tourRes, routingRes, policiesRes, recentInbound, recentOutbound, artifactsRes] = await Promise.all([
       admin.from("schedule_events")
         .select("event_date, venue, city, load_in, show_time, doors, soundcheck, curfew, notes")
         .eq("tour_id", matchedTourId)
@@ -715,6 +715,12 @@ If the message says "+1" or "plus one" after a name, that means 2 tickets total 
         .eq("tour_id", matchedTourId)
         .order("created_at", { ascending: false })
         .limit(5),
+      admin.from("user_artifacts")
+        .select("title, content, artifact_type")
+        .eq("tour_id", matchedTourId)
+        .eq("visibility", "tourtext")
+        .order("updated_at", { ascending: false })
+        .limit(20),
     ]);
 
     console.log("Events in context:", (eventsRes.data || []).length, (eventsRes.data || []).map((e: any) => e.city));
@@ -824,6 +830,13 @@ If the message says "+1" or "plus one" after a name, that means 2 tickets total 
     const policiesSection = (policiesRes.data || []).length > 0
       ? (policiesRes.data || []).map((p: any) => `${p.policy_type}: ${JSON.stringify(p.policy_data)}`).join("\n")
       : "(No policies set)";
+    const artifactsSection = (artifactsRes.data || []).length > 0
+      ? (artifactsRes.data || []).map((a: any) =>
+          `${a.title} (${a.artifact_type}): ${(a.content || "").substring(0, 1500)}`
+        ).join("\n\n")
+      : "(No TourText artifacts)";
+
+    console.log("TourText artifacts in context:", (artifactsRes.data || []).length);
 
     const akbContext = `
 Tour: ${tourName}
@@ -843,6 +856,9 @@ ${routingSection}
 
 Tour Policies (guest list, safety SOPs):
 ${policiesSection}
+
+Tour Artifacts (crew-shared notes & info):
+${artifactsSection}
 `.substring(0, 16000);
 
     // --- Progressive Depth ---
@@ -884,6 +900,8 @@ When the user sends a short follow-up (like "PM?" after asking about load-in), u
 VENUE DATA: The "Venue Advance Notes (VANs)" section contains the PRIMARY source for venue-specific details like haze policies, labor/union info, rigging distances, power specs, dock logistics, staging notes, curfew, SPL limits, and more. ALWAYS check VANs first when asked about any venue-specific topic.
 
 ROUTING DATA: The "Routing & Hotels" section has hotel names, check-in/out dates, and bus/truck notes. Check here for hotel questions.
+
+TOUR ARTIFACTS: The "Tour Artifacts" section contains crew-shared notes, checklists, and info published by tour staff (WiFi passwords, department SOPs, packing lists, etc.). Check here for general tour info questions.
 
 AKB DATA:
 ${akbContext}`,
