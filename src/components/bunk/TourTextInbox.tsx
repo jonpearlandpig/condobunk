@@ -260,9 +260,19 @@ export const TourTextInbox = ({ tourId }: { tourId: string }) => {
                         <span className="text-sm font-medium">
                           {msg.sender_name || "Unknown"}
                         </span>
-                        <span className="text-xs font-mono text-muted-foreground">
+                        <a
+                          href={`tel:${msg.from_phone}`}
+                          className="text-xs font-mono text-muted-foreground/70 hover:text-foreground hover:underline transition-colors"
+                        >
                           {maskPhone(msg.from_phone)}
-                        </span>
+                        </a>
+                        <a
+                          href={`sms:${msg.from_phone}`}
+                          className="p-0.5 rounded text-muted-foreground/50 hover:text-foreground transition-colors"
+                          aria-label="Reply via SMS"
+                        >
+                          <MessageSquareText className="h-3 w-3" />
+                        </a>
                         <Badge variant="outline" className="text-[10px] font-mono">
                           {msg.category.replace("_", " ")}
                         </Badge>

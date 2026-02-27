@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { ArrowLeft, Send, X } from "lucide-react";
+import { ArrowLeft, Phone, Send, X } from "lucide-react";
 import type { SidebarContact } from "@/hooks/useSidebarContacts";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
@@ -117,6 +117,15 @@ const DMChatScreen = ({ contact, tourId, userId, isContactOnline, onClose, isDem
             <span className={`h-2 w-2 rounded-full shrink-0 ${isContactOnline ? "bg-success" : "bg-muted-foreground/30"}`} />
           </div>
           {contact.role && <p className="text-[10px] font-mono text-muted-foreground/60 truncate">{contact.role}</p>}
+          {contact.phone && (
+            <a
+              href={`tel:${contact.phone}`}
+              className="inline-flex items-center gap-1 text-[10px] font-mono text-muted-foreground/70 hover:text-foreground hover:underline transition-colors"
+            >
+              <Phone className="h-2.5 w-2.5" />
+              {contact.phone}
+            </a>
+          )}
         </div>
       </div>
 
