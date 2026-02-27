@@ -1,65 +1,65 @@
 
-Goal: fully enforce “Bunk Stash is private per user” and stop stale leaked answers from being reused in TELA.
+## Fix: Sync VAN Production Contacts to Contacts Table
 
-What I found
-- The backend filter on `user_artifacts` in `supabase/functions/akb-chat/index.ts` is now correct and RLS data is consistent:
-  - Caleb has 2 `bunk_stash` artifacts.
-  - Jonathan has 1 `condobunk` artifact.
-  - SQL equivalent of the current filter only returns Jonathan’s own/shared artifacts.
-- The leak you’re seeing now is from conversation contamination:
-  - First private answer was generated in older function deployment (`version 191`).
-  - Later messages were generated in current deployment (`version 194`), but those runs reused prior assistant turns from the same thread.
-  - `BunkChat` sends full thread history (`user + assistant`) back to `akb-chat`, so old leaked assistant content can keep influencing new answers.
+### Problem
+The Venue Partners sidebar shows "NO CONTACTS" for most venues despite the VAN (Venue Advance Notes) data containing production contact and house rigger contact information for nearly every venue. 
 
-Implementation plan
+There are 13 VANs with embedded contact data but only 4 venue contacts in the `contacts` table. The document extraction process created VAN records but didn't always populate the `contacts` table from the embedded `production_contact` and `house_rigger_contact` fields.
 
-1) Harden `akb-chat` history handling so stale assistant leaks can’t be reused
-- File: `supabase/functions/akb-chat/index.ts`
-- Changes:
-  - Build a sanitized model history from **user messages only** (drop prior assistant messages from the request payload before calling the model).
-  - Cap sanitized history (e.g., last 20 user turns) for deterministic behavior.
-  - Add strict prompt rule: prior conversation text is untrusted context; factual answers must come only from current AKB data section.
-  - Keep existing artifact query filter (already correct).
-- Why this is needed:
-  - Prevents old leaked assistant text in the thread from being used as a source in future responses.
+### Solution
 
-2) Add explicit artifact-allowlist guardrail in prompt context
-- File: `supabase/functions/akb-chat/index.ts`
-- Changes:
-  - Include a compact list of accessible artifact titles in prompt context (derived from filtered query results).
-  - Add rule: if requested artifact isn’t in the accessible list, respond with “not available in your accessible artifacts” and do not infer.
-- Why this is needed:
-  - Defense-in-depth against model drift/hallucination around artifact names.
+Create a one-time backfill edge function and also fix the extraction pipeline to always sync VAN contacts going forward.
 
-3) Contain already-leaked thread content in the web chat UI
-- File: `src/pages/bunk/BunkChat.tsx`
-- Changes:
-  - On thread load, fetch currently accessible artifact titles (RLS-scoped).
-  - Detect assistant messages citing artifact sources (`[Source: Artifact — ...]`).
-  - If citation doesn’t match accessible titles, replace rendered content with a redacted notice (non-destructive UI redaction).
-- Why this is needed:
-  - You currently still “see” old leaked responses in existing threads; this removes visible exposure immediately without risky bulk deletes.
+### Changes
 
-4) Apply same outbound-history safety to mini TELA entry point
-- File: `src/components/bunk/VenueTelaMini.tsx`
-- Changes:
-  - Ensure request payload to `akb-chat` sends user-intent context only (not prior assistant output), matching the new privacy-safe pattern.
-- Why this is needed:
-  - Keeps behavior consistent across both TELA entry points and prevents reintroducing contamination through mini chat.
+**1. New edge function: `backfill-van-contacts`**
+- Reads all `venue_advance_notes` for a given tour
+- For each VAN, extracts `production_contact` and `house_rigger_contact` from `van_data`
+- Normalizes phone numbers and names (strip annotations like "Cell:", "Direct:", role suffixes)
+- Upserts into `contacts` table with `scope = 'VENUE'`, matching on tour_id + venue + name to avoid duplicates
+- Maps VAN `venue_name` to the closest `schedule_events.venue` using fuzzy matching so sidebar grouping works
+- Returns count of contacts created/updated
 
-5) Verification checklist (end-to-end)
-- Test as Jonathan in an existing contaminated thread:
-  - Ask “Bus one code?” / “Bus driver checklist?” → should refuse if not in Jonathan-visible artifacts.
-  - Previously leaked assistant rows should display as redacted notices.
-- Test as Jonathan in a fresh thread:
-  - Same prompts should not reveal Caleb’s private stash.
-- Test as Caleb:
-  - Caleb still gets his own `bunk_stash` answers.
-- Regression check:
-  - Shared `condobunk`/`tourtext` artifacts remain accessible to tour members.
-  - Progressive follow-ups still work with user-only history.
+**2. Update `extract-document/index.ts`**
+- After VAN upsert, add a step that syncs `production_contact` and `house_rigger_contact` into the `contacts` table
+- This ensures future extractions automatically populate venue contacts
 
-Technical notes
-- No schema change required.
-- No policy change required (RLS is already correct).
-- Main issue is trust boundary of conversation history, not raw table access.
+**3. Admin UI trigger**
+- Add a "Sync VAN Contacts" button to the Admin page (or invoke automatically after extraction) that calls the backfill function
+
+### Technical Details
+
+| Item | Detail |
+|------|--------|
+| New file | `supabase/functions/backfill-van-contacts/index.ts` |
+| Modified file | `supabase/functions/extract-document/index.ts` |
+| Modified file | `src/pages/bunk/BunkAdmin.tsx` (optional trigger button) |
+| Database changes | None -- uses existing `contacts` table |
+
+### Contact Field Mapping
+
+```text
+VAN production_contact -> contacts row:
+  name    -> contacts.name (strip role suffix like "- Event Production Coordinator")
+  phone   -> contacts.phone (extract first phone, strip "Cell:", "Direct:" prefixes)
+  email   -> contacts.email
+  role    -> "Production Contact"
+  venue   -> matched schedule_events.venue (fuzzy)
+  scope   -> "VENUE"
+  tour_id -> from VAN
+
+VAN house_rigger_contact -> contacts row (if name exists):
+  name    -> contacts.name
+  phone   -> contacts.phone
+  email   -> contacts.email
+  role    -> "House Rigger"
+  venue   -> matched schedule_events.venue (fuzzy)
+  scope   -> "VENUE"
+  tour_id -> from VAN
+```
+
+### Fuzzy Venue Name Matching
+VAN venue names don't always match schedule event venue names exactly (e.g., "Allen War Memorial Coliseum" vs "Allen County War Memorial Coliseum", "Wells Fargo Center / Xfinity Mobile Arena" vs "Xfinity Mobile Arena"). The backfill will use substring matching to find the best schedule venue name so contacts appear correctly in the sidebar grouping.
+
+### Expected Result
+After running the backfill, all 13+ venues with VAN data will have their production contacts and house riggers visible in the Venue Partners sidebar. Future extractions will automatically sync contacts.
