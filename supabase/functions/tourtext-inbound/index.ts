@@ -367,12 +367,23 @@ Deno.serve(async (req) => {
     const normalized = normalizePhone(fromPhone);
     const { tourId: matchedTourId, senderName, senderRole } = await matchPhoneToTour(admin, normalized);
 
-    // Log inbound SMS
+    // Auto-categorize using topic keywords
+    const inboundTopics = extractTopics(messageBody);
+    const category = inboundTopics.has("guest_list") ? "guest_list"
+      : inboundTopics.has("venue_tech") ? "venue_tech"
+      : inboundTopics.has("schedule") ? "schedule"
+      : inboundTopics.has("logistics") ? "logistics"
+      : inboundTopics.has("contacts") ? "contacts"
+      : inboundTopics.has("catering") ? "catering"
+      : "general";
+
+    // Log inbound SMS with category
     const { error: inboundErr } = await admin.from("sms_inbound").insert({
       from_phone: fromPhone,
       message_text: messageBody,
       tour_id: matchedTourId,
       sender_name: senderName !== "Unknown" ? senderName : null,
+      category,
     });
     if (inboundErr) {
       console.error("Failed to log inbound SMS:", inboundErr.message);
