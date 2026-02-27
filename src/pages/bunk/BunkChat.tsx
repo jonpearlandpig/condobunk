@@ -205,7 +205,11 @@ const BunkChat = () => {
           Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({
-          messages: allMessages.map(m => ({ role: m.role, content: m.content })),
+          // SECURITY: Only send user messages to prevent conversation contamination
+          // from old assistant responses that may contain leaked private data
+          messages: allMessages
+            .filter(m => m.role === "user")
+            .map(m => ({ role: m.role, content: m.content })),
           ...getPayloadTourIds(),
         }),
       });
