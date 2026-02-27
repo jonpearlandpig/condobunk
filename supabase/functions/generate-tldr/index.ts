@@ -56,7 +56,7 @@ Deno.serve(async (req) => {
         messages: [
           {
             role: "system",
-            content: `You are a tour operations briefing assistant. Given tour data, produce exactly 4-5 items that give a tour manager a quick snapshot of what they're dealing with right now.
+            content: `You are a tour operations briefing assistant. Given tour data, produce exactly 4-6 items that give a tour manager a quick snapshot of what they're dealing with right now.
 
 The data includes time horizons: next_24h, next_3_days, and next_7_days. Use these to prioritize urgency. Each event includes a "tour" field with the tour name.
 
@@ -66,6 +66,21 @@ Focus on:
 3. THIS WEEK (next 7 days): Broader view of what's coming up this week.
 4. Conflicts or problems that need attention (any timeframe)
 5. Open knowledge gaps that could block advance work
+
+RECENT UPDATES (IMPORTANT):
+If "recent_artifact_updates" or "recent_akb_changes" contain entries, include 1-2 briefing items summarizing the most notable recent changes. Examples:
+- "Tour Wi-Fi info was updated in TourText." (set actionable: true, route: "/bunk/artifacts")
+- "W2 Post Show Food notes added to CondoBunk." (set actionable: true, route: "/bunk/artifacts")
+- "TELA updated Gainbridge Fieldhouse venue info." (set actionable: true, route: "/bunk/changelog")
+For artifact updates, use route "/bunk/artifacts". For AKB changelog items, use route "/bunk/changelog".
+
+PATTERN DETECTION (CRITICAL):
+If "pattern_artifacts" contains multiple entries of the same type (e.g., W1 and W2 post-show food), compare their content for repeated vendors/restaurants/suppliers. If the same vendor appears in consecutive weeks, flag it with a specific callout like:
+- "W2 Post Show Food includes Five Guys again (also in W1 Stop 002 and Stop 004) — consider rotating."
+Set actionable: true and route: "/bunk/artifacts" for pattern items.
+
+PREDICTIVE NUDGES:
+Look for patterns that suggest upcoming issues: same hotel chains, same catering, same vendors across multiple stops. Don't just report data — surface the insight.
 
 STRICT RULES — you MUST follow these exactly:
 - NEVER use the phrase "first show." Always say "next scheduled event" or "next date on the calendar."
@@ -78,10 +93,16 @@ STRICT RULES — you MUST follow these exactly:
 - Use specific dates and venue names from the data
 - If there are conflicts, lead with those
 - Don't be generic — reference actual data points
-- Return ONLY a JSON array of objects with "text" (string) and "actionable" (boolean)
-- Set "actionable" to true for items that describe a problem, conflict, missing data, or issue that needs resolution
+- Return ONLY a JSON array of objects with "text" (string), "actionable" (boolean), and optionally "route" (string)
+- Set "actionable" to true for items that describe a problem, conflict, missing data, issue, update, or pattern alert
 - Set "actionable" to false for informational/status items
-- Example: [{"text":"KOH Advance: 2 duplicate entries for Mar 5-6 with conflicting venue info — needs review.","actionable":true},{"text":"KOH Advance: Next scheduled event is Feb 25 at Rock Nashville, Nashville, TN.","actionable":false}]`,
+- The "route" field is optional. Use it when the item points to a specific section:
+  - Artifact updates/patterns -> "/bunk/artifacts"
+  - Changelog items -> "/bunk/changelog"
+  - Schedule changes -> "/bunk/calendar"
+  - Conflicts -> "/bunk/conflicts"
+  - Gaps -> "/bunk/gaps"
+- Example: [{"text":"KOH Advance: 2 duplicate entries for Mar 5-6 with conflicting venue info — needs review.","actionable":true,"route":"/bunk/conflicts"},{"text":"Tour Wi-Fi info updated in TourText.","actionable":true,"route":"/bunk/artifacts"},{"text":"KOH Advance: Next scheduled event is Feb 25 at Rock Nashville, Nashville, TN.","actionable":false}]`,
           },
           {
             role: "user",
@@ -104,7 +125,7 @@ STRICT RULES — you MUST follow these exactly:
     let content = data.choices?.[0]?.message?.content || "[]";
     content = content.replace(/^```(?:json)?\s*\n?/i, "").replace(/\n?```\s*$/i, "").trim();
 
-    let items: Array<{ text: string; actionable: boolean }>;
+    let items: Array<{ text: string; actionable: boolean; route?: string }>;
     try {
       const arrayMatch = content.match(/\[[\s\S]*\]/);
       if (arrayMatch) {

@@ -81,7 +81,7 @@ const BunkOverview = () => {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState("");
   const [deletingTour, setDeletingTour] = useState<{ id: string; name: string } | null>(null);
-  const [tldr, setTldr] = useState<Array<{ text: string; actionable: boolean }>>([]);
+  const [tldr, setTldr] = useState<Array<{ text: string; actionable: boolean; route?: string }>>([]);
   const [tldrLoading, setTldrLoading] = useState(false);
   const [eventDates, setEventDates] = useState<Array<{ id: string; event_date: string; tour_id: string; venue: string | null; city: string | null; show_time: string | null; load_in: string | null; notes: string | null }>>([]);
   const [vanRecords, setVanRecords] = useState<any[]>([]);
@@ -215,7 +215,9 @@ const BunkOverview = () => {
       // Gather data for the briefing
       const today = new Date().toISOString().split("T")[0];
 
-      const [eventsRes, gapsRes, conflictsRes] = await Promise.all([
+      const cutoff48h = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString();
+
+      const [eventsRes, gapsRes, conflictsRes, recentArtifactsRes, akbChangeLogRes, patternArtifactsRes] = await Promise.all([
         supabase
           .from("schedule_events")
           .select("event_date, venue, city, notes, tour_id")
@@ -235,6 +237,32 @@ const BunkOverview = () => {
           .in("tour_id", tourIds)
           .eq("resolved", false)
           .limit(10),
+        // Recent artifact updates (last 48h, tourtext/condobunk visibility)
+        supabase
+          .from("user_artifacts")
+          .select("title, artifact_type, visibility, updated_at, content")
+          .in("tour_id", tourIds)
+          .in("visibility", ["tourtext", "condobunk"])
+          .gte("updated_at", cutoff48h)
+          .order("updated_at", { ascending: false })
+          .limit(10),
+        // Recent AKB changelog (last 48h)
+        supabase
+          .from("akb_change_log")
+          .select("change_summary, entity_type, severity, created_at")
+          .in("tour_id", tourIds)
+          .gte("created_at", cutoff48h)
+          .order("created_at", { ascending: false })
+          .limit(10),
+        // Pattern artifacts (post show food, catering, etc.) for cross-week comparison
+        supabase
+          .from("user_artifacts")
+          .select("title, content, updated_at")
+          .in("tour_id", tourIds)
+          .in("visibility", ["tourtext", "condobunk"])
+          .or("title.ilike.%post show%,title.ilike.%catering%,title.ilike.%food%,title.ilike.%meal%")
+          .order("updated_at", { ascending: false })
+          .limit(20),
       ]);
 
       const upcomingEvents = eventsRes.data || [];
@@ -274,6 +302,27 @@ const BunkOverview = () => {
         day_title: e.notes?.split("\n")[0] || null,
       });
 
+      // Build recent updates context
+      const recentArtifactUpdates = (recentArtifactsRes.data || []).map(a => ({
+        title: a.title,
+        artifact_type: a.artifact_type,
+        visibility: a.visibility,
+        updated_at: a.updated_at,
+        content_preview: (a.content || "").substring(0, 500),
+      }));
+
+      const recentAkbChanges = (akbChangeLogRes.data || []).map(c => ({
+        change_summary: c.change_summary,
+        entity_type: c.entity_type,
+        severity: c.severity,
+        created_at: c.created_at,
+      }));
+
+      const patternArtifacts = (patternArtifactsRes.data || []).map(a => ({
+        title: a.title,
+        content: (a.content || "").substring(0, 800),
+      }));
+
       const context = JSON.stringify({
         today,
         tours: tours.map(t => ({ name: t.name, state: t.akb_state })),
@@ -285,6 +334,9 @@ const BunkOverview = () => {
         upcoming_events: upcomingEvents.map(mapEvent),
         open_gaps: openGaps.map(g => ({ question: g.question?.substring(0, 80), domain: g.domain })),
         open_conflicts: openConflicts.map(c => ({ type: c.conflict_type, severity: c.severity })),
+        recent_artifact_updates: recentArtifactUpdates,
+        recent_akb_changes: recentAkbChanges,
+        pattern_artifacts: patternArtifacts,
       });
 
       const resp = await supabase.functions.invoke("generate-tldr", {
@@ -569,7 +621,15 @@ const BunkOverview = () => {
                       <p className="text-sm text-foreground/90 leading-relaxed font-mono">
                         {item.text}
                       </p>
-                      {item.actionable && (
+                      {item.actionable && item.route ? (
+                        <button
+                          onClick={() => navigate(item.route!)}
+                          className="mt-1 inline-flex items-center gap-1.5 text-[11px] font-mono tracking-wider text-primary hover:text-primary/80 transition-colors min-h-[44px] sm:min-h-0 px-2 -mx-2 sm:px-0 sm:mx-0"
+                        >
+                          <ChevronRight className="h-3 w-3" />
+                          VIEW
+                        </button>
+                      ) : item.actionable ? (
                          <button
                           onClick={() => navigate(`/bunk/chat?q=${encodeURIComponent(item.text)}`)}
                           className="mt-1 inline-flex items-center gap-1.5 text-[11px] font-mono tracking-wider text-primary hover:text-primary/80 transition-colors min-h-[44px] sm:min-h-0 px-2 -mx-2 sm:px-0 sm:mx-0"
@@ -577,7 +637,7 @@ const BunkOverview = () => {
                           <ChevronRight className="h-3 w-3" />
                           ASK TELA
                         </button>
-                      )}
+                      ) : null}
                     </div>
                   </div>
                 ))}
