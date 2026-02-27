@@ -39,6 +39,7 @@ const TOPIC_GROUPS: Record<string, string[]> = {
   schedule: ["load-in", "load in", "loadin", "doors", "soundcheck", "curfew", "show time", "showtime", "set time", "settime", "set list", "setlist", "downbeat", "changeover"],
   venue_tech: ["haze", "haze machine", "fog", "rigging", "steel", "power", "docks", "dock", "labor", "union", "staging", "spl", "decibel", "db limit", "pyro", "confetti", "co2", "laser", "barricade", "pit"],
   logistics: ["hotel", "routing", "bus", "truck", "travel", "drive", "fly", "flight", "van", "lobby", "checkout", "check-in", "checkin", "day room"],
+  tour_info: ["wifi", "wi-fi", "wi fi", "password", "network", "internet", "tour code", "house code", "ssid", "sop", "packing list", "checklist"],
   contacts: ["pm", "tm", "ld", "foh", "monitor", "prod manager", "production manager", "tour manager", "lighting director", "stage manager", "sm", "who is", "who's the", "contact"],
   guest_list: ["ticket", "tickets", "guest", "comp", "will call", "list", "plus one", "+1", "allotment"],
   catering: ["catering", "hospitality", "buyout", "meal", "breakfast", "lunch", "dinner", "rider"],
@@ -811,36 +812,97 @@ If the message says "+1" or "plus one" after a name, that means 2 tickets total 
       console.log(`User ${senderName} skipped confirmation, treating as confirmed and processing message`);
     }
 
+    // --- DETERMINISTIC ARTIFACT MATCHING ---
+    // For WiFi/password/general tour-note intents, check artifacts directly and skip LLM
+    const ARTIFACT_KEYWORDS = /\b(wifi|wi-?fi|wi fi|password|network|internet|tour code|house code|ssid)\b/i;
+    if (ARTIFACT_KEYWORDS.test(messageBody) && (artifactsRes.data || []).length > 0) {
+      const msgLower = messageBody.toLowerCase();
+      const matchedArtifact = (artifactsRes.data || []).find((a: any) => {
+        const titleLower = (a.title || "").toLowerCase();
+        const contentLower = (a.content || "").toLowerCase();
+        // Match if artifact title or content contains the keyword
+        return (
+          (msgLower.includes("wifi") || msgLower.includes("wi-fi") || msgLower.includes("wi fi")) &&
+          (titleLower.includes("wifi") || titleLower.includes("wi-fi") || titleLower.includes("wi fi") ||
+           contentLower.includes("wifi") || contentLower.includes("wi-fi") || contentLower.includes("wi fi"))
+        ) || (
+          msgLower.includes("password") &&
+          (titleLower.includes("password") || contentLower.includes("password"))
+        ) || (
+          msgLower.includes("internet") &&
+          (titleLower.includes("internet") || titleLower.includes("wifi") || titleLower.includes("wi-fi"))
+        ) || (
+          msgLower.includes("network") &&
+          (titleLower.includes("network") || titleLower.includes("wifi") || titleLower.includes("wi-fi"))
+        );
+      });
+
+      if (matchedArtifact) {
+        const artifactReply = toPlaintext(matchedArtifact.content || matchedArtifact.title);
+        console.log(`Deterministic artifact match: "${matchedArtifact.title}" for message "${messageBody}"`);
+
+        await sendTwilioSms(fromPhone, artifactReply, TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_PHONE_NUMBER);
+        await admin.from("sms_outbound").insert({
+          to_phone: fromPhone,
+          message_text: artifactReply,
+          tour_id: matchedTourId,
+          status: "sent",
+        });
+        return emptyTwiml();
+      }
+    }
+
     // Build Schedule Facts — authoritative city list for prompt hardening
     const scheduleFacts = (allEvents || []).map((e: any) =>
       `${e.event_date} | ${e.city || "?"} | ${e.venue || "TBD"}`
     ).join("\n");
 
-    // Build focused context
-    const scheduleSection = JSON.stringify(eventsRes.data || [], null, 1);
-    const contactsSection = JSON.stringify(contactsRes.data || [], null, 1);
-    const vansSection = (vansRes.data || []).length > 0
-      ? (vansRes.data || []).map((v: any) =>
-          `${v.venue_name} (${v.city || "?"}, ${v.event_date || "?"}):\n${JSON.stringify(v.van_data, null, 1)}`
-        ).join("\n\n")
-      : "(No VAN data for this date range)";
-    const routingSection = (routingRes.data || []).length > 0
-      ? JSON.stringify(routingRes.data, null, 1)
-      : "(No routing data for this date range)";
-    const policiesSection = (policiesRes.data || []).length > 0
-      ? (policiesRes.data || []).map((p: any) => `${p.policy_type}: ${JSON.stringify(p.policy_data)}`).join("\n")
-      : "(No policies set)";
+    // Build focused context with SECTION-LEVEL BUDGETS
+    // Artifacts and schedule go first (high priority), VANs get capped (often 30k+)
+    const BUDGET_ARTIFACTS = 4000;
+    const BUDGET_SCHEDULE = 3000;
+    const BUDGET_CONTACTS = 2000;
+    const BUDGET_ROUTING = 2000;
+    const BUDGET_POLICIES = 1000;
+    const BUDGET_VANS = 4000;
+    const TOTAL_CAP = 16000;
+
     const artifactsSection = (artifactsRes.data || []).length > 0
       ? (artifactsRes.data || []).map((a: any) =>
           `${a.title} (${a.artifact_type}): ${(a.content || "").substring(0, 1500)}`
-        ).join("\n\n")
+        ).join("\n\n").substring(0, BUDGET_ARTIFACTS)
       : "(No TourText artifacts)";
 
-    console.log("TourText artifacts in context:", (artifactsRes.data || []).length);
+    const scheduleSection = JSON.stringify(eventsRes.data || [], null, 1).substring(0, BUDGET_SCHEDULE);
+    const contactsSection = JSON.stringify(contactsRes.data || [], null, 1).substring(0, BUDGET_CONTACTS);
+    const vansSection = ((vansRes.data || []).length > 0
+      ? (vansRes.data || []).map((v: any) =>
+          `${v.venue_name} (${v.city || "?"}, ${v.event_date || "?"}):\n${JSON.stringify(v.van_data, null, 1)}`
+        ).join("\n\n")
+      : "(No VAN data for this date range)").substring(0, BUDGET_VANS);
+    const routingSection = ((routingRes.data || []).length > 0
+      ? JSON.stringify(routingRes.data, null, 1)
+      : "(No routing data for this date range)").substring(0, BUDGET_ROUTING);
+    const policiesSection = ((policiesRes.data || []).length > 0
+      ? (policiesRes.data || []).map((p: any) => `${p.policy_type}: ${JSON.stringify(p.policy_data)}`).join("\n")
+      : "(No policies set)").substring(0, BUDGET_POLICIES);
 
+    console.log("Section lengths:", JSON.stringify({
+      artifacts_len: artifactsSection.length,
+      schedule_len: scheduleSection.length,
+      contacts_len: contactsSection.length,
+      vans_len: vansSection.length,
+      routing_len: routingSection.length,
+      policies_len: policiesSection.length,
+    }));
+
+    // Artifacts FIRST so they are never truncated
     const akbContext = `
 Tour: ${tourName}
 Date window: ${startDate} to ${endDate}
+
+Tour Artifacts (crew-shared notes, WiFi, SOPs, checklists):
+${artifactsSection}
 
 Schedule:
 ${scheduleSection}
@@ -848,18 +910,15 @@ ${scheduleSection}
 Contacts:
 ${contactsSection}
 
-Venue Advance Notes (VANs) — contains haze, rigging, labor, power, docks, staging, curfew, SPL limits, and all venue-specific technical details:
-${vansSection}
-
 Routing & Hotels:
 ${routingSection}
 
 Tour Policies (guest list, safety SOPs):
 ${policiesSection}
 
-Tour Artifacts (crew-shared notes & info):
-${artifactsSection}
-`.substring(0, 16000);
+Venue Advance Notes (VANs) — haze, rigging, labor, power, docks, staging, curfew, SPL limits:
+${vansSection}
+`.substring(0, TOTAL_CAP);
 
     // --- Progressive Depth ---
     const depth = detectDepth(messageBody, recentHistory.map(m => ({ role: m.role, content: m.content })));
@@ -901,16 +960,20 @@ VENUE DATA: The "Venue Advance Notes (VANs)" section contains the PRIMARY source
 
 ROUTING DATA: The "Routing & Hotels" section has hotel names, check-in/out dates, and bus/truck notes. Check here for hotel questions.
 
-TOUR ARTIFACTS (CRITICAL — CHECK FIRST FOR GENERAL TOUR QUESTIONS): The "Tour Artifacts" section in AKB DATA contains crew-shared notes, checklists, and info published by tour staff. This includes WiFi passwords, department SOPs, packing lists, and other tour-wide information. When asked about WiFi, passwords, general tour info, or any topic that could be a shared note — ALWAYS check Tour Artifacts FIRST before saying you don't have the information.
+TOUR ARTIFACTS (CRITICAL — CHECK FIRST): The "Tour Artifacts" section is at the TOP of AKB DATA. It contains crew-shared notes published by tour staff: WiFi passwords, department SOPs, packing lists, checklists, and other tour-wide info. ALWAYS check Tour Artifacts FIRST for general tour questions before saying you don't have the information.
+
+AVAILABLE ARTIFACTS: ${(artifactsRes.data || []).map((a: any) => `"${a.title}" (${a.artifact_type})`).join(", ") || "None"}
 
 AKB DATA:
 ${akbContext}`,
       },
     ];
 
-    // Add conversation history
+    // Add conversation history — USER MESSAGES ONLY to prevent assistant-history contamination
     for (const msg of recentHistory.slice(0, -1)) {
-      chatMessages.push({ role: msg.role, content: msg.content });
+      if (msg.role === "user") {
+        chatMessages.push({ role: "user", content: msg.content });
+      }
     }
 
     chatMessages.push({
