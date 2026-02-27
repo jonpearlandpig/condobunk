@@ -117,7 +117,7 @@ Deno.serve(async (req) => {
     // Search contacts table for matching phone
     const { data: matchedContacts } = await admin
       .from("contacts")
-      .select("tour_id, name, role, scope")
+      .select("tour_id, name, role, scope, phone")
       .not("phone", "is", null);
 
     let matchedTourId: string | null = null;
