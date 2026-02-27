@@ -1,65 +1,53 @@
 
-## Fix: Sync VAN Production Contacts to Contacts Table
+
+## Add TourText Artifacts to SMS TELA Context
 
 ### Problem
-The Venue Partners sidebar shows "NO CONTACTS" for most venues despite the VAN (Venue Advance Notes) data containing production contact and house rigger contact information for nearly every venue. 
+The `tourtext-inbound` edge function never queries the `user_artifacts` table. When a crew member texts "Tour wifi?", TELA has no idea that a TourText artifact titled "Tour Wi-Fi" exists with the WiFi password. The data is there (visibility: `tourtext`, created by Caleb) but it's simply not loaded into the AI context.
 
-There are 13 VANs with embedded contact data but only 4 venue contacts in the `contacts` table. The document extraction process created VAN records but didn't always populate the `contacts` table from the embedded `production_contact` and `house_rigger_contact` fields.
+### Fix
 
-### Solution
+**File: `supabase/functions/tourtext-inbound/index.ts`**
 
-Create a one-time backfill edge function and also fix the extraction pipeline to always sync VAN contacts going forward.
+1. **Add a `user_artifacts` query** to the parallel data fetch block (line 675). Fetch artifacts where `visibility = 'tourtext'` and `tour_id` matches. These are public tour info artifacts meant for all crew. Cap at 20 artifacts, content trimmed to 1,500 chars each (matching the akb-chat pattern).
 
-### Changes
+2. **Build an artifacts section** and append it to the `akbContext` string before the substring cap.
 
-**1. New edge function: `backfill-van-contacts`**
-- Reads all `venue_advance_notes` for a given tour
-- For each VAN, extracts `production_contact` and `house_rigger_contact` from `van_data`
-- Normalizes phone numbers and names (strip annotations like "Cell:", "Direct:", role suffixes)
-- Upserts into `contacts` table with `scope = 'VENUE'`, matching on tour_id + venue + name to avoid duplicates
-- Maps VAN `venue_name` to the closest `schedule_events.venue` using fuzzy matching so sidebar grouping works
-- Returns count of contacts created/updated
+3. **Add a prompt instruction** telling TELA to check User Artifacts for tour-wide info like WiFi, policies, notes.
 
-**2. Update `extract-document/index.ts`**
-- After VAN upsert, add a step that syncs `production_contact` and `house_rigger_contact` into the `contacts` table
-- This ensures future extractions automatically populate venue contacts
+### Changes (single file)
 
-**3. Admin UI trigger**
-- Add a "Sync VAN Contacts" button to the Admin page (or invoke automatically after extraction) that calls the backfill function
-
-### Technical Details
-
-| Item | Detail |
-|------|--------|
-| New file | `supabase/functions/backfill-van-contacts/index.ts` |
-| Modified file | `supabase/functions/extract-document/index.ts` |
-| Modified file | `src/pages/bunk/BunkAdmin.tsx` (optional trigger button) |
-| Database changes | None -- uses existing `contacts` table |
-
-### Contact Field Mapping
-
+In the `Promise.all` block (~line 675), add:
 ```text
-VAN production_contact -> contacts row:
-  name    -> contacts.name (strip role suffix like "- Event Production Coordinator")
-  phone   -> contacts.phone (extract first phone, strip "Cell:", "Direct:" prefixes)
-  email   -> contacts.email
-  role    -> "Production Contact"
-  venue   -> matched schedule_events.venue (fuzzy)
-  scope   -> "VENUE"
-  tour_id -> from VAN
-
-VAN house_rigger_contact -> contacts row (if name exists):
-  name    -> contacts.name
-  phone   -> contacts.phone
-  email   -> contacts.email
-  role    -> "House Rigger"
-  venue   -> matched schedule_events.venue (fuzzy)
-  scope   -> "VENUE"
-  tour_id -> from VAN
+admin.from("user_artifacts")
+  .select("title, content, artifact_type")
+  .eq("tour_id", matchedTourId)
+  .eq("visibility", "tourtext")
+  .order("updated_at", { ascending: false })
+  .limit(20)
 ```
 
-### Fuzzy Venue Name Matching
-VAN venue names don't always match schedule event venue names exactly (e.g., "Allen War Memorial Coliseum" vs "Allen County War Memorial Coliseum", "Wells Fargo Center / Xfinity Mobile Arena" vs "Xfinity Mobile Arena"). The backfill will use substring matching to find the best schedule venue name so contacts appear correctly in the sidebar grouping.
+Build the section (~line 826):
+```text
+const artifactsSection = (artifactsRes.data || []).length > 0
+  ? (artifactsRes.data || []).map(a =>
+      `${a.title} (${a.artifact_type}): ${(a.content || "").substring(0, 1500)}`
+    ).join("\n\n")
+  : "(No TourText artifacts)";
+```
+
+Append to `akbContext` (after Tour Policies):
+```text
+Tour Artifacts (crew-shared notes & info):
+${artifactsSection}
+```
+
+Add to system prompt:
+```text
+TOUR ARTIFACTS: The "Tour Artifacts" section contains crew-shared notes, checklists, and info published by tour staff (WiFi passwords, department SOPs, packing lists, etc.). Check here for general tour info questions.
+```
 
 ### Expected Result
-After running the backfill, all 13+ venues with VAN data will have their production contacts and house riggers visible in the Venue Partners sidebar. Future extractions will automatically sync contacts.
+When Jon texts "Tour wifi?", TELA will see the "Tour Wi-Fi" artifact in its context and respond with the WiFi network name and password.
+
+Only `tourtext` visibility artifacts are included -- no private Bunk Stash or internal CondoBunk data leaks into SMS.
