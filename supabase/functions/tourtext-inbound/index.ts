@@ -121,11 +121,11 @@ function extractRelevanceFromMessage(
   knownCities: string[],
   knownVenues: string[],
   eventDates: string[],
-): { targetDates: string[]; targetCity: string | null; targetVenue: string | null } {
+): { targetDates: string[]; targetCities: string[]; targetVenue: string | null } {
   const today = new Date();
   const msgLower = message.toLowerCase();
   let targetDates: string[] = [];
-  let targetCity: string | null = null;
+  const targetCities: string[] = [];
   let targetVenue: string | null = null;
 
   // --- Date extraction ---
@@ -200,9 +200,8 @@ function extractRelevanceFromMessage(
     const cityLower = city.toLowerCase();
     // Extract just city name (strip state abbrev like ", IN" or ", OH")
     const cityName = cityLower.split(",")[0].trim();
-    if (cityName.length >= 3 && msgLower.includes(cityName)) {
-      targetCity = city;
-      break;
+    if (cityName.length >= 3 && msgLower.includes(cityName) && !targetCities.includes(city)) {
+      targetCities.push(city);
     }
   }
 
@@ -219,7 +218,7 @@ function extractRelevanceFromMessage(
     }
   }
 
-  return { targetDates, targetCity, targetVenue };
+  return { targetDates, targetCities, targetVenue };
 }
 
 // --- Match phone to contact on an ACTIVE tour, preferring nearest future event ---
@@ -513,7 +512,7 @@ If the message says "+1" or "plus one" after a name, that means 2 tickets total 
     const knownVenues = [...new Set((allEvents || []).map((e: any) => e.venue).filter(Boolean))];
     const eventDates = (allEvents || []).map((e: any) => e.event_date).filter(Boolean) as string[];
 
-    const { targetDates, targetCity, targetVenue } = extractRelevanceFromMessage(
+    const { targetDates, targetCities, targetVenue } = extractRelevanceFromMessage(
       messageBody,
       knownCities as string[],
       knownVenues as string[],
@@ -531,13 +530,15 @@ If the message says "+1" or "plus one" after a name, that means 2 tickets total 
       const after = new Date(d); after.setDate(after.getDate() + 1);
       startDate = before.toISOString().split("T")[0];
       endDate = after.toISOString().split("T")[0];
-    } else if (targetCity || targetVenue) {
-      // City/venue mentioned but no date: find events at that city/venue
+    } else if (targetCities.length > 0 || targetVenue) {
+      // City/venue mentioned but no date: find events at those cities/venue
       const cityVenueEvents = (allEvents || []).filter((e: any) => {
-        if (targetCity && e.city) {
+        if (targetCities.length > 0 && e.city) {
           const eCityName = e.city.toLowerCase().split(",")[0].trim();
-          const tCityName = targetCity.toLowerCase().split(",")[0].trim();
-          if (eCityName.includes(tCityName) || tCityName.includes(eCityName)) return true;
+          for (const tc of targetCities) {
+            const tCityName = tc.toLowerCase().split(",")[0].trim();
+            if (eCityName.includes(tCityName) || tCityName.includes(eCityName)) return true;
+          }
         }
         if (targetVenue && e.venue) {
           if (e.venue.toLowerCase().includes(targetVenue.toLowerCase().substring(0, 10))) return true;
@@ -546,7 +547,9 @@ If the message says "+1" or "plus one" after a name, that means 2 tickets total 
       });
       if (cityVenueEvents.length > 0) {
         const dates = cityVenueEvents.map((e: any) => e.event_date).filter(Boolean).sort();
-        startDate = dates[0];
+        const firstD = new Date(dates[0]);
+        firstD.setDate(firstD.getDate() - 1);
+        startDate = firstD.toISOString().split("T")[0];
         const lastD = new Date(dates[dates.length - 1]);
         lastD.setDate(lastD.getDate() + 1);
         endDate = lastD.toISOString().split("T")[0];
