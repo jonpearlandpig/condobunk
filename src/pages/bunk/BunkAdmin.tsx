@@ -1,6 +1,8 @@
 import { useState, useEffect, useCallback } from "react";
-import { Settings, RefreshCw, Plus, Trash2, Copy, CheckCircle, XCircle, Clock, Loader2, Users, Mail, Link, UserPlus, Send, Eye } from "lucide-react";
+import { Settings, RefreshCw, Plus, Trash2, Copy, CheckCircle, XCircle, Clock, Loader2, Users, Mail, Link, UserPlus, Send, Eye, MessageSquareText } from "lucide-react";
 import { TourTextDashboard } from "@/components/bunk/TourTextDashboard";
+import { TourTextInbox } from "@/components/bunk/TourTextInbox";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { GuestListManager } from "@/components/bunk/GuestListManager";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -893,8 +895,25 @@ const BunkAdmin = () => {
       <Separator />
       <GuestListManager tourId={selectedTourId} />
 
-      {/* TourText Intelligence Dashboard */}
-      <TourTextDashboard tourId={selectedTourId} />
+      {/* TourText */}
+      <div className="space-y-3">
+        <div className="flex items-center gap-2">
+          <MessageSquareText className="h-5 w-5 text-primary" />
+          <h2 className="text-lg font-semibold">TourText</h2>
+        </div>
+        <Tabs defaultValue="inbox">
+          <TabsList>
+            <TabsTrigger value="inbox">Inbox</TabsTrigger>
+            <TabsTrigger value="analysis">TELA Analysis</TabsTrigger>
+          </TabsList>
+          <TabsContent value="inbox">
+            <TourTextInbox tourId={selectedTourId} />
+          </TabsContent>
+          <TabsContent value="analysis">
+            <TourTextDashboard tourId={selectedTourId} />
+          </TabsContent>
+        </Tabs>
+      </div>
 
       {/* Demo Users Section — only visible to tour owner */}
       {selectedTour && user && selectedTour.owner_id === user.id && (
