@@ -207,14 +207,30 @@ function extractRelevanceFromMessage(
     }
   }
 
-  // --- City matching ---
+  // --- City matching (supports partial/first-word matches for multi-word cities) ---
+  const COMMON_CITY_WORDS = new Set(["new", "old", "north", "south", "east", "west", "san", "saint", "los", "las", "fort", "mount", "lake", "park", "city", "beach", "bay", "port", "del", "the"]);
   for (const city of knownCities) {
     if (!city) continue;
     const cityLower = city.toLowerCase();
     // Extract just city name (strip state abbrev like ", IN" or ", OH")
     const cityName = cityLower.split(",")[0].trim();
-    if (cityName.length >= 3 && msgLower.includes(cityName) && !targetCities.includes(city)) {
+    if (cityName.length < 3) continue;
+    if (targetCities.includes(city)) continue;
+
+    // Primary: exact substring match (e.g., "boston" in message matches "Boston, MA")
+    if (msgLower.includes(cityName)) {
       targetCities.push(city);
+      continue;
+    }
+
+    // Fallback: first-word partial match for multi-word city names
+    // e.g., "belmont" in message matches "Belmont Park, NY"
+    const cityWords = cityName.split(/\s+/).filter(w => w.length >= 3);
+    if (cityWords.length > 1) {
+      const firstWord = cityWords[0];
+      if (firstWord.length >= 4 && !COMMON_CITY_WORDS.has(firstWord) && msgLower.includes(firstWord)) {
+        targetCities.push(city);
+      }
     }
   }
 
@@ -602,12 +618,12 @@ If the message says "+1" or "plus one" after a name, that means 2 tickets total 
       const after = new Date(d); after.setDate(after.getDate() + 1);
       startDate = before.toISOString().split("T")[0];
       endDate = after.toISOString().split("T")[0];
-    } else if (targetCities.length > 0 || targetVenue) {
-      // City/venue mentioned but no date: find events at those cities/venue
+    } else if (effectiveCities.length > 0 || targetVenue) {
+      // City/venue mentioned (or carried over) but no date: find events at those cities/venue
       const cityVenueEvents = (allEvents || []).filter((e: any) => {
-        if (targetCities.length > 0 && e.city) {
+        if (effectiveCities.length > 0 && e.city) {
           const eCityName = e.city.toLowerCase().split(",")[0].trim();
-          for (const tc of targetCities) {
+          for (const tc of effectiveCities) {
             const tCityName = tc.toLowerCase().split(",")[0].trim();
             if (eCityName.includes(tCityName) || tCityName.includes(eCityName)) return true;
           }
@@ -636,7 +652,7 @@ If the message says "+1" or "plus one" after a name, that means 2 tickets total 
       const futureEvents = (allEvents || []).filter((e: any) => e.event_date && e.event_date >= todayStr);
       if (futureEvents.length > 0) {
         startDate = futureEvents[0].event_date;
-        const lastIdx = Math.min(4, futureEvents.length - 1);
+        const lastIdx = Math.min(7, futureEvents.length - 1);
         const lastD = new Date(futureEvents[lastIdx].event_date);
         lastD.setDate(lastD.getDate() + 1);
         endDate = lastD.toISOString().split("T")[0];
