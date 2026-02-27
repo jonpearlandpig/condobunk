@@ -42,6 +42,7 @@ const TOPIC_GROUPS: Record<string, string[]> = {
   contacts: ["pm", "tm", "ld", "foh", "monitor", "prod manager", "production manager", "tour manager", "lighting director", "stage manager", "sm", "who is", "who's the", "contact"],
   guest_list: ["ticket", "tickets", "guest", "comp", "will call", "list", "plus one", "+1", "allotment"],
   catering: ["catering", "hospitality", "buyout", "meal", "breakfast", "lunch", "dinner", "rider"],
+  follow_up: ["special notes", "notes", "anything else", "what about", "details", "more", "anything special", "restrictions", "rules", "policy", "policies", "what else", "other info", "other details", "more info"],
 };
 
 function extractTopics(text: string): Set<string> {
@@ -75,24 +76,36 @@ function detectDepth(
 
   // Topic-based depth: count how many prior exchanges touch the same topic
   const currentTopics = extractTopics(currentMessage);
-  if (currentTopics.size === 0) return 1;
+
+  // Short-message auto-bump: if message is under 30 chars and there's recent history, it's a follow-up
+  const isShortFollowUp = currentMessage.length < 30 && recentHistory.length >= 1;
+
+  if (currentTopics.size === 0) {
+    // No topic match, but short follow-up should still bump depth
+    return isShortFollowUp ? 2 : 1;
+  }
 
   let sameTopicCount = 0;
   for (const msg of recentHistory) {
     const msgTopics = extractTopics(msg.content);
-    // Check overlap
+    // Check overlap — also count follow_up overlapping with any prior topic
     for (const t of currentTopics) {
       if (msgTopics.has(t)) {
         sameTopicCount++;
         break;
       }
     }
+    // If current is follow_up, count any prior topic as overlap
+    if (currentTopics.has("follow_up") && msgTopics.size > 0) {
+      sameTopicCount++;
+    }
   }
 
   // 2+ prior messages on same topic = depth 3, 1 prior = depth 2
   if (sameTopicCount >= 3) return 3;
   if (sameTopicCount >= 1) return 2;
-  return 1;
+  // Short follow-up still gets depth 2 minimum
+  return isShortFollowUp ? 2 : 1;
 }
 
 // --- Strip markdown for SMS ---
@@ -691,11 +704,13 @@ If the message says "+1" or "plus one" after a name, that means 2 tickets total 
     console.log("Events in context:", (eventsRes.data || []).length, (eventsRes.data || []).map((e: any) => e.city));
     const tourName = tourRes.data?.name || "Unknown Tour";
 
-    // Build conversation history — USER MESSAGES ONLY to prevent self-contamination
-    // (Prior wrong assistant replies were reinforcing future wrong answers)
+    // Build conversation history — interleaved user + assistant with guardrails
     const historyMessages: { role: string; content: string; ts: string }[] = [];
     for (const m of (recentInbound.data || [])) {
       historyMessages.push({ role: "user", content: m.message_text, ts: m.created_at });
+    }
+    for (const m of (recentOutbound.data || [])) {
+      historyMessages.push({ role: "assistant", content: m.message_text, ts: m.created_at });
     }
     historyMessages.sort((a, b) => a.ts.localeCompare(b.ts));
     const recentHistory = historyMessages.slice(-6);
@@ -816,7 +831,7 @@ ${policiesSection}
 
     // --- Progressive Depth ---
     const depth = detectDepth(messageBody, recentHistory.map(m => ({ role: m.role, content: m.content })));
-    const depthMaxTokens = depth === 3 ? 600 : depth === 2 ? 300 : 150;
+    const depthMaxTokens = depth === 3 ? 800 : depth === 2 ? 500 : 250;
     const depthInstruction = `RESPONSE DEPTH PROTOCOL:
 - Depth 1 (first ask on a topic): One punchy line, under 160 chars. Just the single key fact.
 - Depth 2 (follow-up or "tell me more"): 2-4 lines of operational context, under 480 chars.
@@ -831,6 +846,8 @@ Current depth level: ${depth}`;
       {
         role: "system",
         content: `You are TELA, the Tour Intelligence for "${tourName}". A crew member named ${senderName} just texted the TourText number (888-340-0564). Reply in SHORT, punchy SMS style — no markdown, no headers, no source citations. Be direct and factual. If you don't know, say so honestly.
+
+SELF-CORRECTION RULE: If your previous replies in the conversation history contained errors or incomplete information, correct them in your current response — do NOT repeat previous mistakes.
 
 ${depthInstruction}
 
