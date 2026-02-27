@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback, useMemo } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
-import { invokeWithTimeout } from "@/lib/invoke-with-timeout";
+import { invokeWithTimeout, type InvokeError } from "@/lib/invoke-with-timeout";
 import { useAuth } from "@/hooks/useAuth";
 import { useTour } from "@/hooks/useTour";
 import { useToast } from "@/hooks/use-toast";
@@ -291,9 +291,30 @@ const BunkDocuments = () => {
 
   const isNetworkTimeout = (err: any): boolean => {
     if (!err) return false;
+    const code = (err as InvokeError).code;
+    if (code === "TIMEOUT") return true;
     const msg = (err.message || "").toLowerCase();
     return msg.includes("timed out") || msg.includes("load failed") || msg.includes("aborted") ||
       msg.includes("network") || msg.includes("failed to fetch") || msg.includes("connection closed");
+  };
+
+  const isProviderError = (err: any): boolean => {
+    if (!err) return false;
+    const code = (err as InvokeError).code;
+    return code === "AI_PAYMENT_REQUIRED" || code === "AI_RATE_LIMIT" || code === "EXTRACTION_EMPTY_RESULT" || code === "AI_PROVIDER_ERROR";
+  };
+
+  const getProviderErrorMessage = (err: InvokeError): { title: string; description: string } => {
+    switch (err.code) {
+      case "AI_PAYMENT_REQUIRED":
+        return { title: "AI credits exhausted", description: "Extraction paused — credits will refresh automatically. Try again later." };
+      case "AI_RATE_LIMIT":
+        return { title: "Rate limit reached", description: "Too many requests — please wait a few minutes and try again." };
+      case "EXTRACTION_EMPTY_RESULT":
+        return { title: "No data found", description: err.message || "No extractable structure found in this document." };
+      default:
+        return { title: "AI provider error", description: err.message || "The AI service encountered an error. Please try again later." };
+    }
   };
 
   const runExtraction = async (docId: string) => {
@@ -305,6 +326,13 @@ const BunkDocuments = () => {
       );
 
       if (error) {
+        // Known provider errors — do NOT poll, these are permanent failures
+        if (isProviderError(error)) {
+          const { title, description } = getProviderErrorMessage(error as InvokeError);
+          toast({ title, description, variant: "destructive" });
+          return;
+        }
+
         // Connection may have dropped but extraction could have succeeded on the backend
         if (isNetworkTimeout(error)) {
           console.log("[BunkDocuments] Extraction call timed out, polling backend...", error.message);
@@ -403,6 +431,11 @@ const BunkDocuments = () => {
         { tour_id: selectedTourId }
       );
       if (error) {
+        if (isProviderError(error)) {
+          const { title, description } = getProviderErrorMessage(error as InvokeError);
+          toast({ title, description, variant: "destructive" });
+          return;
+        }
         if (isNetworkTimeout(error)) {
           console.log("[BunkDocuments] Backfill timed out, polling for results...");
           toast({ title: "Re-extracting…", description: "Connection dropped — checking if it completed." });

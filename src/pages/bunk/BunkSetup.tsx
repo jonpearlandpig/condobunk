@@ -1,7 +1,7 @@
 import { useState, useCallback, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
-import { invokeWithTimeout } from "@/lib/invoke-with-timeout";
+import { invokeWithTimeout, type InvokeError } from "@/lib/invoke-with-timeout";
 import { useAuth } from "@/hooks/useAuth";
 import { useTour } from "@/hooks/useTour";
 import { useToast } from "@/hooks/use-toast";
@@ -217,6 +217,22 @@ const BunkSetup = () => {
       );
 
       if (error) {
+        const invokeErr = error as InvokeError;
+
+        // Known provider errors — do NOT poll, these are permanent failures
+        if (invokeErr.code === "AI_PAYMENT_REQUIRED") {
+          toast({ title: "AI credits exhausted", description: "Extraction paused — credits will refresh automatically. Try again later.", variant: "destructive" });
+          return;
+        }
+        if (invokeErr.code === "AI_RATE_LIMIT") {
+          toast({ title: "Rate limit reached", description: "Too many requests — please wait a few minutes and try again.", variant: "destructive" });
+          return;
+        }
+        if (invokeErr.code === "EXTRACTION_EMPTY_RESULT") {
+          toast({ title: "No data found", description: invokeErr.message || "No extractable structure found in this document.", variant: "destructive" });
+          return;
+        }
+
         // Connection may have dropped but extraction could have succeeded on the backend.
         // Poll the document row to check.
         console.log("[BunkSetup] Extraction call failed, checking if backend succeeded...", error.message);
