@@ -518,7 +518,65 @@ If the message says "+1" or "plus one" after a name, that means 2 tickets total 
       knownVenues as string[],
       eventDates,
     );
-    console.log("Smart Context:", JSON.stringify({ targetCities, targetVenue, targetDates, knownCities }));
+    // --- City carryover for short follow-ups ---
+    let effectiveCities = [...targetCities];
+    const shortFollowUp = /^(yes|yeah|yep|yup|no|nope|nah|it is|it's not|that's wrong|wrong|correct|right|exactly|absolutely|definitely|for sure|not true|true|bull|bs|come on|dude|bro|seriously|really|what|huh)/i;
+    if (effectiveCities.length === 0 && shortFollowUp.test(messageBody.trim())) {
+      const { data: lastInbound } = await admin
+        .from("sms_inbound")
+        .select("message_text")
+        .eq("from_phone", fromPhone)
+        .eq("tour_id", matchedTourId)
+        .order("created_at", { ascending: false })
+        .limit(2);
+
+      const priorMsg = lastInbound && lastInbound.length > 1 ? lastInbound[1] : null;
+      if (priorMsg) {
+        const priorExtracted = extractRelevanceFromMessage(
+          priorMsg.message_text,
+          knownCities as string[],
+          knownVenues as string[],
+          eventDates,
+        );
+        if (priorExtracted.targetCities.length > 0) {
+          effectiveCities = priorExtracted.targetCities;
+          console.log("City carryover from prior message:", effectiveCities);
+        }
+      }
+    }
+
+    console.log("Smart Context:", JSON.stringify({ targetCities, effectiveCities, targetVenue, targetDates }));
+
+    // --- Deterministic schedule-presence responder ---
+    const schedulePresenceIntent = /\b(on\s+(the\s+)?schedule|show\??|on\s+tour|playing|not\s+on\s+(the\s+)?schedule|scheduled)\b/i;
+    const isScheduleQuestion = schedulePresenceIntent.test(messageBody) ||
+      (shortFollowUp.test(messageBody.trim()) && effectiveCities.length > 0);
+
+    if (isScheduleQuestion && effectiveCities.length > 0) {
+      const results: string[] = [];
+      for (const city of effectiveCities) {
+        const cityName = city.toLowerCase().split(",")[0].trim();
+        const match = (allEvents || []).find((e: any) =>
+          e.city && e.city.toLowerCase().split(",")[0].trim().includes(cityName)
+        );
+        if (match) {
+          results.push(`${city} — ${match.event_date} at ${match.venue || "TBD"}`);
+        } else {
+          results.push(`${city} — not found on this tour's schedule`);
+        }
+      }
+      const deterministicReply = results.join("\n");
+      console.log("Deterministic schedule reply:", deterministicReply);
+
+      await sendTwilioSms(fromPhone, deterministicReply, TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_PHONE_NUMBER);
+      await admin.from("sms_outbound").insert({
+        to_phone: fromPhone,
+        message_text: deterministicReply,
+        tour_id: matchedTourId,
+        status: "sent",
+      });
+      return emptyTwiml();
+    }
 
     // Determine date window for filtered queries
     let startDate: string;
@@ -633,13 +691,11 @@ If the message says "+1" or "plus one" after a name, that means 2 tickets total 
     console.log("Events in context:", (eventsRes.data || []).length, (eventsRes.data || []).map((e: any) => e.city));
     const tourName = tourRes.data?.name || "Unknown Tour";
 
-    // Build conversation history from recent messages
+    // Build conversation history — USER MESSAGES ONLY to prevent self-contamination
+    // (Prior wrong assistant replies were reinforcing future wrong answers)
     const historyMessages: { role: string; content: string; ts: string }[] = [];
     for (const m of (recentInbound.data || [])) {
       historyMessages.push({ role: "user", content: m.message_text, ts: m.created_at });
-    }
-    for (const m of (recentOutbound.data || [])) {
-      historyMessages.push({ role: "assistant", content: m.message_text, ts: m.created_at });
     }
     historyMessages.sort((a, b) => a.ts.localeCompare(b.ts));
     const recentHistory = historyMessages.slice(-6);
@@ -718,6 +774,11 @@ If the message says "+1" or "plus one" after a name, that means 2 tickets total 
       console.log(`User ${senderName} skipped confirmation, treating as confirmed and processing message`);
     }
 
+    // Build Schedule Facts — authoritative city list for prompt hardening
+    const scheduleFacts = (allEvents || []).map((e: any) =>
+      `${e.event_date} | ${e.city || "?"} | ${e.venue || "TBD"}`
+    ).join("\n");
+
     // Build focused context
     const scheduleSection = JSON.stringify(eventsRes.data || [], null, 1);
     const contactsSection = JSON.stringify(contactsRes.data || [], null, 1);
@@ -772,6 +833,16 @@ Current depth level: ${depth}`;
         content: `You are TELA, the Tour Intelligence for "${tourName}". A crew member named ${senderName} just texted the TourText number (888-340-0564). Reply in SHORT, punchy SMS style — no markdown, no headers, no source citations. Be direct and factual. If you don't know, say so honestly.
 
 ${depthInstruction}
+
+=== SCHEDULE FACTS (AUTHORITATIVE — DO NOT CONTRADICT) ===
+${scheduleFacts}
+=== END SCHEDULE FACTS ===
+
+SCHEDULE AUTHORITY RULES:
+- The Schedule Facts section above is the SINGLE SOURCE OF TRUTH for which cities are on the tour.
+- If a city appears in Schedule Facts, it IS on the schedule. NEVER say it is not.
+- Missing VAN data, tech specs, or routing details does NOT mean a city is unscheduled.
+- If asked about a city that IS in Schedule Facts, confirm it is scheduled and provide the date/venue.
 
 IMPORTANT: When the user asks about a role (like "PM", "Production Manager", "TM", etc.), search the CONTACTS list for someone with that role — do NOT assume they are asking about themselves. Short abbreviations like "PM" = Production Manager, "TM" = Tour Manager, "LD" = Lighting Director, "FOH" = Front of House.
 
