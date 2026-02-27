@@ -1,108 +1,100 @@
 
 
-## Proactive Bug Hunt: Fuzzy Connections and Silent Failures
+## Comprehensive Bug Prevention: TourText Smart Context + Cross-System Parity Fixes
 
-After auditing all edge functions and data flows, here are the issues I found -- categorized by risk level.
+### Problem Summary
 
----
+There are two categories of remaining issues:
 
-### HIGH RISK -- Will Cause Bugs
+1. **TourText (SMS) is blind to venue-specific data** -- The previously approved "Smart Context Selection" plan has not been implemented yet. The function dumps all 26 schedule events (~14K chars) + all 13 VANs (~48K chars) = ~63K chars into a 12K character limit. VAN data (haze, labor, rigging, power, docks) gets completely truncated.
 
-**1. Multi-Tour Contact Collision (tourtext-inbound)**
-Right now, when someone texts in, the function scans ALL contacts across ALL tours and picks the FIRST match. If your phone number appears as a contact on multiple tours, it will always resolve to whichever tour the database returns first -- which is non-deterministic.
+2. **akb-chat (web app) has its own data gaps** -- Missing `doors`, `soundcheck`, `curfew` from schedule queries, missing `tour_routing` and `tour_policies` data entirely.
 
-**Fix:** Filter contacts to only ACTIVE tours, then prefer the most recently active tour (latest upcoming event). Add `.eq("scope", "TOUR")` to avoid matching venue staff contacts.
-
-**2. Contacts Query Fetches ALL Contacts Globally (tourtext-inbound)**
-The phone-matching query on line 118 does `.from("contacts").select(...).not("phone", "is", null)` with NO tour filter. This scans every contact in the entire database. With growth, this becomes slow and returns incorrect matches.
-
-**Fix:** Restructure the query to filter by active tours, or add an index and limit scope.
-
-**3. Profile Fallback Picks Arbitrary Tour (tourtext-inbound)**
-When matching via the `profiles` table (line 149), the code does `.from("tour_members").select("tour_id").limit(1).single()` -- picking any random tour the user belongs to, with no preference for active or recent tours.
-
-**Fix:** Order by tour activity (most recent event date) or filter to only ACTIVE tours.
+3. **Venue name mismatches between tables** -- Schedule says "Allen County War Memorial Coliseum" but VAN says "Allen War Memorial Coliseum". Same for "Xfinity Mobile Arena" vs "Wells Fargo Center / Xfinity Mobile Arena". City mismatches too ("Fort Wayne, IN" vs "Ft Wayne"). Without fuzzy matching, date-based lookups for the wrong venue name will miss the VAN.
 
 ---
 
-### MEDIUM RISK -- Edge Cases That Will Confuse Users
+### Fix 1: Smart Context Selection for TourText (tourtext-inbound)
 
-**4. Guest List Regex Too Greedy (tourtext-inbound)**
-The regex `/tickets?\s*for/i` will match innocent questions like "What time do tickets for the show go on sale?" and route them into the guest list extraction flow instead of the normal Q&A flow.
+Replace the bulk-dump approach with relevance-filtered queries:
 
-**Fix:** Tighten the regex or add a secondary AI classification step before committing to the guest list path.
+**Step A -- Date/city extraction from the user's message:**
+- Regex patterns for dates: `3/5`, `March 5`, `tomorrow`, `tonight`, `next show`
+- City/venue name matching against a quick pre-query of known cities from `schedule_events`
+- Default: next 3 upcoming events if no specific date/venue mentioned
 
-**5. SMS Inbound Insert Can Fail Silently (tourtext-inbound)**
-When `matchedTourId` is null, the function inserts into `sms_inbound` with `tour_id: null`. But the `sms_inbound` table has `tour_id` typed as `uuid` -- if it's NOT nullable, this insert silently fails and the message is lost.
+**Step B -- Filtered data fetches:**
+- Schedule: only events within +/- 2 days of detected date (or next 3 upcoming)
+- VANs: match by `event_date` from the filtered schedule events (not by venue name, to avoid mismatch issues)
+- Contacts: keep full list (only 7 contacts, small)
+- Add `tour_routing` query filtered by same date range (hotel info)
+- Add `tour_policies` query (guest/safety SOPs -- small data, include all)
 
-**Fix:** Verify the column allows null, or handle the error path.
+**Step C -- Increase context cap to 16K** since filtered data will be much smaller
 
-**6. Calendar Feed Has No Auth (calendar-feed)**
-The `calendar-feed` function accepts a `tour_id` as a query parameter and returns the full schedule with no authentication. Anyone with the tour ID can see the entire schedule.
+**Step D -- Update system prompt** to tell TELA that VAN data contains venue-specific technical details (haze, rigging, labor, power, docks, etc.)
 
-**Fix:** Add a signed token or secret parameter to the calendar feed URL so it can't be guessed.
+### Fix 2: akb-chat Schedule Query Parity
 
-**7. `getClaims` Compatibility Risk (multiple functions)**
-Five edge functions use `supabase.auth.getClaims(token)`, which is a newer Supabase client method. If the client library version doesn't support it, these functions will crash silently. The `tourtext-insights`, `mt-sync`, `elevenlabs-conversation-token`, `google-drive-proxy`, and `inbound-sync` functions all use it.
-
-**Fix:** Ensure all functions using `getClaims` are on a compatible Supabase client version, or fall back to `getUser()`.
-
----
-
-### LOW RISK -- Resilience Improvements
-
-**8. No Error Handling on AI Gateway Failures (tourtext-inbound, guest list path)**
-If the AI extraction call for guest list fails (network error, timeout), the code falls through silently to the normal TELA flow. This is okay behavior, but the user gets no indication their guest list request was even detected.
-
-**9. Schedule Data Missing `doors`, `soundcheck`, `curfew` in TourText Context**
-The `tourtext-inbound` function queries schedule_events with `.select("event_date, venue, city, load_in, show_time, notes")` -- missing `doors`, `soundcheck`, and `curfew` columns that exist in the schema. If someone texts "What time are doors?" or "Soundcheck time?", TELA won't have the data.
-
-**Fix:** Add `doors, soundcheck, curfew` to the select query.
-
-**10. Conversation History Off-by-One (tourtext-inbound)**
-The history builder does `recentHistory.slice(0, -1)` to skip "the current message." But the current inbound message was already inserted into `sms_inbound` before the history query runs (line 167). So the "current message" IS in the query results, and the slice correctly removes it. However, if timing is tight (insert hasn't propagated), the slice would remove the PREVIOUS message instead.
-
-**Fix:** Filter the history query to exclude messages created in the last 2 seconds, or exclude by matching the exact message text.
-
----
-
-### Implementation Plan
-
-I'll fix items 1, 2, 3, 4, and 9 in `tourtext-inbound` as one batch -- these are all in the same file and address the most impactful issues:
-
-1. Restructure the contact matching to join with `tours` and filter by `status = 'ACTIVE'`, preferring the tour with the nearest upcoming event
-2. Add `doors, soundcheck, curfew` to the AKB data query
-3. Tighten the guest list regex to reduce false positives
-4. Add proper error logging on the sms_inbound insert
-
-Items 6 and 7 (calendar auth, getClaims) can be addressed in a follow-up pass.
-
----
-
-### Technical Details
-
-**Contact matching rewrite (items 1-3):**
-```text
-Current flow:
-  contacts (all tours, no filter) -> first phone match -> done
-
-New flow:
-  contacts (join tours where status=ACTIVE, scope=TOUR)
-    -> filter by phone match
-    -> if multiple matches, pick tour with nearest future event
-    -> fallback to profiles table with same logic
+The web-based TELA (`akb-chat`) queries schedule_events with:
+```
+.select("id, event_date, venue, city, load_in, show_time, notes")
 ```
 
-**Schedule select fix (item 9):**
-```text
-Current: "event_date, venue, city, load_in, show_time, notes"
-New:     "event_date, venue, city, load_in, show_time, doors, soundcheck, curfew, notes"
-```
+Missing: `doors`, `soundcheck`, `curfew` (same bug we fixed in tourtext-inbound). Also missing: `tour_routing` and `tour_policies` data entirely. Fix all three.
 
-**Guest list regex tightening (item 4):**
-```text
-Current: /guest\s*list|comp\s*ticket|put\s.+\s*on\s*the\s*list|tickets?\s*for|\+\s*\d|plus\s*\d|will\s*call/i
-New:     /guest\s*list|comp\s*ticket|put\s.+\s*on\s*the\s*list|will\s*call|can\s+i\s+get\s+\d|i\s+need\s+\d\s+ticket/i
-```
-Remove `tickets?\s*for` (too broad) and `\+\s*\d|plus\s*\d` (matches math/general text). Add more specific intent patterns.
+### Fix 3: Venue Name Fuzzy Matching
+
+When matching VANs to schedule events by date, use `event_date` as the primary join key rather than venue name. This avoids the "Allen County War Memorial Coliseum" vs "Allen War Memorial Coliseum" mismatch problem entirely.
+
+### Fix 4: Double-SMS Prevention
+
+Currently `tourtext-inbound` both returns a TwiML `<Message>` AND calls `sendTwilioSms()`. This can cause duplicate SMS delivery. Fix: always return empty TwiML and rely solely on the REST API send.
+
+### Fix 5: sms_inbound/sms_outbound Insert Failures with null tour_id
+
+When `matchedTourId` is null, inserts into `sms_inbound` and `sms_outbound` with `tour_id: null`. Verify the column is nullable. If not, skip the insert or use a sentinel value.
+
+---
+
+### Implementation Details
+
+**File: `supabase/functions/tourtext-inbound/index.ts`**
+
+1. Add a `extractRelevanceFromMessage()` function:
+   - Parse date patterns (`M/D`, `month D`, `tomorrow`, `tonight`, `next show`, day names)
+   - Parse city mentions by comparing against a pre-fetched list of cities from schedule_events
+   - Return `{ targetDate: string | null, targetCity: string | null }`
+
+2. Before AKB fetch, run relevance extraction:
+   - Quick query: `SELECT DISTINCT city, venue, event_date FROM schedule_events WHERE tour_id = X ORDER BY event_date`
+   - Match message against cities/venues
+   - Determine date window
+
+3. Replace bulk AKB fetch with filtered queries:
+   - Schedule: `.gte("event_date", startDate).lte("event_date", endDate)` (or next 3 upcoming)
+   - VANs: `.in("event_date", matchedDates)` (join by date, not venue name)
+   - Add: `tour_routing` filtered by same dates
+   - Add: `tour_policies` (all, they're small)
+
+4. Fix double-SMS: always return empty TwiML, remove message from TwiML responses
+
+5. Increase `.substring(0, 12000)` to `.substring(0, 16000)`
+
+**File: `supabase/functions/akb-chat/index.ts`**
+
+1. Update schedule select to include `doors, soundcheck, curfew`
+2. Add `tour_routing` and `tour_policies` queries to the parallel fetch
+3. Include routing/policies data in the AKB context section
+
+---
+
+### Expected Outcomes
+
+- "Haze for Boston?" will return the actual haze policy from the Boston VAN
+- "Distance to steel Cleveland?" will return the measurement from the Cleveland VAN
+- "Hotel in Detroit?" will return routing data
+- "What time are doors?" will return the actual doors time
+- No more duplicate SMS messages
+- Web TELA and SMS TELA will have the same data available
 
