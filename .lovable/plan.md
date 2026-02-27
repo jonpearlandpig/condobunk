@@ -1,107 +1,56 @@
 
 
-## TourText Inbox: Real-Time Auto-Categorized SMS Dashboard
+## Add Quick-Access Artifacts Under Ask TELA in Sidebar
 
-### Overview
+### What Changes
 
-Add a `category` column to every inbound TourText, auto-classify it at arrival using the existing keyword engine, enable realtime subscriptions, and build a dedicated folder-based inbox dashboard inside the admin area so tour admins can monitor crew inquiries as they happen.
+Add a new collapsible "Artifacts" section directly below the "Ask TELA" threads section in the left sidebar. This gives users quick access to view, create, and navigate to their artifacts without leaving the current page.
 
----
+### New Component
 
-### Part 1: Database Changes
+**New file: `src/components/bunk/SidebarArtifacts.tsx`**
 
-**Add `category` column to `sms_inbound`:**
+A lightweight sidebar section that:
 
-```sql
-ALTER TABLE public.sms_inbound
-  ADD COLUMN category text NOT NULL DEFAULT 'general';
+- Shows a collapsible header with the StickyNote icon, "Artifacts" label, and count badge (matching the style of "Ask TELA" and "Tour Team" sections)
+- Lists the user's most recent artifacts (up to 10) with:
+  - Title (truncated)
+  - Visibility badge icon (TourText/CondoBunk/Bunk Stash)
+  - Type icon (note/document/checklist)
+  - Relative timestamp ("2h ago")
+- Clicking an artifact navigates to `/bunk/artifacts` (the full workspace)
+- Includes a "+ New" button at the top of the expanded list that navigates to `/bunk/artifacts` with a query param to trigger creation
+- Fetches from the `user_artifacts` table, filtered by the user's tour IDs
+- Keeps the same font, spacing, and interaction patterns as `SidebarTelaThreads`
+
+### Sidebar Integration
+
+**File: `src/components/bunk/BunkSidebar.tsx`**
+
+Import and render `<SidebarArtifacts />` immediately after the `<SidebarTelaThreads />` component and before the `<Separator>` and Tour Team section. This places it logically under the TELA/chat area since artifacts are "pre-law" notes that feed into AKBs.
+
+### Data Fetching
+
+The component queries `user_artifacts` directly (no new edge function needed):
+
+```text
+SELECT id, title, artifact_type, visibility, updated_at
+FROM user_artifacts
+WHERE tour_id IN (user's tour IDs) OR user_id = current_user
+ORDER BY updated_at DESC
+LIMIT 10
 ```
 
-**Enable realtime on `sms_inbound`:**
+Existing RLS policies already allow users to read their own artifacts and tour-scoped artifacts.
 
-```sql
-ALTER PUBLICATION supabase_realtime ADD TABLE public.sms_inbound;
-```
+### No Database or Backend Changes
 
-No new RLS policies needed -- existing TA/MGMT SELECT policy already covers admin access.
+All data is already available via the existing `user_artifacts` table with current RLS policies. No migrations, no new edge functions.
 
----
+### Files Changed
 
-### Part 2: Auto-Categorize at Inbound Time
-
-**File: `supabase/functions/tourtext-inbound/index.ts`**
-
-When inserting into `sms_inbound` (around line 371), use the existing `extractTopics()` function to determine the category. Map to a single primary category:
-
-- If topics include `guest_list` -> "guest_list"
-- If topics include `schedule` -> "schedule"  
-- If topics include `venue_tech` -> "venue_tech"
-- If topics include `logistics` -> "logistics"
-- If topics include `contacts` -> "contacts"
-- If topics include `catering` -> "catering"
-- If no match -> "general"
-
-Update the insert call:
-```typescript
-const topics = extractTopics(messageBody);
-const category = topics.has("guest_list") ? "guest_list"
-  : topics.has("venue_tech") ? "venue_tech"
-  : topics.has("schedule") ? "schedule"
-  : topics.has("logistics") ? "logistics"
-  : topics.has("contacts") ? "contacts"
-  : topics.has("catering") ? "catering"
-  : "general";
-
-await admin.from("sms_inbound").insert({
-  from_phone: fromPhone,
-  message_text: messageBody,
-  tour_id: matchedTourId,
-  sender_name: senderName !== "Unknown" ? senderName : null,
-  category,
-});
-```
-
----
-
-### Part 3: New TourText Inbox Component
-
-**New file: `src/components/bunk/TourTextInbox.tsx`**
-
-A real-time, folder-based inbox with:
-
-- **Folder sidebar/tabs**: "All", "Schedule", "Venue Tech", "Logistics", "Contacts", "Guest List", "Catering", "General" -- each showing an unread count badge
-- **Message list**: Shows sender name, masked phone, message text, timestamp, and the paired outbound reply (if any) in a conversation-style view
-- **Real-time updates**: Subscribes to `postgres_changes` on `sms_inbound` filtered by `tour_id`, prepends new messages with a subtle animation
-- **Stats bar**: Total messages today, messages this hour, most active category
-- **Filter controls**: Time range selector (1h, 6h, 12h, 24h, 48h, 7d)
-
-The component fetches initial data via direct Supabase query (not an edge function) since TA/MGMT already have SELECT access on `sms_inbound` and `sms_outbound`.
-
----
-
-### Part 4: Integrate Into Admin
-
-**File: `src/pages/bunk/BunkAdmin.tsx`**
-
-Replace the existing `<TourTextDashboard>` component with tabs:
-- **Tab 1: "TourText Inbox"** -- the new real-time categorized inbox (`TourTextInbox`)
-- **Tab 2: "TELA Analysis"** -- the existing `TourTextDashboard` (AI clustering, on-demand)
-
-This keeps the AI-powered pattern analysis available while adding the always-on real-time inbox.
-
----
-
-### Part 5: Existing TourTextDashboard
-
-Keep `TourTextDashboard` as-is. It serves a different purpose (AI-powered semantic clustering for pattern alerts). The new inbox is the operational real-time view; the existing dashboard is the strategic analysis view.
-
----
-
-### Technical Notes
-
-- The `extractTopics()` function already exists in `tourtext-inbound` and handles all keyword matching -- reusing it for categorization adds zero latency
-- Realtime subscription uses Supabase's `postgres_changes` channel filtered by `tour_id` and `INSERT` events
-- Messages pair with outbound replies by matching `from_phone` (inbound) to `to_phone` (outbound) within a time window, similar to how `tourtext-insights` already does it
-- The category column defaults to `"general"` so existing historical messages still display correctly
-- Mobile-responsive: folder tabs collapse to a horizontal scrollable strip on small screens
+| File | Change |
+|------|--------|
+| `src/components/bunk/SidebarArtifacts.tsx` | New component -- collapsible artifact list for sidebar |
+| `src/components/bunk/BunkSidebar.tsx` | Import and render SidebarArtifacts after SidebarTelaThreads |
 
