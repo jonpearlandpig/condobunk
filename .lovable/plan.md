@@ -1,48 +1,40 @@
 
 
-## Fix Multi-City SMS Queries in TourText
+## Fix: TELA SMS Not Recognizing Boston
 
-### Problem
-When a user texts about two cities (e.g., "Low steel in Boston and haze in Cleveland"), TELA only finds one city and builds its data window around that single city's event date. The second city's data gets excluded, causing TELA to say it doesn't exist on the schedule.
+### Diagnosis
+Boston, MA (March 13, TD Garden) IS on the schedule for the correct tour. The multi-city code change looks logically correct. The likely issue is one of:
 
-### Root Cause
-`extractRelevanceFromMessage()` returns a single `targetCity: string | null`. It uses a `break` on first match (line 205), so only the first city found in the iteration order is captured.
+1. **Stale deployment** -- the previous deploy may not have taken effect, so the old single-city code is still running
+2. **Context not reaching AI** -- the date window or event filtering may have a subtle bug that excludes Boston's data from the AI prompt
 
-### Solution
-Change `targetCity` from a single value to an **array** (`targetCities: string[]`), and update the date window logic to cover all matched cities' event dates.
-
-### Changes
+### Plan
 
 **File: `supabase/functions/tourtext-inbound/index.ts`**
 
-1. **Update `extractRelevanceFromMessage` return type** (~line 124):
-   - Change `targetCity: string | null` to `targetCities: string[]`
-   - Remove the `break` on line 205 so all matching cities are collected
-   - Deduplicate matches
+1. **Add debug logging** after city extraction (~line 520) to confirm `targetCities` array contents:
+   ```
+   console.log("Smart Context:", JSON.stringify({ targetCities, targetVenue, targetDates }));
+   ```
 
-2. **Update the date window builder** (~lines 534-558):
-   - When multiple cities are matched, find events for ALL matched cities
-   - Build the date window spanning from the earliest to latest matched event date (+1 day buffer)
-   - This ensures Boston (March 13) and Cleveland (March 6) both fall within the window
+2. **Add debug logging** after date window calculation (~line 560) to confirm the window spans both cities:
+   ```
+   console.log("Date window:", { startDate, endDate });
+   ```
 
-3. **Update the destructuring** on line 516:
-   - Change `const { targetDates, targetCity, targetVenue }` to `const { targetDates, targetCities, targetVenue }`
+3. **Add debug logging** after event fetch (~line 630) to confirm Boston events are included in the AI context:
+   ```
+   console.log("Events in context:", (eventsRes.data || []).length, (eventsRes.data || []).map(e => e.city));
+   ```
 
-4. **Update the city/venue branch condition** on line 534:
-   - Change `targetCity` check to `targetCities.length > 0`
-   - Update city filtering logic to check against all target cities
+4. **Force redeploy** the `tourtext-inbound` function to ensure the latest code is active.
 
-### Technical Details
+### Expected Outcome
+With the logging in place, we can verify whether:
+- Both cities are detected (targetCities includes Boston, MA and Cleveland, OH)
+- The date window spans March 5-14 (covering both events)
+- Both events appear in the AI context
 
-| Area | Before | After |
-|------|--------|-------|
-| Return type | `targetCity: string \| null` | `targetCities: string[]` |
-| City matching | `break` after first match | Collect all matches |
-| Date window | Built from single city's dates | Union of all matched cities' dates |
-| Condition check | `targetCity \|\| targetVenue` | `targetCities.length > 0 \|\| targetVenue` |
+If all three are confirmed, the issue is the AI hallucinating and we may need to strengthen the system prompt to explicitly list schedule cities. If any step fails, we fix the specific issue.
 
-### Expected Result
-"Low steel in Boston and haze in Cleveland" will now match both cities. The date window will span March 5-14, including both events. TELA's context will contain schedule and VAN data for both venues, enabling a complete answer.
-
-### No database changes needed.
-
+### Minimal changes -- single file edit + redeploy.
