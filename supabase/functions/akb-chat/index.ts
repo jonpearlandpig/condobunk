@@ -112,7 +112,7 @@ Deno.serve(async (req) => {
     // Query all tours in parallel
     const allTourData = await Promise.all(
       targetTourIds.map(async (tid) => {
-        const [eventsRes, contactsRes, gapsRes, conflictsRes, docsRes, vansRes, routingRes, policiesRes] = await Promise.all([
+        const [eventsRes, contactsRes, gapsRes, conflictsRes, docsRes, vansRes, routingRes, policiesRes, artifactsRes] = await Promise.all([
           admin.from("schedule_events").select("id, event_date, venue, city, load_in, show_time, doors, soundcheck, curfew, notes").eq("tour_id", tid).order("event_date").limit(50),
           admin.from("contacts").select("id, name, role, email, phone, scope, venue").eq("tour_id", tid).limit(50),
           admin.from("knowledge_gaps").select("id, question, domain, resolved").eq("tour_id", tid).limit(20),
@@ -121,6 +121,7 @@ Deno.serve(async (req) => {
           admin.from("venue_advance_notes").select("id, venue_name, city, event_date, van_data").eq("tour_id", tid).order("event_date").limit(30),
           admin.from("tour_routing").select("event_date, city, hotel_name, hotel_checkin, hotel_checkout, hotel_confirmation, bus_notes, truck_notes, routing_notes").eq("tour_id", tid).order("event_date").limit(30),
           admin.from("tour_policies").select("policy_type, policy_data").eq("tour_id", tid).limit(10),
+          admin.from("user_artifacts").select("id, title, artifact_type, visibility, content, updated_at").eq("tour_id", tid).order("updated_at", { ascending: false }).limit(20),
         ]);
 
         const docsWithUrls = await Promise.all(
@@ -155,6 +156,7 @@ Deno.serve(async (req) => {
           vans: vansRes.data || [],
           routing: routingRes.data || [],
           policies: policiesRes.data || [],
+          artifacts: artifactsRes.data || [],
         };
       })
     );
@@ -195,6 +197,9 @@ ${JSON.stringify(td.conflicts, null, 1)}
 
 ### Active Documents:
 ${td.documents.map(d => `[${d.doc_type}] ${d.filename} (id: ${d.id})${d.file_url ? `\nDownload: ${d.file_url}` : ""}:\n${d.excerpt}`).join("\n---\n")}
+
+### User Artifacts (notes, checklists, documents):
+${(td.artifacts as any[]).length > 0 ? (td.artifacts as any[]).map((a: any) => `[${a.artifact_type}] "${a.title}" (visibility: ${a.visibility}, updated: ${a.updated_at}):\n${(a.content || "(empty)").substring(0, 1500)}`).join("\n---\n") : "(No artifacts)"}
 `;
       }).join("\n\n");
     } else {
@@ -228,6 +233,9 @@ ${JSON.stringify(td.conflicts, null, 1)}
 
 ### Active Documents (with download links):
 ${td.documents.map(d => `[${d.doc_type}] ${d.filename} (id: ${d.id})${d.file_url ? `\nDownload: ${d.file_url}` : ""}:\n${d.excerpt}`).join("\n---\n")}
+
+### User Artifacts (notes, checklists, documents):
+${(td.artifacts as any[]).length > 0 ? (td.artifacts as any[]).map((a: any) => `[${a.artifact_type}] "${a.title}" (visibility: ${a.visibility}, updated: ${a.updated_at}):\n${(a.content || "(empty)").substring(0, 1500)}`).join("\n---\n") : "(No artifacts — create one in the Artifacts panel)"}
 `;
     }
 
@@ -343,6 +351,7 @@ Examples:
 - "The parking map shows bus staging downstairs [Source: Document — 3.8.26_Parking_Downstairs.pdf]"
 - "There's a HIGH severity overlap conflict [Source: Conflict — OVERLAP_SHOW_TIMES]"
 - "Missing load-in time for Detroit [Source: Gap — load_in not listed]"
+- "Post-show food details noted in artifact [Source: Artifact — post show food]"
 
 Rules for citations:
 - EVERY piece of data you reference must have a source tag
