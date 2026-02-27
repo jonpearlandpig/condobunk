@@ -34,6 +34,67 @@ async function validateTwilioSignature(
   return computed === signature;
 }
 
+// --- Topic keyword groups for Progressive Depth ---
+const TOPIC_GROUPS: Record<string, string[]> = {
+  schedule: ["load-in", "load in", "loadin", "doors", "soundcheck", "curfew", "show time", "showtime", "set time", "settime", "set list", "setlist", "downbeat", "changeover"],
+  venue_tech: ["haze", "haze machine", "fog", "rigging", "steel", "power", "docks", "dock", "labor", "union", "staging", "spl", "decibel", "db limit", "pyro", "confetti", "co2", "laser", "barricade", "pit"],
+  logistics: ["hotel", "routing", "bus", "truck", "travel", "drive", "fly", "flight", "van", "lobby", "checkout", "check-in", "checkin", "day room"],
+  contacts: ["pm", "tm", "ld", "foh", "monitor", "prod manager", "production manager", "tour manager", "lighting director", "stage manager", "sm", "who is", "who's the", "contact"],
+  guest_list: ["ticket", "tickets", "guest", "comp", "will call", "list", "plus one", "+1", "allotment"],
+  catering: ["catering", "hospitality", "buyout", "meal", "breakfast", "lunch", "dinner", "rider"],
+};
+
+function extractTopics(text: string): Set<string> {
+  const lower = text.toLowerCase();
+  const matched = new Set<string>();
+  for (const [group, keywords] of Object.entries(TOPIC_GROUPS)) {
+    for (const kw of keywords) {
+      if (lower.includes(kw)) {
+        matched.add(group);
+        break;
+      }
+    }
+  }
+  return matched;
+}
+
+// --- Progressive Depth Detection ---
+function detectDepth(
+  currentMessage: string,
+  recentHistory: { role: string; content: string }[],
+): 1 | 2 | 3 {
+  const lower = currentMessage.toLowerCase();
+
+  // Explicit depth-3 triggers
+  const depth3Triggers = /\b(full rundown|everything about|everything on|give me everything|all the details|complete info|complete details|full breakdown|full detail|tell me everything)\b/i;
+  if (depth3Triggers.test(currentMessage)) return 3;
+
+  // Explicit depth-2 triggers
+  const depth2Triggers = /\b(tell me more|more details|more info|what else|elaborate|expand on|go deeper|details|specifics|can you explain|more about)\b/i;
+  if (depth2Triggers.test(currentMessage)) return 2;
+
+  // Topic-based depth: count how many prior exchanges touch the same topic
+  const currentTopics = extractTopics(currentMessage);
+  if (currentTopics.size === 0) return 1;
+
+  let sameTopicCount = 0;
+  for (const msg of recentHistory) {
+    const msgTopics = extractTopics(msg.content);
+    // Check overlap
+    for (const t of currentTopics) {
+      if (msgTopics.has(t)) {
+        sameTopicCount++;
+        break;
+      }
+    }
+  }
+
+  // 2+ prior messages on same topic = depth 3, 1 prior = depth 2
+  if (sameTopicCount >= 3) return 3;
+  if (sameTopicCount >= 1) return 2;
+  return 1;
+}
+
 // --- Strip markdown for SMS ---
 function toPlaintext(text: string): string {
   return text
@@ -601,11 +662,25 @@ Tour Policies (guest list, safety SOPs):
 ${policiesSection}
 `.substring(0, 16000);
 
+    // --- Progressive Depth ---
+    const depth = detectDepth(messageBody, recentHistory.map(m => ({ role: m.role, content: m.content })));
+    const depthMaxTokens = depth === 3 ? 600 : depth === 2 ? 300 : 150;
+    const depthInstruction = `RESPONSE DEPTH PROTOCOL:
+- Depth 1 (first ask on a topic): One punchy line, under 160 chars. Just the single key fact.
+- Depth 2 (follow-up or "tell me more"): 2-4 lines of operational context, under 480 chars.
+- Depth 3 (third ask or "full rundown"/"everything"): Complete detail, up to 1500 chars. Include all relevant specs, contacts, and action items.
+
+Current depth level: ${depth}`;
+
+    console.log(`Progressive Depth: level=${depth}, max_tokens=${depthMaxTokens}, message="${messageBody.substring(0, 50)}"`);
+
     // Build chat messages with history
     const chatMessages: { role: string; content: string }[] = [
       {
         role: "system",
-        content: `You are TELA, the Tour Intelligence for "${tourName}". A crew member named ${senderName} just texted the TourText number (888-340-0564). Reply in SHORT, punchy SMS style — no markdown, no headers, no source citations. Keep it under 300 characters when possible. Be direct and factual. If you don't know, say so honestly.
+        content: `You are TELA, the Tour Intelligence for "${tourName}". A crew member named ${senderName} just texted the TourText number (888-340-0564). Reply in SHORT, punchy SMS style — no markdown, no headers, no source citations. Be direct and factual. If you don't know, say so honestly.
+
+${depthInstruction}
 
 IMPORTANT: When the user asks about a role (like "PM", "Production Manager", "TM", etc.), search the CONTACTS list for someone with that role — do NOT assume they are asking about themselves. Short abbreviations like "PM" = Production Manager, "TM" = Tour Manager, "LD" = Lighting Director, "FOH" = Front of House.
 
@@ -640,7 +715,7 @@ ${akbContext}`,
       body: JSON.stringify({
         model: "google/gemini-2.5-flash",
         messages: chatMessages,
-        max_tokens: 500,
+        max_tokens: depthMaxTokens,
         temperature: 0.3,
       }),
     });
