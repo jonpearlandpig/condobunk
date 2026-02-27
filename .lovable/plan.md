@@ -1,56 +1,47 @@
 
 
-## Add Quick-Access Artifacts Under Ask TELA in Sidebar
+## Make All Phone Numbers and Email Addresses Actionable
 
-### What Changes
+### Overview
 
-Add a new collapsible "Artifacts" section directly below the "Ask TELA" threads section in the left sidebar. This gives users quick access to view, create, and navigate to their artifacts without leaving the current page.
+Anywhere a phone number or email address is displayed as plain text, wrap it in a tappable link so users can call, text, or email with one tap.
 
-### New Component
+### Changes
 
-**New file: `src/components/bunk/SidebarArtifacts.tsx`**
+**1. SidebarContactList.tsx -- Show phone/email as tappable links in contact rows**
 
-A lightweight sidebar section that:
+Currently the contact row only shows name + role. Add a small line below the role showing the phone (as `tel:` link) and email (as `mailto:` link) when present, styled as tappable text. This makes them visible and actionable at a glance without needing to expand or open a menu.
 
-- Shows a collapsible header with the StickyNote icon, "Artifacts" label, and count badge (matching the style of "Ask TELA" and "Tour Team" sections)
-- Lists the user's most recent artifacts (up to 10) with:
-  - Title (truncated)
-  - Visibility badge icon (TourText/CondoBunk/Bunk Stash)
-  - Type icon (note/document/checklist)
-  - Relative timestamp ("2h ago")
-- Clicking an artifact navigates to `/bunk/artifacts` (the full workspace)
-- Includes a "+ New" button at the top of the expanded list that navigates to `/bunk/artifacts` with a query param to trigger creation
-- Fetches from the `user_artifacts` table, filtered by the user's tour IDs
-- Keeps the same font, spacing, and interaction patterns as `SidebarTelaThreads`
+- Below the role `<p>` tag (around line 375), add a row displaying:
+  - Phone as `<a href="tel:{phone}">` with the Phone icon, styled in muted mono text
+  - Email as `<a href="mailto:{email}">` with the Mail icon, styled in muted mono text
+- Both truncated to fit the row, separated by a dot
+- Skip in demo mode (PII is hidden)
+- Stop propagation on click so it doesn't trigger the row's expand/message behavior
 
-### Sidebar Integration
+**2. TourTextInbox.tsx -- Make masked phone numbers tappable**
 
-**File: `src/components/bunk/BunkSidebar.tsx`**
+The masked phone display (line 263-265) currently shows `maskPhone(msg.from_phone)` as a plain `<span>`. Change it to an `<a href="tel:{msg.from_phone}">` link so admins can tap to call or text the crew member back directly from the inbox.
 
-Import and render `<SidebarArtifacts />` immediately after the `<SidebarTelaThreads />` component and before the `<Separator>` and Tour Team section. This places it logically under the TELA/chat area since artifacts are "pre-law" notes that feed into AKBs.
+Also add a small SMS icon button next to the phone that opens `sms:{from_phone}` for quick text reply.
 
-### Data Fetching
+**3. DMChatScreen.tsx -- Make header phone/email tappable**
 
-The component queries `user_artifacts` directly (no new edge function needed):
+In the chat header, add a small tappable phone number under the contact's role (around line 106) that links to `tel:{contact.phone}`, giving users a quick way to call while in a DM conversation.
 
-```text
-SELECT id, title, artifact_type, visibility, updated_at
-FROM user_artifacts
-WHERE tour_id IN (user's tour IDs) OR user_id = current_user
-ORDER BY updated_at DESC
-LIMIT 10
-```
-
-Existing RLS policies already allow users to read their own artifacts and tour-scoped artifacts.
-
-### No Database or Backend Changes
-
-All data is already available via the existing `user_artifacts` table with current RLS policies. No migrations, no new edge functions.
-
-### Files Changed
+### Technical Details
 
 | File | Change |
 |------|--------|
-| `src/components/bunk/SidebarArtifacts.tsx` | New component -- collapsible artifact list for sidebar |
-| `src/components/bunk/BunkSidebar.tsx` | Import and render SidebarArtifacts after SidebarTelaThreads |
+| `src/components/bunk/SidebarContactList.tsx` | Add phone/email display links below role text in contact rows (~line 375). Wrap in `<a>` tags with `tel:` and `mailto:` hrefs. Add `onClick stopPropagation` to prevent row expansion. |
+| `src/components/bunk/TourTextInbox.tsx` | Change masked phone `<span>` to `<a href="tel:">` link + add SMS reply button (~line 263) |
+| `src/components/bunk/DMChatScreen.tsx` | Add tappable phone number in chat header below role (~line 106) |
+
+### Styling
+
+- Phone/email links use `text-muted-foreground/70 hover:text-foreground` with `font-mono text-[10px]`
+- Underline on hover for discoverability
+- Links stop event propagation so they don't trigger parent click handlers
+
+### No database or backend changes needed.
 
