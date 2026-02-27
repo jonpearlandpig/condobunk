@@ -901,7 +901,7 @@ VENUE DATA: The "Venue Advance Notes (VANs)" section contains the PRIMARY source
 
 ROUTING DATA: The "Routing & Hotels" section has hotel names, check-in/out dates, and bus/truck notes. Check here for hotel questions.
 
-TOUR ARTIFACTS: The "Tour Artifacts" section contains crew-shared notes, checklists, and info published by tour staff (WiFi passwords, department SOPs, packing lists, etc.). Check here for general tour info questions.
+TOUR ARTIFACTS (CRITICAL — CHECK FIRST FOR GENERAL TOUR QUESTIONS): The "Tour Artifacts" section in AKB DATA contains crew-shared notes, checklists, and info published by tour staff. This includes WiFi passwords, department SOPs, packing lists, and other tour-wide information. When asked about WiFi, passwords, general tour info, or any topic that could be a shared note — ALWAYS check Tour Artifacts FIRST before saying you don't have the information.
 
 AKB DATA:
 ${akbContext}`,
