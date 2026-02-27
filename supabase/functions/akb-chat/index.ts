@@ -112,13 +112,15 @@ Deno.serve(async (req) => {
     // Query all tours in parallel
     const allTourData = await Promise.all(
       targetTourIds.map(async (tid) => {
-        const [eventsRes, contactsRes, gapsRes, conflictsRes, docsRes, vansRes] = await Promise.all([
-          admin.from("schedule_events").select("id, event_date, venue, city, load_in, show_time, notes").eq("tour_id", tid).order("event_date").limit(50),
+        const [eventsRes, contactsRes, gapsRes, conflictsRes, docsRes, vansRes, routingRes, policiesRes] = await Promise.all([
+          admin.from("schedule_events").select("id, event_date, venue, city, load_in, show_time, doors, soundcheck, curfew, notes").eq("tour_id", tid).order("event_date").limit(50),
           admin.from("contacts").select("id, name, role, email, phone, scope, venue").eq("tour_id", tid).limit(50),
           admin.from("knowledge_gaps").select("id, question, domain, resolved").eq("tour_id", tid).limit(20),
           admin.from("calendar_conflicts").select("id, conflict_type, severity, resolved, event_id").eq("tour_id", tid).limit(20),
           admin.from("documents").select("id, filename, doc_type, raw_text, file_path").eq("tour_id", tid).eq("is_active", true).limit(10),
           admin.from("venue_advance_notes").select("id, venue_name, city, event_date, van_data").eq("tour_id", tid).order("event_date").limit(30),
+          admin.from("tour_routing").select("event_date, city, hotel_name, hotel_checkin, hotel_checkout, hotel_confirmation, bus_notes, truck_notes, routing_notes").eq("tour_id", tid).order("event_date").limit(30),
+          admin.from("tour_policies").select("policy_type, policy_data").eq("tour_id", tid).limit(10),
         ]);
 
         const docsWithUrls = await Promise.all(
@@ -151,6 +153,8 @@ Deno.serve(async (req) => {
           conflicts: conflictsRes.data || [],
           documents: docsWithUrls,
           vans: vansRes.data || [],
+          routing: routingRes.data || [],
+          policies: policiesRes.data || [],
         };
       })
     );
@@ -176,6 +180,12 @@ ${JSON.stringify(tourContacts.filter((c: any) => c.scope === "VENUE"), null, 1)}
 
 ### Venue Advance Notes (VANs) — PRIMARY SOURCE for venue-specific advance data:
 ${td.vans.length > 0 ? td.vans.map((van: any) => `#### ${van.venue_name} (${van.city || "no city"}, ${van.event_date || "no date"}):\n${JSON.stringify(van.van_data, null, 1)}`).join("\n\n") : "(No VANs extracted yet)"}
+
+### Routing & Hotels:
+${(td.routing as any[]).length > 0 ? JSON.stringify(td.routing, null, 1) : "(No routing data)"}
+
+### Tour Policies:
+${(td.policies as any[]).length > 0 ? (td.policies as any[]).map((p: any) => `${p.policy_type}: ${JSON.stringify(p.policy_data)}`).join("\n") : "(No policies set)"}
 
 ### Knowledge Gaps:
 ${JSON.stringify(td.knowledge_gaps, null, 1)}
@@ -203,6 +213,12 @@ ${JSON.stringify(tourContacts.filter((c: any) => c.scope === "VENUE"), null, 1)}
 
 ### Venue Advance Notes (VANs) — PRIMARY SOURCE for venue-specific advance data:
 ${td.vans.length > 0 ? td.vans.map((van: any) => `#### ${van.venue_name} (${van.city || "no city"}, ${van.event_date || "no date"}):\n${JSON.stringify(van.van_data, null, 1)}`).join("\n\n") : "(No VANs extracted yet — upload an Advance Master to populate)"}
+
+### Routing & Hotels:
+${(td.routing as any[]).length > 0 ? JSON.stringify(td.routing, null, 1) : "(No routing data — upload routing sheet to populate)"}
+
+### Tour Policies (Guest List, Safety, Department SOPs):
+${(td.policies as any[]).length > 0 ? (td.policies as any[]).map((p: any) => `${p.policy_type}: ${JSON.stringify(p.policy_data)}`).join("\n") : "(No policies set)"}
 
 ### Knowledge Gaps (with IDs):
 ${JSON.stringify(td.knowledge_gaps, null, 1)}
