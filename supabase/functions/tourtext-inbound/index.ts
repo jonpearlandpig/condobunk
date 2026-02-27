@@ -518,6 +518,7 @@ If the message says "+1" or "plus one" after a name, that means 2 tickets total 
       knownVenues as string[],
       eventDates,
     );
+    console.log("Smart Context:", JSON.stringify({ targetCities, targetVenue, targetDates, knownCities }));
 
     // Determine date window for filtered queries
     let startDate: string;
@@ -581,6 +582,7 @@ If the message says "+1" or "plus one" after a name, that means 2 tickets total 
         }
       }
     }
+    console.log("Date window:", { startDate, endDate });
 
     // --- Filtered AKB data fetches ---
     const [eventsRes, contactsRes, vansRes, tourRes, routingRes, policiesRes, recentInbound, recentOutbound] = await Promise.all([
@@ -628,6 +630,7 @@ If the message says "+1" or "plus one" after a name, that means 2 tickets total 
         .limit(5),
     ]);
 
+    console.log("Events in context:", (eventsRes.data || []).length, (eventsRes.data || []).map((e: any) => e.city));
     const tourName = tourRes.data?.name || "Unknown Tour";
 
     // Build conversation history from recent messages
