@@ -615,12 +615,16 @@ export type Database = {
           confidence_score: number | null
           created_at: string
           created_by: string | null
+          curfew: string | null
+          doors: string | null
           end_time: string | null
           event_date: string | null
           id: string
+          is_stop_override: boolean
           load_in: string | null
           notes: string | null
           show_time: string | null
+          soundcheck: string | null
           source_doc_id: string | null
           tour_id: string
           updated_at: string
@@ -632,12 +636,16 @@ export type Database = {
           confidence_score?: number | null
           created_at?: string
           created_by?: string | null
+          curfew?: string | null
+          doors?: string | null
           end_time?: string | null
           event_date?: string | null
           id?: string
+          is_stop_override?: boolean
           load_in?: string | null
           notes?: string | null
           show_time?: string | null
+          soundcheck?: string | null
           source_doc_id?: string | null
           tour_id: string
           updated_at?: string
@@ -649,12 +657,16 @@ export type Database = {
           confidence_score?: number | null
           created_at?: string
           created_by?: string | null
+          curfew?: string | null
+          doors?: string | null
           end_time?: string | null
           event_date?: string | null
           id?: string
+          is_stop_override?: boolean
           load_in?: string | null
           notes?: string | null
           show_time?: string | null
+          soundcheck?: string | null
           source_doc_id?: string | null
           tour_id?: string
           updated_at?: string
@@ -967,6 +979,54 @@ export type Database = {
         }
         Relationships: []
       }
+      tour_escalation_tags: {
+        Row: {
+          created_at: string
+          id: string
+          route_to_contact: string | null
+          route_to_role: string | null
+          source_doc_id: string | null
+          tag: string
+          tour_id: string
+          trigger_topic: string | null
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          route_to_contact?: string | null
+          route_to_role?: string | null
+          source_doc_id?: string | null
+          tag: string
+          tour_id: string
+          trigger_topic?: string | null
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          route_to_contact?: string | null
+          route_to_role?: string | null
+          source_doc_id?: string | null
+          tag?: string
+          tour_id?: string
+          trigger_topic?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tour_escalation_tags_source_doc_id_fkey"
+            columns: ["source_doc_id"]
+            isOneToOne: false
+            referencedRelation: "documents"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tour_escalation_tags_tour_id_fkey"
+            columns: ["tour_id"]
+            isOneToOne: false
+            referencedRelation: "tours"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       tour_integrations: {
         Row: {
           api_key_encrypted: string | null
@@ -1112,6 +1172,81 @@ export type Database = {
           },
         ]
       }
+      tour_metadata: {
+        Row: {
+          akb_id: string | null
+          akb_purpose: string | null
+          artist: string | null
+          authority: string | null
+          change_policy: string | null
+          created_at: string
+          date_range_end: string | null
+          date_range_start: string | null
+          id: string
+          primary_interface: string | null
+          region: string | null
+          season: string | null
+          showtime_standard: string | null
+          source_doc_id: string | null
+          tour_code: string | null
+          tour_id: string
+          updated_at: string
+        }
+        Insert: {
+          akb_id?: string | null
+          akb_purpose?: string | null
+          artist?: string | null
+          authority?: string | null
+          change_policy?: string | null
+          created_at?: string
+          date_range_end?: string | null
+          date_range_start?: string | null
+          id?: string
+          primary_interface?: string | null
+          region?: string | null
+          season?: string | null
+          showtime_standard?: string | null
+          source_doc_id?: string | null
+          tour_code?: string | null
+          tour_id: string
+          updated_at?: string
+        }
+        Update: {
+          akb_id?: string | null
+          akb_purpose?: string | null
+          artist?: string | null
+          authority?: string | null
+          change_policy?: string | null
+          created_at?: string
+          date_range_end?: string | null
+          date_range_start?: string | null
+          id?: string
+          primary_interface?: string | null
+          region?: string | null
+          season?: string | null
+          showtime_standard?: string | null
+          source_doc_id?: string | null
+          tour_code?: string | null
+          tour_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tour_metadata_source_doc_id_fkey"
+            columns: ["source_doc_id"]
+            isOneToOne: false
+            referencedRelation: "documents"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tour_metadata_tour_id_fkey"
+            columns: ["tour_id"]
+            isOneToOne: true
+            referencedRelation: "tours"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       tour_notification_defaults: {
         Row: {
           created_at: string
@@ -1154,6 +1289,186 @@ export type Database = {
             foreignKeyName: "tour_notification_defaults_tour_id_fkey"
             columns: ["tour_id"]
             isOneToOne: true
+            referencedRelation: "tours"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      tour_policies: {
+        Row: {
+          created_at: string
+          id: string
+          policy_data: Json
+          policy_type: Database["public"]["Enums"]["policy_type"]
+          source_doc_id: string | null
+          tour_id: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          policy_data?: Json
+          policy_type: Database["public"]["Enums"]["policy_type"]
+          source_doc_id?: string | null
+          tour_id: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          policy_data?: Json
+          policy_type?: Database["public"]["Enums"]["policy_type"]
+          source_doc_id?: string | null
+          tour_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tour_policies_source_doc_id_fkey"
+            columns: ["source_doc_id"]
+            isOneToOne: false
+            referencedRelation: "documents"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tour_policies_tour_id_fkey"
+            columns: ["tour_id"]
+            isOneToOne: false
+            referencedRelation: "tours"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      tour_routing: {
+        Row: {
+          bus_notes: string | null
+          city: string | null
+          confirmed: boolean
+          created_at: string
+          event_date: string | null
+          hotel_checkin: string | null
+          hotel_checkout: string | null
+          hotel_confirmation: string | null
+          hotel_name: string | null
+          id: string
+          routing_notes: string | null
+          source_doc_id: string | null
+          tour_id: string
+          truck_notes: string | null
+        }
+        Insert: {
+          bus_notes?: string | null
+          city?: string | null
+          confirmed?: boolean
+          created_at?: string
+          event_date?: string | null
+          hotel_checkin?: string | null
+          hotel_checkout?: string | null
+          hotel_confirmation?: string | null
+          hotel_name?: string | null
+          id?: string
+          routing_notes?: string | null
+          source_doc_id?: string | null
+          tour_id: string
+          truck_notes?: string | null
+        }
+        Update: {
+          bus_notes?: string | null
+          city?: string | null
+          confirmed?: boolean
+          created_at?: string
+          event_date?: string | null
+          hotel_checkin?: string | null
+          hotel_checkout?: string | null
+          hotel_confirmation?: string | null
+          hotel_name?: string | null
+          id?: string
+          routing_notes?: string | null
+          source_doc_id?: string | null
+          tour_id?: string
+          truck_notes?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tour_routing_source_doc_id_fkey"
+            columns: ["source_doc_id"]
+            isOneToOne: false
+            referencedRelation: "documents"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tour_routing_tour_id_fkey"
+            columns: ["tour_id"]
+            isOneToOne: false
+            referencedRelation: "tours"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      tour_travel: {
+        Row: {
+          arrival: string | null
+          confirmation: string | null
+          created_at: string
+          departure: string | null
+          description: string | null
+          hotel_checkin: string | null
+          hotel_checkout: string | null
+          hotel_name: string | null
+          id: string
+          portal_url: string | null
+          source_doc_id: string | null
+          special_notices: string | null
+          tour_id: string
+          travel_date: string | null
+          travel_type: Database["public"]["Enums"]["travel_type"]
+        }
+        Insert: {
+          arrival?: string | null
+          confirmation?: string | null
+          created_at?: string
+          departure?: string | null
+          description?: string | null
+          hotel_checkin?: string | null
+          hotel_checkout?: string | null
+          hotel_name?: string | null
+          id?: string
+          portal_url?: string | null
+          source_doc_id?: string | null
+          special_notices?: string | null
+          tour_id: string
+          travel_date?: string | null
+          travel_type?: Database["public"]["Enums"]["travel_type"]
+        }
+        Update: {
+          arrival?: string | null
+          confirmation?: string | null
+          created_at?: string
+          departure?: string | null
+          description?: string | null
+          hotel_checkin?: string | null
+          hotel_checkout?: string | null
+          hotel_name?: string | null
+          id?: string
+          portal_url?: string | null
+          source_doc_id?: string | null
+          special_notices?: string | null
+          tour_id?: string
+          travel_date?: string | null
+          travel_type?: Database["public"]["Enums"]["travel_type"]
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tour_travel_source_doc_id_fkey"
+            columns: ["source_doc_id"]
+            isOneToOne: false
+            referencedRelation: "documents"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tour_travel_tour_id_fkey"
+            columns: ["tour_id"]
+            isOneToOne: false
             referencedRelation: "tours"
             referencedColumns: ["id"]
           },
@@ -1668,11 +1983,23 @@ export type Database = {
         | "VENUE"
         | "UNKNOWN"
       integration_provider: "MASTER_TOUR" | "GENERIC_WEBHOOK" | "CSV_IMPORT"
+      policy_type:
+        | "GUEST_COMP"
+        | "SAFETY"
+        | "SOP_PRODUCTION"
+        | "SOP_AUDIO"
+        | "SOP_LIGHTING_VIDEO"
+        | "SOP_SECURITY"
+        | "SOP_MERCH"
+        | "SOP_VIP"
+        | "SOP_HOSPITALITY"
+        | "SOP_TRANSPORTATION"
       risk_severity: "LOW" | "MEDIUM" | "HIGH" | "CRITICAL"
       sms_status: "queued" | "sent" | "failed"
       sync_status: "IDLE" | "SYNCING" | "SUCCESS" | "FAILED"
       tour_role: "TA" | "MGMT" | "CREW" | "DEMO"
       tour_status: "ACTIVE" | "ARCHIVED"
+      travel_type: "FLIGHT" | "BUS" | "VAN" | "HOTEL" | "REHEARSAL" | "OTHER"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -1826,11 +2153,24 @@ export const Constants = {
         "UNKNOWN",
       ],
       integration_provider: ["MASTER_TOUR", "GENERIC_WEBHOOK", "CSV_IMPORT"],
+      policy_type: [
+        "GUEST_COMP",
+        "SAFETY",
+        "SOP_PRODUCTION",
+        "SOP_AUDIO",
+        "SOP_LIGHTING_VIDEO",
+        "SOP_SECURITY",
+        "SOP_MERCH",
+        "SOP_VIP",
+        "SOP_HOSPITALITY",
+        "SOP_TRANSPORTATION",
+      ],
       risk_severity: ["LOW", "MEDIUM", "HIGH", "CRITICAL"],
       sms_status: ["queued", "sent", "failed"],
       sync_status: ["IDLE", "SYNCING", "SUCCESS", "FAILED"],
       tour_role: ["TA", "MGMT", "CREW", "DEMO"],
       tour_status: ["ACTIVE", "ARCHIVED"],
+      travel_type: ["FLIGHT", "BUS", "VAN", "HOTEL", "REHEARSAL", "OTHER"],
     },
   },
 } as const

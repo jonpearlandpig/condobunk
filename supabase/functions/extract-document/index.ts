@@ -243,6 +243,82 @@ Return a JSON object with these fields (include only what you find, omit empty a
       "contact_email": "email",
       "notes": "any venue-specific notes"
     }
+  ],
+  "tour_profile": {
+    "artist": "Artist name",
+    "tour_name": "Tour name",
+    "region": "Region/territory (e.g. North America, Europe)",
+    "date_range_start": "YYYY-MM-DD",
+    "date_range_end": "YYYY-MM-DD",
+    "showtime_standard": "Default showtime e.g. 8:00 PM",
+    "primary_interface": "Primary contact or system for tour communications",
+    "akb_purpose": "Purpose statement for the AKB",
+    "akb_id": "AKB identifier if present",
+    "tour_code": "Tour code",
+    "season": "Season/year",
+    "status": "ACTIVE/PLANNING/COMPLETED",
+    "authority": "Authority statement (who governs changes)",
+    "change_policy": "Change policy text"
+  },
+  "guest_comp_policy": {
+    "submission_system": "How guests submit requests",
+    "submission_timing_rule": "When to submit",
+    "lock_deadline": "Cutoff text",
+    "city_specific_rules": ["Any city-specific guest list rules"],
+    "special_cutoffs": ["Special cutoff dates/times"],
+    "ticket_approval_authority": "Who approves tickets",
+    "credential_approval_authority": "Who approves credentials",
+    "credential_types": ["GUEST", "FAMILY", "other types"],
+    "restrictions": {
+      "dressing_room_access": "rule text",
+      "catering_access": "rule text",
+      "side_stage": "rule text",
+      "viewing_location": "rule text"
+    }
+  },
+  "safety_protocols": {
+    "tour_safety_manual": "Reference or content of tour safety manual",
+    "venue_emergency_procedures": "Per-stop venue emergency procedures if mentioned",
+    "medical_lead_contacts": [{"name": "Name", "phone": "phone", "role": "role"}],
+    "evacuation_authority": "Evacuation authority statement",
+    "escalation_rule": "Safety escalation rule (hard-stop rule text)"
+  },
+  "routing_hotels": [
+    {
+      "event_date": "YYYY-MM-DD",
+      "city": "City",
+      "hotel_name": "Hotel name",
+      "hotel_checkin": "YYYY-MM-DD",
+      "hotel_checkout": "YYYY-MM-DD",
+      "hotel_confirmation": "Confirmation number if present",
+      "routing_notes": "Routing notes",
+      "bus_notes": "Bus notes",
+      "truck_notes": "Truck notes"
+    }
+  ],
+  "department_sops": [
+    {
+      "department": "PRODUCTION|AUDIO|LIGHTING_VIDEO|SECURITY|MERCH|VIP|HOSPITALITY|TRANSPORTATION",
+      "content": "Full SOP text",
+      "is_reference_only": true,
+      "advisory_restriction": "restriction text or null"
+    }
+  ],
+  "escalation_tags": [
+    {
+      "tag": "TAG_NAME (e.g. FLIGHTS, COMPS, SAFETY)",
+      "trigger_topic": "What triggers this escalation",
+      "route_to_contact": "Contact name to route to",
+      "route_to_role": "Role title to route to"
+    }
+  ],
+  "rehearsals": [
+    {
+      "date": "YYYY-MM-DD",
+      "location": "Rehearsal location",
+      "hotel": "Hotel for non-local crew",
+      "notes": "Additional rehearsal details"
+    }
   ]
 }
 
@@ -269,8 +345,16 @@ GENERAL:
 - For travel, capture flights, buses, hotels, ground transport — anything.
 - For protocols, capture rider requirements, security protocols, hospitality needs, dressing room requirements, catering specs.
 - For venues, capture the full address, capacity, and any venue contacts mentioned.
+- For tour_profile, extract ALL governance and identity fields: artist, tour name, region, date range, showtime standard, AKB ID, tour code, season, authority statement, change policy. This is Section 1 of the AKB schema.
+- For contacts, ensure you capture ALL 6 tour office contact types: Production Manager, Tour Manager, Assistant Tour Manager, Event Manager, Assistant Event Manager, Tour Security. Classify these as "TOUR_TEAM".
+- For guest_comp_policy, extract the COMPLETE guest/comp rules including submission system, timing rules, lock deadlines, city-specific rules, approval authorities, credential types, and all restrictions (dressing room, catering, side-stage, viewing location).
+- For safety_protocols, extract the tour safety manual reference, medical lead contacts, evacuation authority, and the hard-stop escalation rule.
+- For routing_hotels, extract hotel assignments per stop with check-in/checkout dates, confirmation numbers, bus notes, and truck notes.
+- For department_sops, extract ALL department SOPs: Production, Audio, Lighting/Video, Security, Merch, VIP, Hospitality, Transportation. Include the full SOP text, reference-only flags, and advisory restrictions.
+- For escalation_tags, extract ALL escalation routing tags with trigger topics and route-to contacts/roles. Common tag groups: Flights/travel/delays, Runner/transport, Comps/guest list, Credentials/backstage, Production schedule, Safety/emergency.
+- For rehearsals, extract all rehearsal dates, locations, hotels for non-local crew, and notes.
 - Return ONLY valid JSON, no markdown formatting, no code blocks.
-- If the document covers multiple categories (schedule + contacts + travel), extract ALL of them.
+- If the document covers multiple categories (schedule + contacts + travel + policies), extract ALL of them.
 - ZERO DATA LOSS. If you can read it in the document, it must appear in the output.`;
 
 // ─── Tech Pack Extraction Prompt ───
@@ -1044,6 +1128,28 @@ interface AIExtractionResult {
     contact_email?: string;
     notes?: string;
   }>;
+  tour_profile?: {
+    artist?: string;
+    tour_name?: string;
+    region?: string;
+    date_range_start?: string;
+    date_range_end?: string;
+    showtime_standard?: string;
+    primary_interface?: string;
+    akb_purpose?: string;
+    akb_id?: string;
+    tour_code?: string;
+    season?: string;
+    status?: string;
+    authority?: string;
+    change_policy?: string;
+  };
+  guest_comp_policy?: Record<string, unknown>;
+  safety_protocols?: Record<string, unknown>;
+  routing_hotels?: Array<Record<string, unknown>>;
+  department_sops?: Array<Record<string, unknown>>;
+  escalation_tags?: Array<Record<string, unknown>>;
+  rehearsals?: Array<Record<string, unknown>>;
 }
 
 interface TechPackResult {
@@ -2890,6 +2996,9 @@ Deno.serve(async (req) => {
           load_in: toTimestamp(evt.event_date, evt.load_in),
           show_time: toTimestamp(evt.event_date, evt.show_time),
           end_time: toTimestamp(evt.event_date, evt.end_time),
+          doors: toTimestamp(evt.event_date, evt.doors),
+          soundcheck: toTimestamp(evt.event_date, evt.soundcheck),
+          curfew: null as string | null, // curfew typically comes from venue rules, not schedule docs
           confidence_score: 0.85,
           source_doc_id: document_id,
           notes: evt.notes || null,
@@ -2996,39 +3105,198 @@ Deno.serve(async (req) => {
       totalExtracted += finance.length;
     }
 
+    // ── Persist travel to tour_travel (structured, not knowledge_gaps) ──
     const travel = aiResult?.travel || [];
     if (travel.length > 0) {
+      // Clean up old travel from this doc
+      await adminClient.from("tour_travel").delete().eq("source_doc_id", document_id);
+      const travelTypeMap: Record<string, string> = { FLIGHT: "FLIGHT", BUS: "BUS", VAN: "VAN", HOTEL: "HOTEL", REHEARSAL: "REHEARSAL" };
       const rows = travel.map(t => ({
         tour_id: doc.tour_id,
-        question: `[TRAVEL ${t.date || ""}] ${[
-          t.type || "",
-          t.description || "",
-          t.hotel_name ? `Hotel: ${t.hotel_name}` : "",
-          t.departure ? `From: ${t.departure}` : "",
-          t.arrival ? `To: ${t.arrival}` : "",
-          t.confirmation ? `Conf#: ${t.confirmation}` : "",
-        ].filter(Boolean).join(" | ")}`,
-        domain: "TRAVEL",
-        resolved: true,
-        user_id: user.id,
+        travel_date: t.date || null,
+        travel_type: travelTypeMap[(t.type || "").toUpperCase()] || "OTHER",
+        description: t.description || null,
+        departure: t.departure || null,
+        arrival: t.arrival || null,
+        hotel_name: t.hotel_name || null,
+        hotel_checkin: t.hotel_checkin || null,
+        hotel_checkout: t.hotel_checkout || null,
+        confirmation: t.confirmation || null,
+        source_doc_id: document_id,
       }));
-      await adminClient.from("knowledge_gaps").insert(rows);
+      const { error: tErr } = await adminClient.from("tour_travel").insert(rows);
+      if (tErr) console.error("[extract] tour_travel insert error:", tErr);
+      else console.log("[extract] Inserted", rows.length, "travel records");
       totalExtracted += travel.length;
     }
 
+    // ── Persist protocols to tour_policies (structured, not knowledge_gaps) ──
     const protocols = aiResult?.protocols || [];
     if (protocols.length > 0) {
-      const rows = protocols.map(p => ({
-        tour_id: doc.tour_id,
-        question: `[${p.category || "PROTOCOL"}] ${p.title || "Protocol"}: ${p.details || ""}`,
-        domain: p.category || "PROTOCOL",
-        resolved: true,
-        user_id: user.id,
-      }));
-      await adminClient.from("knowledge_gaps").insert(rows);
+      // Protocols go as individual policy rows — group by category
+      for (const p of protocols) {
+        const cat = (p.category || "").toUpperCase();
+        // Map protocol categories to policy_type enum values where possible
+        const policyTypeMap: Record<string, string> = {
+          SECURITY: "SOP_SECURITY",
+          HOSPITALITY: "SOP_HOSPITALITY",
+          PRODUCTION: "SOP_PRODUCTION",
+          CATERING: "SOP_HOSPITALITY",
+        };
+        const policyType = policyTypeMap[cat];
+        if (policyType) {
+          await adminClient.from("tour_policies").upsert({
+            tour_id: doc.tour_id,
+            policy_type: policyType,
+            policy_data: { title: p.title, details: p.details, category: p.category },
+            source_doc_id: document_id,
+          }, { onConflict: "tour_id,policy_type" });
+        }
+      }
       totalExtracted += protocols.length;
     }
 
+    // ── Persist tour_profile to tour_metadata ──
+    const tourProfile = aiResult?.tour_profile;
+    let tourProfileCount = 0;
+    if (tourProfile && Object.keys(tourProfile).length > 0) {
+      const { error: tpErr } = await adminClient.from("tour_metadata").upsert({
+        tour_id: doc.tour_id,
+        artist: tourProfile.artist || null,
+        region: tourProfile.region || null,
+        date_range_start: tourProfile.date_range_start || null,
+        date_range_end: tourProfile.date_range_end || null,
+        showtime_standard: tourProfile.showtime_standard || null,
+        primary_interface: tourProfile.primary_interface || null,
+        akb_purpose: tourProfile.akb_purpose || null,
+        akb_id: tourProfile.akb_id || null,
+        tour_code: tourProfile.tour_code || null,
+        season: tourProfile.season || null,
+        authority: tourProfile.authority || null,
+        change_policy: tourProfile.change_policy || null,
+        source_doc_id: document_id,
+      }, { onConflict: "tour_id" });
+      if (tpErr) console.error("[extract] tour_metadata upsert error:", tpErr);
+      else { console.log("[extract] Upserted tour_metadata"); tourProfileCount = 1; }
+      totalExtracted++;
+    }
+
+    // ── Persist guest_comp_policy to tour_policies ──
+    const guestPolicy = aiResult?.guest_comp_policy;
+    let guestPolicyCount = 0;
+    if (guestPolicy && Object.keys(guestPolicy).length > 0) {
+      const { error: gpErr } = await adminClient.from("tour_policies").upsert({
+        tour_id: doc.tour_id,
+        policy_type: "GUEST_COMP",
+        policy_data: guestPolicy,
+        source_doc_id: document_id,
+      }, { onConflict: "tour_id,policy_type" });
+      if (gpErr) console.error("[extract] guest_comp policy upsert error:", gpErr);
+      else { console.log("[extract] Upserted GUEST_COMP policy"); guestPolicyCount = 1; }
+      totalExtracted++;
+    }
+
+    // ── Persist safety_protocols to tour_policies ──
+    const safetyProto = aiResult?.safety_protocols;
+    let safetyCount = 0;
+    if (safetyProto && Object.keys(safetyProto).length > 0) {
+      const { error: spErr } = await adminClient.from("tour_policies").upsert({
+        tour_id: doc.tour_id,
+        policy_type: "SAFETY",
+        policy_data: safetyProto,
+        source_doc_id: document_id,
+      }, { onConflict: "tour_id,policy_type" });
+      if (spErr) console.error("[extract] safety policy upsert error:", spErr);
+      else { console.log("[extract] Upserted SAFETY policy"); safetyCount = 1; }
+      totalExtracted++;
+    }
+
+    // ── Persist department_sops to tour_policies ──
+    const sops = aiResult?.department_sops || [];
+    let sopCount = 0;
+    if (sops.length > 0) {
+      const deptMap: Record<string, string> = {
+        PRODUCTION: "SOP_PRODUCTION", AUDIO: "SOP_AUDIO", LIGHTING_VIDEO: "SOP_LIGHTING_VIDEO",
+        SECURITY: "SOP_SECURITY", MERCH: "SOP_MERCH", VIP: "SOP_VIP",
+        HOSPITALITY: "SOP_HOSPITALITY", TRANSPORTATION: "SOP_TRANSPORTATION",
+      };
+      for (const sop of sops) {
+        const dept = ((sop.department as string) || "").toUpperCase();
+        const policyType = deptMap[dept];
+        if (policyType) {
+          const { error: sopErr } = await adminClient.from("tour_policies").upsert({
+            tour_id: doc.tour_id,
+            policy_type: policyType,
+            policy_data: sop,
+            source_doc_id: document_id,
+          }, { onConflict: "tour_id,policy_type" });
+          if (!sopErr) sopCount++;
+        }
+      }
+      console.log("[extract] Upserted", sopCount, "department SOPs");
+      totalExtracted += sopCount;
+    }
+
+    // ── Persist routing_hotels to tour_routing ──
+    const routingHotels = aiResult?.routing_hotels || [];
+    if (routingHotels.length > 0) {
+      await adminClient.from("tour_routing").delete().eq("source_doc_id", document_id);
+      const rows = routingHotels.map(r => ({
+        tour_id: doc.tour_id,
+        event_date: (r.event_date as string) || null,
+        city: (r.city as string) || null,
+        hotel_name: (r.hotel_name as string) || null,
+        hotel_checkin: (r.hotel_checkin as string) || null,
+        hotel_checkout: (r.hotel_checkout as string) || null,
+        hotel_confirmation: (r.hotel_confirmation as string) || null,
+        routing_notes: (r.routing_notes as string) || null,
+        bus_notes: (r.bus_notes as string) || null,
+        truck_notes: (r.truck_notes as string) || null,
+        source_doc_id: document_id,
+      }));
+      const { error: rErr } = await adminClient.from("tour_routing").insert(rows);
+      if (rErr) console.error("[extract] tour_routing insert error:", rErr);
+      else console.log("[extract] Inserted", rows.length, "routing records");
+      totalExtracted += routingHotels.length;
+    }
+
+    // ── Persist escalation_tags to tour_escalation_tags ──
+    const escTags = aiResult?.escalation_tags || [];
+    if (escTags.length > 0) {
+      await adminClient.from("tour_escalation_tags").delete().eq("source_doc_id", document_id);
+      const rows = escTags.map(t => ({
+        tour_id: doc.tour_id,
+        tag: (t.tag as string) || "UNKNOWN",
+        trigger_topic: (t.trigger_topic as string) || null,
+        route_to_contact: (t.route_to_contact as string) || null,
+        route_to_role: (t.route_to_role as string) || null,
+        source_doc_id: document_id,
+      }));
+      const { error: etErr } = await adminClient.from("tour_escalation_tags").insert(rows);
+      if (etErr) console.error("[extract] escalation_tags insert error:", etErr);
+      else console.log("[extract] Inserted", rows.length, "escalation tags");
+      totalExtracted += escTags.length;
+    }
+
+    // ── Persist rehearsals to tour_travel with type REHEARSAL ──
+    const rehearsals = aiResult?.rehearsals || [];
+    if (rehearsals.length > 0) {
+      const rows = rehearsals.map(r => ({
+        tour_id: doc.tour_id,
+        travel_date: (r.date as string) || null,
+        travel_type: "REHEARSAL",
+        description: (r.location as string) || null,
+        hotel_name: (r.hotel as string) || null,
+        special_notices: (r.notes as string) || null,
+        source_doc_id: document_id,
+      }));
+      const { error: rhErr } = await adminClient.from("tour_travel").insert(rows);
+      if (rhErr) console.error("[extract] rehearsals insert error:", rhErr);
+      else console.log("[extract] Inserted", rows.length, "rehearsal records");
+      totalExtracted += rehearsals.length;
+    }
+
+    // ── Persist venues to knowledge_gaps (legacy, for backward compat) ──
     if (venues.length > 0) {
       const rows = venues.map(v => ({
         tour_id: doc.tour_id,
@@ -3060,6 +3328,13 @@ Deno.serve(async (req) => {
         finance: finance.length,
         protocols: protocols.length,
         venues: (aiResult?.venues || []).length,
+        tour_profile: tourProfileCount,
+        guest_policy: guestPolicyCount,
+        safety: safetyCount,
+        routing: routingHotels.length,
+        sops: sopCount,
+        escalation_tags: escTags.length,
+        rehearsals: rehearsals.length,
       },
     };
 
