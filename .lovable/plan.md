@@ -1,40 +1,48 @@
 
+Root cause is now clear from runtime evidence: the backend is correctly fetching Boston, but the model is still answering incorrectly.
 
-## Fix: TELA SMS Not Recognizing Boston
+What I verified:
+- `targetCities` correctly detects Boston in direct queries.
+- `Date window` includes Boston dates.
+- `Events in context` includes `"Boston, MA"`.
+- Yet outbound replies still claim “Boston is not on schedule.”
 
-### Diagnosis
-Boston, MA (March 13, TD Garden) IS on the schedule for the correct tour. The multi-city code change looks logically correct. The likely issue is one of:
+So this is no longer a data-fetch bug; it’s a response-reliability bug caused by prompt behavior + contaminated conversation history.
 
-1. **Stale deployment** -- the previous deploy may not have taken effect, so the old single-city code is still running
-2. **Context not reaching AI** -- the date window or event filtering may have a subtle bug that excludes Boston's data from the AI prompt
+Implementation plan (single file):
+- File: `supabase/functions/tourtext-inbound/index.ts`
+- No database changes required.
 
-### Plan
+1) Add deterministic “city-on-schedule” responder before AI generation
+- Detect schedule-presence intents (examples: “Boston show?”, “Is Boston on schedule?”, “Boston not on schedule?”).
+- Resolve city membership from `allEvents` directly and return factual SMS immediately.
+- If scheduled, include date + venue; if not scheduled, say not found.
+- This removes model guesswork for the exact failure case.
 
-**File: `supabase/functions/tourtext-inbound/index.ts`**
+2) Add short follow-up city carryover
+- When message is a brief correction/follow-up (e.g., “Yes it is”, “Nope”, “that’s wrong”) and has no city mention, inherit city from the previous inbound user message.
+- Reuse that inferred city in the deterministic schedule check.
 
-1. **Add debug logging** after city extraction (~line 520) to confirm `targetCities` array contents:
-   ```
-   console.log("Smart Context:", JSON.stringify({ targetCities, targetVenue, targetDates }));
-   ```
+3) Prevent assistant self-contamination in prompt history
+- Keep recent user messages for conversational context.
+- Stop feeding prior assistant SMS replies back into the model prompt (those prior wrong claims are currently reinforcing future wrong claims).
 
-2. **Add debug logging** after date window calculation (~line 560) to confirm the window spans both cities:
-   ```
-   console.log("Date window:", { startDate, endDate });
-   ```
+4) Harden AI prompt with explicit schedule authority rules
+- Add a compact “Schedule Facts” section derived from `eventsRes` (city/date/venue list).
+- Add explicit instruction:
+  - Schedule section is authoritative.
+  - If a city appears there, never say it is not on the schedule.
+  - Missing VAN/tech details does not mean city is unscheduled.
 
-3. **Add debug logging** after event fetch (~line 630) to confirm Boston events are included in the AI context:
-   ```
-   console.log("Events in context:", (eventsRes.data || []).length, (eventsRes.data || []).map(e => e.city));
-   ```
+5) Keep/adjust logging for verification
+- Retain concise logs for:
+  - effective target cities (including carried-over city),
+  - deterministic branch triggered or not,
+  - schedule match result.
+- This makes production verification immediate without guessing.
 
-4. **Force redeploy** the `tourtext-inbound` function to ensure the latest code is active.
-
-### Expected Outcome
-With the logging in place, we can verify whether:
-- Both cities are detected (targetCities includes Boston, MA and Cleveland, OH)
-- The date window spans March 5-14 (covering both events)
-- Both events appear in the AI context
-
-If all three are confirmed, the issue is the AI hallucinating and we may need to strengthen the system prompt to explicitly list schedule cities. If any step fails, we fix the specific issue.
-
-### Minimal changes -- single file edit + redeploy.
+Validation checklist after implementation:
+1. “Boston show?” should return Boston date/venue directly.
+2. “Low steel in Boston and haze in Cleveland” should not claim Boston is unscheduled; it should state Boston is scheduled and only mark missing tech details as unknown if absent.
+3. “Yes it is” immediately after a Boston dispute should resolve using prior-city carryover, not generic AI drift.
+4. Confirm outbound SMS no longer contains “Boston is not on schedule” for this tour unless truly absent.
