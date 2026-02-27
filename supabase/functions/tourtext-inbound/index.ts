@@ -288,15 +288,29 @@ If the message says "+1" or "plus one" after a name, that means 2 tickets total 
       }
     }
 
-    // --- Fetch AKB data for the matched tour (normal TELA Q&A flow) ---
-    const [eventsRes, contactsRes, vansRes, tourRes] = await Promise.all([
+    // --- Fetch AKB data + recent SMS history for the matched tour ---
+    const [eventsRes, contactsRes, vansRes, tourRes, recentInbound, recentOutbound] = await Promise.all([
       admin.from("schedule_events").select("event_date, venue, city, load_in, show_time, notes").eq("tour_id", matchedTourId).order("event_date").limit(50),
       admin.from("contacts").select("name, role, email, phone, scope, venue").eq("tour_id", matchedTourId).limit(50),
       admin.from("venue_advance_notes").select("venue_name, city, event_date, van_data").eq("tour_id", matchedTourId).order("event_date").limit(30),
       admin.from("tours").select("name").eq("id", matchedTourId).single(),
+      admin.from("sms_inbound").select("message_text, created_at").eq("from_phone", fromPhone).eq("tour_id", matchedTourId).order("created_at", { ascending: false }).limit(5),
+      admin.from("sms_outbound").select("message_text, created_at").eq("to_phone", fromPhone).eq("tour_id", matchedTourId).order("created_at", { ascending: false }).limit(5),
     ]);
 
     const tourName = tourRes.data?.name || "Unknown Tour";
+
+    // Build conversation history from recent messages
+    const historyMessages: { role: string; content: string; ts: string }[] = [];
+    for (const m of (recentInbound.data || [])) {
+      historyMessages.push({ role: "user", content: m.message_text, ts: m.created_at });
+    }
+    for (const m of (recentOutbound.data || [])) {
+      historyMessages.push({ role: "assistant", content: m.message_text, ts: m.created_at });
+    }
+    // Sort by timestamp ascending, keep last 6 exchanges
+    historyMessages.sort((a, b) => a.ts.localeCompare(b.ts));
+    const recentHistory = historyMessages.slice(-6);
 
     const akbContext = `
 Tour: ${tourName}
@@ -311,6 +325,32 @@ Venue Advance Notes:
 ${(vansRes.data || []).map((v: any) => `${v.venue_name} (${v.city || "?"}, ${v.event_date || "?"}):\n${JSON.stringify(v.van_data, null, 1)}`).join("\n\n")}
 `.substring(0, 12000);
 
+    // Build chat messages with history
+    const chatMessages: { role: string; content: string }[] = [
+      {
+        role: "system",
+        content: `You are TELA, the Tour Intelligence for "${tourName}". A crew member named ${senderName} just texted the TourText number (888-340-0564). Reply in SHORT, punchy SMS style — no markdown, no headers, no source citations. Keep it under 300 characters when possible. Be direct and factual. If you don't know, say so honestly.
+
+IMPORTANT: When the user asks about a role (like "PM", "Production Manager", "TM", etc.), search the CONTACTS list for someone with that role — do NOT assume they are asking about themselves. Short abbreviations like "PM" = Production Manager, "TM" = Tour Manager, "LD" = Lighting Director, "FOH" = Front of House.
+
+When the user sends a short follow-up (like "PM?" after asking about load-in), use the conversation history to understand the context.
+
+AKB DATA:
+${akbContext}`,
+      },
+    ];
+
+    // Add conversation history
+    for (const msg of recentHistory.slice(0, -1)) {
+      // Skip the current message (last inbound) since we add it below
+      chatMessages.push({ role: msg.role, content: msg.content });
+    }
+
+    chatMessages.push({
+      role: "user",
+      content: `${senderName}: ${messageBody}`,
+    });
+
     // --- Generate AI response ---
     const aiResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
@@ -320,16 +360,7 @@ ${(vansRes.data || []).map((v: any) => `${v.venue_name} (${v.city || "?"}, ${v.e
       },
       body: JSON.stringify({
         model: "google/gemini-2.5-flash",
-        messages: [
-          {
-            role: "system",
-            content: `You are TELA, the Tour Intelligence for "${tourName}". A crew member just texted the TourText number (888-340-0564). Reply in SHORT, punchy SMS style — no markdown, no headers, no source citations. Keep it under 300 characters when possible. Be direct and factual. If you don't know, say so honestly.\n\nAKB DATA:\n${akbContext}`,
-          },
-          {
-            role: "user",
-            content: `${senderName}: ${messageBody}`,
-          },
-        ],
+        messages: chatMessages,
         max_tokens: 500,
         temperature: 0.3,
       }),
