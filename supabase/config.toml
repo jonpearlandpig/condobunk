@@ -39,3 +39,9 @@ verify_jwt = false
 
 [functions.google-drive-proxy]
 verify_jwt = false
+
+[functions.backfill-van-contacts]
+verify_jwt = false
+
+[functions.backfill-schedule-events]
+verify_jwt = false

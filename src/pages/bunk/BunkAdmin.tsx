@@ -1,5 +1,5 @@
-import { useState, useEffect, useCallback } from "react";
-import { Settings, RefreshCw, Plus, Trash2, Copy, CheckCircle, XCircle, Clock, Loader2, Users, Mail, Link, UserPlus, Send, Eye, MessageSquareText } from "lucide-react";
+import { useState, useEffect, useCallback, useRef } from "react";
+import { Settings, RefreshCw, Plus, Trash2, Copy, CheckCircle, XCircle, Clock, Loader2, Users, Mail, Link, UserPlus, Send, Eye, MessageSquareText, Contact } from "lucide-react";
 import { TourTextDashboard } from "@/components/bunk/TourTextDashboard";
 import { TourTextInbox } from "@/components/bunk/TourTextInbox";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -191,6 +191,7 @@ const BunkAdmin = () => {
   const [selectedMemberIds, setSelectedMemberIds] = useState<Set<string>>(new Set());
   const [akbContacts, setAkbContacts] = useState<{ name: string; email: string; role: string | null }[]>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
+  const [syncingVanContacts, setSyncingVanContacts] = useState(false);
 
   const load = useCallback(async () => {
     if (!selectedTourId) return;
@@ -371,6 +372,26 @@ const BunkAdmin = () => {
     toast.success("Webhook secret copied");
   };
 
+  const handleSyncVanContacts = async () => {
+    if (!selectedTourId) return;
+    setSyncingVanContacts(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("backfill-van-contacts", {
+        body: { tour_id: selectedTourId },
+      });
+      if (error) throw error;
+      if (data?.contacts_created > 0) {
+        toast.success(`Synced ${data.contacts_created} venue contacts from VANs`);
+        window.dispatchEvent(new Event("contacts-changed"));
+      } else {
+        toast.info(data?.message || "No new contacts to sync");
+      }
+    } catch (err: any) {
+      toast.error(err.message || "Failed to sync VAN contacts");
+    }
+    setSyncingVanContacts(false);
+  };
+
   const isExpired = (expires_at: string) => new Date(expires_at) < new Date();
 
   // Determine which members already have a pending (non-expired, unused) invite
@@ -474,6 +495,28 @@ const BunkAdmin = () => {
 
       {/* Pending Upgrade Requests */}
       <PendingUpgradeRequests tourId={selectedTourId} ownerId={selectedTour?.owner_id} userId={user?.id} />
+
+      {/* Sync VAN Contacts */}
+      <Card className="p-4 flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <Contact className="h-5 w-5 text-primary" />
+          <div>
+            <p className="text-sm font-semibold">Sync VAN Contacts</p>
+            <p className="text-xs text-muted-foreground font-mono">
+              Pull production contacts & house riggers from Venue Advance Notes into the contacts list
+            </p>
+          </div>
+        </div>
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={handleSyncVanContacts}
+          disabled={syncingVanContacts}
+        >
+          {syncingVanContacts ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <RefreshCw className="h-4 w-4 mr-1" />}
+          Sync
+        </Button>
+      </Card>
 
       {/* Team Management */}
       <div className="space-y-3">
