@@ -1,5 +1,10 @@
 import { supabase } from "@/integrations/supabase/client";
 
+export interface InvokeError extends Error {
+  status?: number;
+  code?: string;
+}
+
 /**
  * Invoke a Supabase edge function with a custom timeout (default 5 minutes).
  * supabase.functions.invoke() uses the browser's default fetch timeout (~2min)
@@ -9,7 +14,7 @@ export async function invokeWithTimeout(
   functionName: string,
   body: Record<string, unknown>,
   timeoutMs = 300_000
-): Promise<{ data: any; error: any }> {
+): Promise<{ data: any; error: InvokeError | null }> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
 
@@ -36,14 +41,29 @@ export async function invokeWithTimeout(
 
     if (!resp.ok) {
       const text = await resp.text();
-      return { data: null, error: new Error(text || `HTTP ${resp.status}`) };
+      // Try to parse structured error from backend
+      let parsed: { error?: string; code?: string } | null = null;
+      try {
+        parsed = JSON.parse(text);
+      } catch {
+        // not JSON
+      }
+
+      const err = new Error(
+        parsed?.error || text || `HTTP ${resp.status}`
+      ) as InvokeError;
+      err.status = resp.status;
+      err.code = parsed?.code || undefined;
+      return { data: null, error: err };
     }
 
     const data = await resp.json();
     return { data, error: null };
   } catch (err: any) {
     if (err.name === "AbortError") {
-      return { data: null, error: new Error("Request timed out (5 minutes). The extraction may still be running — try refreshing.") };
+      const timeoutErr = new Error("Request timed out (5 minutes). The extraction may still be running — try refreshing.") as InvokeError;
+      timeoutErr.code = "TIMEOUT";
+      return { data: null, error: timeoutErr };
     }
     return { data: null, error: err };
   } finally {

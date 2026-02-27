@@ -114,6 +114,43 @@ function detectDomain(filename: string, text: string): DomainResult {
   return { doc_type: topType, confidence: topScore, scores };
 }
 
+// ─── AI Provider Error Types ───
+
+class AIProviderError extends Error {
+  code: string;
+  providerStatus: number;
+  providerBody: string;
+
+  constructor(code: string, message: string, providerStatus: number, providerBody: string) {
+    super(message);
+    this.name = "AIProviderError";
+    this.code = code;
+    this.providerStatus = providerStatus;
+    this.providerBody = providerBody;
+  }
+
+  toResponse() {
+    return new Response(JSON.stringify({
+      error: this.message,
+      code: this.code,
+      provider_status: this.providerStatus,
+    }), {
+      status: this.providerStatus === 429 ? 429 : this.providerStatus === 402 ? 402 : 502,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+}
+
+function mapProviderError(status: number, body: string): AIProviderError {
+  if (status === 402) {
+    return new AIProviderError("AI_PAYMENT_REQUIRED", "AI credits exhausted. Please wait for credits to refresh or contact support.", 402, body);
+  }
+  if (status === 429) {
+    return new AIProviderError("AI_RATE_LIMIT", "AI rate limit reached. Please try again in a few minutes.", 429, body);
+  }
+  return new AIProviderError("AI_PROVIDER_ERROR", `AI provider returned error (${status}). Please try again later.`, status, body);
+}
+
 // ─── AI-Powered Structured Extraction ───
 
 const EXTRACTION_PROMPT = `You are a tour document extraction engine for the live music industry. Your job is to extract EVERY piece of structured data from tour documents with zero data loss. Missing even one detail (a call time, a travel day, a crew name) is a critical failure.
@@ -1082,7 +1119,7 @@ async function aiExtractFromPdf(base64: string, apiKey: string, prompt: string, 
     if (!resp.ok) {
       const errBody = await resp.text();
       console.error("[extract] PDF extraction failed:", resp.status, errBody);
-      return null;
+      throw mapProviderError(resp.status, errBody);
     }
 
     const data = await resp.json();
@@ -1109,6 +1146,7 @@ async function aiExtractFromPdf(base64: string, apiKey: string, prompt: string, 
       return JSON.parse(fixed);
     }
   } catch (err) {
+    if (err instanceof AIProviderError) throw err;
     console.error("[extract] PDF structured extraction failed:", err);
     return null;
   }
@@ -1133,8 +1171,9 @@ async function aiExtractFromText(text: string, apiKey: string, prompt: string, m
     });
 
     if (!resp.ok) {
-      console.error("[extract] Text extraction API error:", resp.status);
-      return null;
+      const errBody = await resp.text();
+      console.error("[extract] Text extraction API error:", resp.status, errBody);
+      throw mapProviderError(resp.status, errBody);
     }
 
     const data = await resp.json();
@@ -1169,6 +1208,7 @@ async function aiExtractFromText(text: string, apiKey: string, prompt: string, m
       return JSON.parse(fixed);
     }
   } catch (err) {
+    if (err instanceof AIProviderError) throw err;
     console.error("[extract] Text extraction failed:", err);
     return null;
   }
@@ -1821,6 +1861,7 @@ Deno.serve(async (req) => {
                 return venues;
               })
               .catch((err: any) => {
+                if (err instanceof AIProviderError) throw err;
                 console.error(`[extract] Batch ${batchNum} failed:`, err.message);
                 return [] as Array<Record<string, unknown>>;
               })
@@ -2484,6 +2525,17 @@ Deno.serve(async (req) => {
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       } else {
+        // For advance masters, zero venues is an explicit failure
+        if (isAdvanceMaster) {
+          console.error("[extract] Advance Master extraction returned 0 venues — failing explicitly");
+          return new Response(JSON.stringify({
+            error: "Advance Master extraction returned no venues. The document may not be in a recognized format.",
+            code: "EXTRACTION_EMPTY_RESULT",
+          }), {
+            status: 422,
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          });
+        }
         console.log("[extract] Multi-venue extraction returned no venues, falling through");
       }
     }
@@ -3023,6 +3075,10 @@ Deno.serve(async (req) => {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (err) {
+    if (err instanceof AIProviderError) {
+      console.error("[extract] AI provider error:", err.code, err.providerStatus);
+      return err.toResponse();
+    }
     console.error("[extract] Error:", err);
     return new Response(JSON.stringify({ error: (err as Error).message }), {
       status: 500,
