@@ -14,7 +14,6 @@ async function validateTwilioSignature(
   signature: string,
   authToken: string,
 ): Promise<boolean> {
-  // Build the data string: URL + sorted params concatenated as key=value
   const sortedKeys = Object.keys(params).sort();
   let data = url;
   for (const key of sortedKeys) {
@@ -38,16 +37,108 @@ async function validateTwilioSignature(
 // --- Strip markdown for SMS ---
 function toPlaintext(text: string): string {
   return text
-    .replace(/\*\*(.*?)\*\*/g, "$1")       // bold
-    .replace(/\*(.*?)\*/g, "$1")            // italic
-    .replace(/#{1,6}\s/g, "")               // headings
-    .replace(/`{1,3}[^`]*`{1,3}/g, "")      // code blocks
-    .replace(/\[Source:[^\]]*\]/g, "")       // source citations
-    .replace(/<<ACTION:[^>]*>>/g, "")        // action blocks
-    .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1") // links
-    .replace(/\n{3,}/g, "\n\n")             // excess newlines
+    .replace(/\*\*(.*?)\*\*/g, "$1")
+    .replace(/\*(.*?)\*/g, "$1")
+    .replace(/#{1,6}\s/g, "")
+    .replace(/`{1,3}[^`]*`{1,3}/g, "")
+    .replace(/\[Source:[^\]]*\]/g, "")
+    .replace(/<<ACTION:[^>]*>>/g, "")
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
+    .replace(/\n{3,}/g, "\n\n")
     .trim()
     .substring(0, 1500);
+}
+
+// --- Normalize phone: strip non-digits, keep last 10 ---
+function normalizePhone(p: string): string {
+  return p.replace(/\D/g, "").slice(-10);
+}
+
+// --- Match phone to contact on an ACTIVE tour, preferring nearest future event ---
+async function matchPhoneToTour(
+  admin: ReturnType<typeof createClient>,
+  normalized: string,
+): Promise<{ tourId: string | null; senderName: string }> {
+  const today = new Date().toISOString().split("T")[0];
+
+  // 1. Search contacts on ACTIVE tours with TOUR scope only
+  const { data: matchedContacts } = await admin
+    .from("contacts")
+    .select("tour_id, name, role, scope, phone, tours!inner(id, status)")
+    .eq("scope", "TOUR")
+    .eq("tours.status", "ACTIVE")
+    .not("phone", "is", null);
+
+  if (matchedContacts) {
+    // Filter by phone match
+    const phoneMatches = matchedContacts.filter((c: any) => {
+      const cp = normalizePhone(c.phone || "");
+      return cp === normalized && cp.length >= 10;
+    });
+
+    if (phoneMatches.length === 1) {
+      return { tourId: phoneMatches[0].tour_id, senderName: phoneMatches[0].name };
+    }
+
+    if (phoneMatches.length > 1) {
+      // Multiple tours — pick the one with the nearest upcoming event
+      const tourIds = phoneMatches.map((m: any) => m.tour_id);
+      const { data: events } = await admin
+        .from("schedule_events")
+        .select("tour_id, event_date")
+        .in("tour_id", tourIds)
+        .gte("event_date", today)
+        .order("event_date")
+        .limit(1);
+
+      const preferredTourId = events?.[0]?.tour_id || tourIds[0];
+      const match = phoneMatches.find((m: any) => m.tour_id === preferredTourId) || phoneMatches[0];
+      return { tourId: match.tour_id, senderName: match.name };
+    }
+  }
+
+  // 2. Fallback: check profiles table
+  const { data: profileMatch } = await admin
+    .from("profiles")
+    .select("id, display_name, phone")
+    .not("phone", "is", null);
+
+  if (profileMatch) {
+    for (const profile of profileMatch) {
+      const profilePhone = normalizePhone(profile.phone || "");
+      if (profilePhone === normalized && profilePhone.length >= 10) {
+        // Find ACTIVE tour membership, preferring tour with nearest future event
+        const { data: memberships } = await admin
+          .from("tour_members")
+          .select("tour_id, tours!inner(id, status)")
+          .eq("user_id", profile.id)
+          .eq("tours.status", "ACTIVE");
+
+        if (memberships && memberships.length > 0) {
+          const memberTourIds = memberships.map((m: any) => m.tour_id);
+
+          if (memberTourIds.length === 1) {
+            return { tourId: memberTourIds[0], senderName: profile.display_name || "Team Member" };
+          }
+
+          // Multiple active tours — pick nearest upcoming event
+          const { data: events } = await admin
+            .from("schedule_events")
+            .select("tour_id, event_date")
+            .in("tour_id", memberTourIds)
+            .gte("event_date", today)
+            .order("event_date")
+            .limit(1);
+
+          const preferredTourId = events?.[0]?.tour_id || memberTourIds[0];
+          return { tourId: preferredTourId, senderName: profile.display_name || "Team Member" };
+        }
+        break;
+      }
+    }
+  }
+
+  return { tourId: null, senderName: "Unknown" };
 }
 
 Deno.serve(async (req) => {
@@ -94,7 +185,6 @@ Deno.serve(async (req) => {
 
     // --- Validate Twilio signature ---
     const twilioSignature = req.headers.get("x-twilio-signature") || "";
-    // The URL Twilio uses to compute the signature is the full request URL
     const requestUrl = `${supabaseUrl}/functions/v1/tourtext-inbound`;
 
     const isValid = await validateTwilioSignature(
@@ -109,67 +199,20 @@ Deno.serve(async (req) => {
       return new Response("Forbidden", { status: 403, headers: corsHeaders });
     }
 
-    // --- Match phone number to contact → tour ---
-    // Normalize phone: strip everything except digits, keep last 10
-    const normalizePhone = (p: string) => p.replace(/\D/g, "").slice(-10);
+    // --- Match phone number to contact → tour (ACTIVE tours only, nearest event preferred) ---
     const normalized = normalizePhone(fromPhone);
+    const { tourId: matchedTourId, senderName } = await matchPhoneToTour(admin, normalized);
 
-    // Search contacts table for matching phone
-    const { data: matchedContacts } = await admin
-      .from("contacts")
-      .select("tour_id, name, role, scope, phone")
-      .not("phone", "is", null);
-
-    let matchedTourId: string | null = null;
-    let senderName = "Unknown";
-
-    if (matchedContacts) {
-      for (const contact of matchedContacts) {
-        const contactPhone = normalizePhone(contact.phone || "");
-        if (contactPhone === normalized && contactPhone.length >= 10) {
-          matchedTourId = contact.tour_id;
-          senderName = contact.name;
-          break;
-        }
-      }
-    }
-
-    // Also check profiles table by phone
-    if (!matchedTourId) {
-      const { data: profileMatch } = await admin
-        .from("profiles")
-        .select("id, display_name, phone")
-        .not("phone", "is", null);
-
-      if (profileMatch) {
-        for (const profile of profileMatch) {
-          const profilePhone = normalizePhone(profile.phone || "");
-          if (profilePhone === normalized && profilePhone.length >= 10) {
-            // Find tour membership for this user
-            const { data: membership } = await admin
-              .from("tour_members")
-              .select("tour_id")
-              .eq("user_id", profile.id)
-              .limit(1)
-              .single();
-
-            if (membership) {
-              matchedTourId = membership.tour_id;
-              senderName = profile.display_name || "Team Member";
-            }
-            break;
-          }
-        }
-      }
-    }
-
-    // Log inbound SMS
-    await admin.from("sms_inbound").insert({
+    // Log inbound SMS (with error handling for null tour_id)
+    const { error: inboundErr } = await admin.from("sms_inbound").insert({
       from_phone: fromPhone,
       message_text: messageBody,
       tour_id: matchedTourId,
       sender_name: senderName !== "Unknown" ? senderName : null,
     });
+    if (inboundErr) {
+      console.error("Failed to log inbound SMS:", inboundErr.message);
+    }
 
     if (!matchedTourId) {
       const replyText = "Sorry, this number isn't linked to any active tour. Contact your Tour Admin to be added.";
@@ -183,8 +226,8 @@ Deno.serve(async (req) => {
       return twimlResponse(replyText);
     }
 
-    // --- Guest list intent detection ---
-    const guestListKeywords = /guest\s*list|comp\s*ticket|put\s.+\s*on\s*the\s*list|tickets?\s*for|\+\s*\d|plus\s*\d|will\s*call/i;
+    // --- Guest list intent detection (tightened regex — removed overly broad patterns) ---
+    const guestListKeywords = /guest\s*list|comp\s*ticket|put\s.+\s*on\s*the\s*list|will\s*call|can\s+i\s+get\s+\d|i\s+need\s+\d\s+ticket/i;
     if (guestListKeywords.test(messageBody)) {
       console.log("Guest list intent detected, extracting fields...");
 
@@ -220,14 +263,12 @@ If the message says "+1" or "plus one" after a name, that means 2 tickets total 
         const extractData = await extractResponse.json();
         const rawExtract = extractData.choices?.[0]?.message?.content || "";
         try {
-          // Parse JSON from response (handle markdown code blocks)
           const jsonMatch = rawExtract.match(/\{[\s\S]*\}/);
           if (jsonMatch) {
             const fields = JSON.parse(jsonMatch[0]);
             const { guest_names, ticket_count, event_date, venue } = fields;
 
             if (guest_names && ticket_count && event_date) {
-              // All required fields present — call guest-list-request
               const glResponse = await fetch(`${supabaseUrl}/functions/v1/guest-list-request`, {
                 method: "POST",
                 headers: {
@@ -249,8 +290,6 @@ If the message says "+1" or "plus one" after a name, that means 2 tickets total 
                 const glData = await glResponse.json();
                 const smsReply = glData.sms_reply || "Your guest list request has been received.";
 
-                // Don't send SMS here — guest-list-request already handles it for approvals
-                // Only send if the function returned a reply but didn't auto-send (NO_ALLOTMENT, PAST_DEADLINE, PENDING)
                 if (glData.status !== "APPROVED") {
                   await sendTwilioSms(fromPhone, smsReply, TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_PHONE_NUMBER);
                   await admin.from("sms_outbound").insert({
@@ -264,7 +303,6 @@ If the message says "+1" or "plus one" after a name, that means 2 tickets total 
                 return twimlResponse("");
               }
             } else {
-              // Missing fields — ask for them
               const missing: string[] = [];
               if (!guest_names) missing.push("guest names (full names)");
               if (!event_date) missing.push("which show date");
@@ -283,14 +321,13 @@ If the message says "+1" or "plus one" after a name, that means 2 tickets total 
           }
         } catch (parseErr) {
           console.error("Failed to parse guest list extraction:", parseErr);
-          // Fall through to normal TELA flow
         }
       }
     }
 
     // --- Fetch AKB data + recent SMS history for the matched tour ---
     const [eventsRes, contactsRes, vansRes, tourRes, recentInbound, recentOutbound] = await Promise.all([
-      admin.from("schedule_events").select("event_date, venue, city, load_in, show_time, notes").eq("tour_id", matchedTourId).order("event_date").limit(50),
+      admin.from("schedule_events").select("event_date, venue, city, load_in, show_time, doors, soundcheck, curfew, notes").eq("tour_id", matchedTourId).order("event_date").limit(50),
       admin.from("contacts").select("name, role, email, phone, scope, venue").eq("tour_id", matchedTourId).limit(50),
       admin.from("venue_advance_notes").select("venue_name, city, event_date, van_data").eq("tour_id", matchedTourId).order("event_date").limit(30),
       admin.from("tours").select("name").eq("id", matchedTourId).single(),
@@ -308,7 +345,6 @@ If the message says "+1" or "plus one" after a name, that means 2 tickets total 
     for (const m of (recentOutbound.data || [])) {
       historyMessages.push({ role: "assistant", content: m.message_text, ts: m.created_at });
     }
-    // Sort by timestamp ascending, keep last 6 exchanges
     historyMessages.sort((a, b) => a.ts.localeCompare(b.ts));
     const recentHistory = historyMessages.slice(-6);
 
@@ -342,7 +378,6 @@ ${akbContext}`,
 
     // Add conversation history
     for (const msg of recentHistory.slice(0, -1)) {
-      // Skip the current message (last inbound) since we add it below
       chatMessages.push({ role: msg.role, content: msg.content });
     }
 
@@ -389,7 +424,6 @@ ${akbContext}`,
       status: "sent",
     });
 
-    // Return TwiML (empty — we send via REST API instead)
     return twimlResponse("");
   } catch (error) {
     console.error("tourtext-inbound error:", error);
