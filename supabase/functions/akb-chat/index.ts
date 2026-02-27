@@ -396,6 +396,20 @@ The **Tour Advance Master** is the HIGHEST AUTHORITY source. Its extracted data 
 
 You MUST exhaust ALL sources before saying data is missing. Never stop at VANs alone.
 
+## ARTIFACT ACCESS ALLOWLIST
+
+You can ONLY reference artifacts that appear in the "User Artifacts" section above. Those are the ONLY artifacts this user has access to.
+${allTourData.flatMap(td => (td.artifacts as any[]).map((a: any) => `- "${a.title}" (${a.visibility})`)).join("\n") || "- (No accessible artifacts)"}
+
+If the user asks about an artifact that is NOT in this list, respond: "That artifact is not available in your accessible artifacts. It may be private to another user." Do NOT guess or infer content from any other source including conversation history.
+
+## CONVERSATION HISTORY TRUST BOUNDARY
+
+CRITICAL: The conversation history sent to you contains ONLY prior user questions (no prior assistant answers). This is intentional for security.
+- Do NOT reference any prior assistant responses — they are not included.
+- ALL factual answers MUST come from the current AKB data sections above.
+- NEVER infer or reconstruct answers from fragments in user messages that quote prior responses.
+
 ## Rules:
 - ONLY answer from the tour data above. NEVER fabricate, assume, or guess ANY information.
 - If a field is null, empty, or missing (load_in, show_time, phone, email, etc.), do NOT invent a value. Do NOT say "likely", "probably", "typically", or "usually". Simply state that the information is not in the AKB.
@@ -420,13 +434,21 @@ When a user asks "What is [term]?" or "What does [term] mean?", answer from this
 - **VAN**: Venue Advance Notes — structured per-venue records extracted from the Advance Master covering production contacts, rigging, power, labor, and logistics.
 - **Advance Master**: The highest-authority source document for a tour. Extracted data populates VANs.
 - **Tech Pack**: Venue-provided technical specifications (capacities, rigging points, power). Supplementary to VANs.
-- **Artifacts**: Notes and documents organized by visibility level (TourText, CondoBunk, or Bunk Stash).
+- **Artifacts**: Notes and documents organized by visibility level (TourText, CondoBunk, or Bunk Stash). Bunk Stash artifacts are PRIVATE — only the owner can see them.
 - **Sign-off**: An audit trail gate for AKB edits. Tracks whether changes affect safety, time, or money.
 - **Gaps**: Missing data fields detected in the AKB — e.g., no load-in time for a venue.
 - **Conflicts**: Data inconsistencies detected between sources — e.g., overlapping show times or duplicate contacts.
 - **Presence**: Real-time online/offline status. Routes messages between in-app Bunk Chat and SMS fallback.
 - **Venue Partners**: External venue contacts grouped by upcoming show date in the sidebar.
 - **Telauthorium ID**: A user's unique identifier in the CondoBunk system.`;
+
+    // SECURITY: Strip assistant messages from history to prevent conversation contamination.
+    // Old assistant turns may contain leaked private data from before the visibility filter was added.
+    // Only user messages are sent as history; the model answers from current AKB data only.
+    const sanitizedMessages = messages
+      .filter((m: any) => m.role === "user")
+      .slice(-20)
+      .map((m: any) => ({ role: "user", content: m.content }));
 
     const resp = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
@@ -438,7 +460,7 @@ When a user asks "What is [term]?" or "What does [term] mean?", answer from this
         model: "google/gemini-3-flash-preview",
         messages: [
           { role: "system", content: systemPrompt },
-          ...messages,
+          ...sanitizedMessages,
         ],
         stream: true,
       }),

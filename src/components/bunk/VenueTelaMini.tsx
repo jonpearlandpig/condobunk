@@ -56,7 +56,8 @@ const VenueTelaMini = ({ tourId, venueName, eventDate, city }: VenueTelaMiniProp
           Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({
-          messages: [...messages.map((m, i) => i === messages.length ? apiMsg : m), apiMsg],
+          // SECURITY: Only send user messages to prevent conversation contamination
+          messages: [...messages.filter(m => m.role === "user").map(m => ({ role: "user", content: m.content })), { role: "user", content: apiMsg.content }],
           tour_id: tourId,
         }),
       });
