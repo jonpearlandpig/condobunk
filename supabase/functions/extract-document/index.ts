@@ -114,6 +114,56 @@ function detectDomain(filename: string, text: string): DomainResult {
   return { doc_type: topType, confidence: topScore, scores };
 }
 
+// ─── VAN Contact Name/Phone Cleaning ───
+
+function cleanVanContactName(raw: string): string {
+  if (!raw) return raw;
+  let name = raw.replace(/^(head\s+rigger|production\s+contact)\s*[:\-–—]\s*/i, "").trim();
+  name = name.replace(/\s*[\-–—|]\s*(event|director|senior|production|coordinator|specialist|operations|manager|vp|svp).*$/i, "").trim();
+  name = name.replace(/\s*\([^)]*\)\s*/g, " ").trim();
+  name = name.replace(/\.\s*I\s+can\s+also\b.*$/i, "").trim();
+  name = name.replace(/\.\s*$/, "").trim();
+  if (name.includes(",") && !name.includes(" OR ")) {
+    const parts = name.split(",").map(s => s.trim());
+    if (parts.length === 2 && parts[0] && parts[1]) {
+      name = `${parts[1]} ${parts[0]}`;
+    }
+  }
+  return name;
+}
+
+function cleanVanPhone(raw: string | null | undefined): string | null {
+  if (!raw) return null;
+  let phone = raw.replace(/^(cell|direct|office|main|mobile|work|fax)\s*[:\-–—]\s*/i, "").trim();
+  const match = phone.match(/[\d(+][\d\s.()-]{7,}/);
+  return match ? match[0].trim() : phone || null;
+}
+
+function fuzzyMatchVenueName(vanVenue: string, scheduleVenues: string[]): string {
+  if (!vanVenue || scheduleVenues.length === 0) return vanVenue;
+  const a = vanVenue.toLowerCase().trim();
+  for (const sv of scheduleVenues) {
+    if (sv.toLowerCase().trim() === a) return sv;
+  }
+  for (const sv of scheduleVenues) {
+    const b = sv.toLowerCase().trim();
+    if (b.includes(a) || a.includes(b)) return sv;
+  }
+  const aWords = new Set(a.replace(/[^a-z0-9\s]/g, "").split(/\s+/).filter(w => w.length > 2));
+  let bestMatch: string | null = null;
+  let bestOverlap = 0;
+  for (const sv of scheduleVenues) {
+    const bWords = new Set(sv.toLowerCase().replace(/[^a-z0-9\s]/g, "").split(/\s+/).filter(w => w.length > 2));
+    const overlap = [...aWords].filter(w => bWords.has(w)).length;
+    const ratio = overlap / Math.max(aWords.size, bWords.size, 1);
+    if (ratio > bestOverlap && ratio >= 0.6) {
+      bestOverlap = ratio;
+      bestMatch = sv;
+    }
+  }
+  return bestMatch || vanVenue;
+}
+
 // ─── AI Provider Error Types ───
 
 class AIProviderError extends Error {
@@ -2031,7 +2081,17 @@ Deno.serve(async (req) => {
           // This prevents stale/wrong rows from surviving across re-extractions
           await adminClient.from("venue_advance_notes").delete().eq("source_doc_id", document_id);
           await adminClient.from("schedule_events").delete().eq("source_doc_id", document_id);
-          console.log("[extract] Source-doc scoped cleanup: deleted old VANs and schedule_events for doc", document_id);
+          // Also clean up old VAN-sourced contacts from this doc
+          await adminClient.from("contacts").delete().eq("source_doc_id", document_id).eq("scope", "VENUE");
+          console.log("[extract] Source-doc scoped cleanup: deleted old VANs, schedule_events, and VAN contacts for doc", document_id);
+
+          // Fetch all schedule venue names for fuzzy matching VAN contacts
+          const { data: schedVenueRows } = await adminClient
+            .from("schedule_events")
+            .select("venue")
+            .eq("tour_id", doc.tour_id)
+            .not("venue", "is", null);
+          const allScheduleVenueNames = [...new Set((schedVenueRows || []).map(e => e.venue!).filter(Boolean))];
 
           for (let vi = 0; vi < multiResult.venues.length; vi++) {
             const v = multiResult.venues[vi];
@@ -2130,19 +2190,30 @@ Deno.serve(async (req) => {
               totalVans++;
             }
 
-            // Insert contacts
+            // Insert contacts (with name cleaning and fuzzy venue matching)
             const venueContacts: Array<Record<string, string | null>> = [];
-            const prodContact = (v.production_contact || v.event_details && (v.event_details as Record<string, unknown>)) as Record<string, string> | undefined;
             const pc = v.production_contact as Record<string, string> | undefined;
             if (pc?.name) {
-              venueContacts.push({ name: pc.name, role: "Production Contact", phone: pc.phone || null, email: pc.email || null });
+              // Handle "Name1 OR Name2" pattern
+              const names = pc.name.includes(" OR ") ? pc.name.split(/\s+OR\s+/i) : [pc.name];
+              for (const rawName of names) {
+                const cleanedName = cleanVanContactName(rawName);
+                if (cleanedName && cleanedName.length >= 2) {
+                  venueContacts.push({ name: cleanedName, role: "Production Contact", phone: cleanVanPhone(pc.phone) || null, email: pc.email || null });
+                }
+              }
             }
             const rigger = v.house_rigger_contact as Record<string, string> | undefined;
             if (rigger?.name) {
-              venueContacts.push({ name: rigger.name, role: "House Rigger", phone: rigger.phone || null, email: rigger.email || null });
+              const cleanedName = cleanVanContactName(rigger.name);
+              if (cleanedName && cleanedName.length >= 2) {
+                venueContacts.push({ name: cleanedName, role: "House Rigger", phone: cleanVanPhone(rigger.phone) || null, email: rigger.email || null });
+              }
             }
 
             if (venueContacts.length > 0) {
+              // Try to match VAN venue name to schedule venue name for sidebar grouping
+              const matchedVenueName = fuzzyMatchVenueName(finalVenueName, allScheduleVenueNames);
               const contactRows = venueContacts.map(c => ({
                 tour_id: doc.tour_id,
                 name: c.name!,
@@ -2151,7 +2222,7 @@ Deno.serve(async (req) => {
                 email: c.email || null,
                 source_doc_id: document_id,
                 scope: "VENUE" as const,
-                venue: finalVenueName,
+                venue: matchedVenueName,
               }));
               const { error: cErr } = await adminClient.from("contacts").insert(contactRows);
               if (!cErr) totalContacts += venueContacts.length;
