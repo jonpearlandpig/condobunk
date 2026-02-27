@@ -1,100 +1,75 @@
 
 
-## Comprehensive Bug Prevention: TourText Smart Context + Cross-System Parity Fixes
+## Progressive Depth for TourText SMS Responses
 
-### Problem Summary
+### What Changes
 
-There are two categories of remaining issues:
+Add a "Progressive Depth" protocol so that TELA rewards curiosity. Simple first-time questions get a quick, punchy answer. Follow-up questions on the same topic automatically unlock more detail.
 
-1. **TourText (SMS) is blind to venue-specific data** -- The previously approved "Smart Context Selection" plan has not been implemented yet. The function dumps all 26 schedule events (~14K chars) + all 13 VANs (~48K chars) = ~63K chars into a 12K character limit. VAN data (haze, labor, rigging, power, docks) gets completely truncated.
+### How It Works
 
-2. **akb-chat (web app) has its own data gaps** -- Missing `doors`, `soundcheck`, `curfew` from schedule queries, missing `tour_routing` and `tour_policies` data entirely.
+**Depth 1 (Default)** -- First question on a topic
+- Single most important fact, 1-2 lines
+- Example: "Haze for Boston?" -> "Haze OK at MGM, just heads up FOH before starting."
 
-3. **Venue name mismatches between tables** -- Schedule says "Allen County War Memorial Coliseum" but VAN says "Allen War Memorial Coliseum". Same for "Xfinity Mobile Arena" vs "Wells Fargo Center / Xfinity Mobile Arena". City mismatches too ("Fort Wayne, IN" vs "Ft Wayne"). Without fuzzy matching, date-based lookups for the wrong venue name will miss the VAN.
+**Depth 2** -- Second question on same topic (or "tell me more", "details", "what else")
+- Operational context, 3-5 lines
+- Example: "What about the haze machine specs?" -> "MGM allows MDG theONE or Ultratec Radiance. No oil-based. Venue requires 30min pre-show burn-off. FOH has final say on density. Union stagehand must operate."
 
----
+**Depth 3** -- Third question or explicit "everything" / "full rundown"
+- Full detail dump, up to 1500 chars
+- Example: "Give me the full haze rundown" -> Complete haze policy, machine specs, union rules, ventilation notes, emergency shutoff protocol, contact for questions
 
-### Fix 1: Smart Context Selection for TourText (tourtext-inbound)
+### Detection Logic
 
-Replace the bulk-dump approach with relevance-filtered queries:
+The depth level is determined by analyzing the conversation history (last 6 messages) that is already fetched:
 
-**Step A -- Date/city extraction from the user's message:**
-- Regex patterns for dates: `3/5`, `March 5`, `tomorrow`, `tonight`, `next show`
-- City/venue name matching against a quick pre-query of known cities from `schedule_events`
-- Default: next 3 upcoming events if no specific date/venue mentioned
+1. **Topic extraction**: Use a lightweight keyword match to identify the topic of the current message (haze, labor, rigging, hotel, load-in, doors, etc.)
+2. **History scan**: Count how many of the recent messages touch the same topic
+3. **Explicit depth triggers**: Phrases like "tell me more", "details", "full rundown", "everything about", "what else" immediately bump to Depth 2 or 3
 
-**Step B -- Filtered data fetches:**
-- Schedule: only events within +/- 2 days of detected date (or next 3 upcoming)
-- VANs: match by `event_date` from the filtered schedule events (not by venue name, to avoid mismatch issues)
-- Contacts: keep full list (only 7 contacts, small)
-- Add `tour_routing` query filtered by same date range (hotel info)
-- Add `tour_policies` query (guest/safety SOPs -- small data, include all)
+### System Prompt Update
 
-**Step C -- Increase context cap to 16K** since filtered data will be much smaller
+The current system prompt tells TELA to "keep it under 300 characters when possible." This changes to a depth-aware instruction:
 
-**Step D -- Update system prompt** to tell TELA that VAN data contains venue-specific technical details (haze, rigging, labor, power, docks, etc.)
-
-### Fix 2: akb-chat Schedule Query Parity
-
-The web-based TELA (`akb-chat`) queries schedule_events with:
 ```
-.select("id, event_date, venue, city, load_in, show_time, notes")
+RESPONSE DEPTH PROTOCOL:
+- Depth 1 (first ask): One punchy line, under 160 chars. Just the key fact.
+- Depth 2 (follow-up or "tell me more"): 2-4 lines of operational context, under 480 chars.
+- Depth 3 (third ask or "full rundown"/"everything"): Complete detail, up to 1500 chars.
+
+Current depth level: {depth}
 ```
 
-Missing: `doors`, `soundcheck`, `curfew` (same bug we fixed in tourtext-inbound). Also missing: `tour_routing` and `tour_policies` data entirely. Fix all three.
+The depth value is computed before the AI call and injected into the system prompt.
 
-### Fix 3: Venue Name Fuzzy Matching
+### max_tokens Scaling
 
-When matching VANs to schedule events by date, use `event_date` as the primary join key rather than venue name. This avoids the "Allen County War Memorial Coliseum" vs "Allen War Memorial Coliseum" mismatch problem entirely.
+- Depth 1: `max_tokens: 150`
+- Depth 2: `max_tokens: 300`
+- Depth 3: `max_tokens: 600`
 
-### Fix 4: Double-SMS Prevention
-
-Currently `tourtext-inbound` both returns a TwiML `<Message>` AND calls `sendTwilioSms()`. This can cause duplicate SMS delivery. Fix: always return empty TwiML and rely solely on the REST API send.
-
-### Fix 5: sms_inbound/sms_outbound Insert Failures with null tour_id
-
-When `matchedTourId` is null, inserts into `sms_inbound` and `sms_outbound` with `tour_id: null`. Verify the column is nullable. If not, skip the insert or use a sentinel value.
-
----
+This saves AI cost on simple questions and gives room for detail on deep dives.
 
 ### Implementation Details
 
 **File: `supabase/functions/tourtext-inbound/index.ts`**
 
-1. Add a `extractRelevanceFromMessage()` function:
-   - Parse date patterns (`M/D`, `month D`, `tomorrow`, `tonight`, `next show`, day names)
-   - Parse city mentions by comparing against a pre-fetched list of cities from schedule_events
-   - Return `{ targetDate: string | null, targetCity: string | null }`
+1. Add a `detectDepth()` function after the conversation history is built:
+   - Extract topic keywords from the current message (venue-specific terms, schedule terms, contact terms)
+   - Scan the `recentHistory` array for messages with overlapping topic keywords
+   - Count same-topic exchanges; check for explicit depth triggers ("more", "details", "everything", "full rundown", "elaborate")
+   - Return depth level: 1, 2, or 3
 
-2. Before AKB fetch, run relevance extraction:
-   - Quick query: `SELECT DISTINCT city, venue, event_date FROM schedule_events WHERE tour_id = X ORDER BY event_date`
-   - Match message against cities/venues
-   - Determine date window
+2. Before the AI call, compute depth and inject it into the system prompt:
+   - Replace the static "keep it under 300 characters" line with the depth-aware protocol
+   - Set `max_tokens` based on depth level
 
-3. Replace bulk AKB fetch with filtered queries:
-   - Schedule: `.gte("event_date", startDate).lte("event_date", endDate)` (or next 3 upcoming)
-   - VANs: `.in("event_date", matchedDates)` (join by date, not venue name)
-   - Add: `tour_routing` filtered by same dates
-   - Add: `tour_policies` (all, they're small)
+3. The topic detection uses simple keyword groups (not AI) to keep latency zero:
+   - Schedule: load-in, doors, soundcheck, curfew, show time, set time
+   - Venue tech: haze, rigging, steel, power, docks, labor, union, staging, SPL
+   - Logistics: hotel, routing, bus, truck, travel, drive, fly
+   - Contacts: PM, TM, LD, FOH, name-based lookups
+   - Guest list: tickets, guest, comp, will call
 
-4. Fix double-SMS: always return empty TwiML, remove message from TwiML responses
-
-5. Increase `.substring(0, 12000)` to `.substring(0, 16000)`
-
-**File: `supabase/functions/akb-chat/index.ts`**
-
-1. Update schedule select to include `doors, soundcheck, curfew`
-2. Add `tour_routing` and `tour_policies` queries to the parallel fetch
-3. Include routing/policies data in the AKB context section
-
----
-
-### Expected Outcomes
-
-- "Haze for Boston?" will return the actual haze policy from the Boston VAN
-- "Distance to steel Cleveland?" will return the measurement from the Cleveland VAN
-- "Hotel in Detroit?" will return routing data
-- "What time are doors?" will return the actual doors time
-- No more duplicate SMS messages
-- Web TELA and SMS TELA will have the same data available
-
+No database changes required. No new tables or columns needed. This is purely a logic change within the existing edge function.
