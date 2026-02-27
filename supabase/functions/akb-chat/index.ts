@@ -121,7 +121,7 @@ Deno.serve(async (req) => {
           admin.from("venue_advance_notes").select("id, venue_name, city, event_date, van_data").eq("tour_id", tid).order("event_date").limit(30),
           admin.from("tour_routing").select("event_date, city, hotel_name, hotel_checkin, hotel_checkout, hotel_confirmation, bus_notes, truck_notes, routing_notes").eq("tour_id", tid).order("event_date").limit(30),
           admin.from("tour_policies").select("policy_type, policy_data").eq("tour_id", tid).limit(10),
-          admin.from("user_artifacts").select("id, title, artifact_type, visibility, content, updated_at").eq("tour_id", tid).order("updated_at", { ascending: false }).limit(20),
+          admin.from("user_artifacts").select("id, title, artifact_type, visibility, content, updated_at, user_id").eq("tour_id", tid).or(`visibility.in.(tourtext,condobunk),and(visibility.eq.bunk_stash,user_id.eq.${user.id})`).order("updated_at", { ascending: false }).limit(20),
         ]);
 
         const docsWithUrls = await Promise.all(
@@ -199,7 +199,7 @@ ${JSON.stringify(td.conflicts, null, 1)}
 ${td.documents.map(d => `[${d.doc_type}] ${d.filename} (id: ${d.id})${d.file_url ? `\nDownload: ${d.file_url}` : ""}:\n${d.excerpt}`).join("\n---\n")}
 
 ### User Artifacts (notes, checklists, documents):
-${(td.artifacts as any[]).length > 0 ? (td.artifacts as any[]).map((a: any) => `[${a.artifact_type}] "${a.title}" (visibility: ${a.visibility}, updated: ${a.updated_at}):\n${(a.content || "(empty)").substring(0, 1500)}`).join("\n---\n") : "(No artifacts)"}
+${(td.artifacts as any[]).length > 0 ? (td.artifacts as any[]).map((a: any) => `[${a.artifact_type}] "${a.title}" (visibility: ${a.visibility}${a.visibility === "bunk_stash" ? " — PRIVATE TO THIS USER" : ""}, updated: ${a.updated_at}):\n${(a.content || "(empty)").substring(0, 1500)}`).join("\n---\n") : "(No artifacts)"}
 `;
       }).join("\n\n");
     } else {
@@ -235,7 +235,7 @@ ${JSON.stringify(td.conflicts, null, 1)}
 ${td.documents.map(d => `[${d.doc_type}] ${d.filename} (id: ${d.id})${d.file_url ? `\nDownload: ${d.file_url}` : ""}:\n${d.excerpt}`).join("\n---\n")}
 
 ### User Artifacts (notes, checklists, documents):
-${(td.artifacts as any[]).length > 0 ? (td.artifacts as any[]).map((a: any) => `[${a.artifact_type}] "${a.title}" (visibility: ${a.visibility}, updated: ${a.updated_at}):\n${(a.content || "(empty)").substring(0, 1500)}`).join("\n---\n") : "(No artifacts — create one in the Artifacts panel)"}
+${(td.artifacts as any[]).length > 0 ? (td.artifacts as any[]).map((a: any) => `[${a.artifact_type}] "${a.title}" (visibility: ${a.visibility}${a.visibility === "bunk_stash" ? " — PRIVATE TO THIS USER" : ""}, updated: ${a.updated_at}):\n${(a.content || "(empty)").substring(0, 1500)}`).join("\n---\n") : "(No artifacts — create one in the Artifacts panel)"}
 `;
     }
 
