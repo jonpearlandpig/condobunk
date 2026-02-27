@@ -373,6 +373,31 @@ const SidebarContactList = ({ contacts, onNavigate, onUpdate, onDelete, onlineUs
                   )}
                 </div>
               {c.role && <p className="text-[10px] font-mono text-muted-foreground/60 truncate leading-tight">{c.role}</p>}
+              {!isDemoMode && (c.phone || c.email) && (
+                <div className="flex items-center gap-2 mt-0.5">
+                  {c.phone && (
+                    <a
+                      href={`tel:${c.phone}`}
+                      onClick={(e) => e.stopPropagation()}
+                      className="inline-flex items-center gap-1 text-[10px] font-mono text-muted-foreground/70 hover:text-foreground hover:underline transition-colors"
+                    >
+                      <Phone className="h-2.5 w-2.5" />
+                      {c.phone}
+                    </a>
+                  )}
+                  {c.phone && c.email && <span className="text-muted-foreground/30 text-[10px]">·</span>}
+                  {c.email && (
+                    <a
+                      href={`mailto:${c.email}`}
+                      onClick={(e) => e.stopPropagation()}
+                      className="inline-flex items-center gap-1 text-[10px] font-mono text-muted-foreground/70 hover:text-foreground hover:underline transition-colors truncate"
+                    >
+                      <Mail className="h-2.5 w-2.5 shrink-0" />
+                      <span className="truncate">{c.email}</span>
+                    </a>
+                  )}
+                </div>
+              )}
               {!isDemoMode && isMissingContact && (
                 <button
                   onClick={(e) => {
