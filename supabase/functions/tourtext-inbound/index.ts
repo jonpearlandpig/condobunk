@@ -54,6 +54,113 @@ function normalizePhone(p: string): string {
   return p.replace(/\D/g, "").slice(-10);
 }
 
+// --- Extract date/city/venue relevance from user message ---
+function extractRelevanceFromMessage(
+  message: string,
+  knownCities: string[],
+  knownVenues: string[],
+  eventDates: string[],
+): { targetDates: string[]; targetCity: string | null; targetVenue: string | null } {
+  const today = new Date();
+  const msgLower = message.toLowerCase();
+  let targetDates: string[] = [];
+  let targetCity: string | null = null;
+  let targetVenue: string | null = null;
+
+  // --- Date extraction ---
+  // M/D or M-D patterns
+  const mdMatch = msgLower.match(/(\d{1,2})[\/\-](\d{1,2})/);
+  if (mdMatch) {
+    const month = parseInt(mdMatch[1]);
+    const day = parseInt(mdMatch[2]);
+    if (month >= 1 && month <= 12 && day >= 1 && day <= 31) {
+      let year = today.getFullYear();
+      const candidate = new Date(year, month - 1, day);
+      if (candidate < today) year++;
+      const dateStr = `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+      targetDates = [dateStr];
+    }
+  }
+
+  // "tomorrow" / "tonight"
+  if (/\btomorrow\b/i.test(message)) {
+    const tmrw = new Date(today);
+    tmrw.setDate(tmrw.getDate() + 1);
+    targetDates = [tmrw.toISOString().split("T")[0]];
+  } else if (/\btonight\b|\btoday\b/i.test(message)) {
+    targetDates = [today.toISOString().split("T")[0]];
+  }
+
+  // Month name + day: "March 5", "Mar 5th"
+  const monthNames: Record<string, number> = {
+    jan: 1, january: 1, feb: 2, february: 2, mar: 3, march: 3,
+    apr: 4, april: 4, may: 5, jun: 6, june: 6, jul: 7, july: 7,
+    aug: 8, august: 8, sep: 9, september: 9, oct: 10, october: 10,
+    nov: 11, november: 11, dec: 12, december: 12,
+  };
+  const monthMatch = msgLower.match(/\b(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|june?|july?|aug(?:ust)?|sep(?:tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\s+(\d{1,2})(?:st|nd|rd|th)?\b/);
+  if (monthMatch && targetDates.length === 0) {
+    const month = monthNames[monthMatch[1]];
+    const day = parseInt(monthMatch[2]);
+    if (month && day >= 1 && day <= 31) {
+      let year = today.getFullYear();
+      const candidate = new Date(year, month - 1, day);
+      if (candidate < today) year++;
+      const dateStr = `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+      targetDates = [dateStr];
+    }
+  }
+
+  // Day names: "Saturday", "next Friday"
+  const dayNames = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"];
+  const dayMatch = msgLower.match(/\b(next\s+)?(sunday|monday|tuesday|wednesday|thursday|friday|saturday)\b/);
+  if (dayMatch && targetDates.length === 0) {
+    const targetDay = dayNames.indexOf(dayMatch[2]);
+    const currentDay = today.getDay();
+    let daysAhead = targetDay - currentDay;
+    if (daysAhead <= 0 || dayMatch[1]) daysAhead += 7;
+    const target = new Date(today);
+    target.setDate(target.getDate() + daysAhead);
+    targetDates = [target.toISOString().split("T")[0]];
+  }
+
+  // "next show" / "next event"
+  if (/\bnext\s+(show|event|gig|date)\b/i.test(message) && targetDates.length === 0) {
+    const todayStr = today.toISOString().split("T")[0];
+    const futureDates = eventDates.filter((d) => d >= todayStr).sort();
+    if (futureDates.length > 0) {
+      targetDates = [futureDates[0]];
+    }
+  }
+
+  // --- City matching ---
+  for (const city of knownCities) {
+    if (!city) continue;
+    const cityLower = city.toLowerCase();
+    // Extract just city name (strip state abbrev like ", IN" or ", OH")
+    const cityName = cityLower.split(",")[0].trim();
+    if (cityName.length >= 3 && msgLower.includes(cityName)) {
+      targetCity = city;
+      break;
+    }
+  }
+
+  // --- Venue matching ---
+  for (const venue of knownVenues) {
+    if (!venue) continue;
+    const venueLower = venue.toLowerCase();
+    // Check if significant words from the venue name appear in the message
+    const venueWords = venueLower.split(/\s+/).filter((w) => w.length > 3);
+    const matchCount = venueWords.filter((w) => msgLower.includes(w)).length;
+    if (venueWords.length > 0 && matchCount / venueWords.length >= 0.5) {
+      targetVenue = venue;
+      break;
+    }
+  }
+
+  return { targetDates, targetCity, targetVenue };
+}
+
 // --- Match phone to contact on an ACTIVE tour, preferring nearest future event ---
 async function matchPhoneToTour(
   admin: ReturnType<typeof createClient>,
@@ -70,7 +177,6 @@ async function matchPhoneToTour(
     .not("phone", "is", null);
 
   if (matchedContacts) {
-    // Filter by phone match
     const phoneMatches = matchedContacts.filter((c: any) => {
       const cp = normalizePhone(c.phone || "");
       return cp === normalized && cp.length >= 10;
@@ -81,7 +187,6 @@ async function matchPhoneToTour(
     }
 
     if (phoneMatches.length > 1) {
-      // Multiple tours — pick the one with the nearest upcoming event
       const tourIds = phoneMatches.map((m: any) => m.tour_id);
       const { data: events } = await admin
         .from("schedule_events")
@@ -107,7 +212,6 @@ async function matchPhoneToTour(
     for (const profile of profileMatch) {
       const profilePhone = normalizePhone(profile.phone || "");
       if (profilePhone === normalized && profilePhone.length >= 10) {
-        // Find ACTIVE tour membership, preferring tour with nearest future event
         const { data: memberships } = await admin
           .from("tour_members")
           .select("tour_id, tours!inner(id, status)")
@@ -121,7 +225,6 @@ async function matchPhoneToTour(
             return { tourId: memberTourIds[0], senderName: profile.display_name || "Team Member" };
           }
 
-          // Multiple active tours — pick nearest upcoming event
           const { data: events } = await admin
             .from("schedule_events")
             .select("tour_id, event_date")
@@ -180,7 +283,7 @@ Deno.serve(async (req) => {
     const messageBody = (params["Body"] || "").trim();
 
     if (!fromPhone || !messageBody) {
-      return twimlResponse("Sorry, we couldn't process your message.");
+      return emptyTwiml();
     }
 
     // --- Validate Twilio signature ---
@@ -199,11 +302,11 @@ Deno.serve(async (req) => {
       return new Response("Forbidden", { status: 403, headers: corsHeaders });
     }
 
-    // --- Match phone number to contact → tour (ACTIVE tours only, nearest event preferred) ---
+    // --- Match phone number to contact → tour ---
     const normalized = normalizePhone(fromPhone);
     const { tourId: matchedTourId, senderName } = await matchPhoneToTour(admin, normalized);
 
-    // Log inbound SMS (with error handling for null tour_id)
+    // Log inbound SMS
     const { error: inboundErr } = await admin.from("sms_inbound").insert({
       from_phone: fromPhone,
       message_text: messageBody,
@@ -223,15 +326,14 @@ Deno.serve(async (req) => {
         tour_id: null,
         status: "sent",
       });
-      return twimlResponse(replyText);
+      return emptyTwiml();
     }
 
-    // --- Guest list intent detection (tightened regex — removed overly broad patterns) ---
+    // --- Guest list intent detection (tightened regex) ---
     const guestListKeywords = /guest\s*list|comp\s*ticket|put\s.+\s*on\s*the\s*list|will\s*call|can\s+i\s+get\s+\d|i\s+need\s+\d\s+ticket/i;
     if (guestListKeywords.test(messageBody)) {
       console.log("Guest list intent detected, extracting fields...");
 
-      // Use AI to extract structured fields
       const extractResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
         method: "POST",
         headers: {
@@ -300,7 +402,7 @@ If the message says "+1" or "plus one" after a name, that means 2 tickets total 
                   });
                 }
 
-                return twimlResponse("");
+                return emptyTwiml();
               }
             } else {
               const missing: string[] = [];
@@ -316,7 +418,7 @@ If the message says "+1" or "plus one" after a name, that means 2 tickets total 
                 tour_id: matchedTourId,
                 status: "sent",
               });
-              return twimlResponse("");
+              return emptyTwiml();
             }
           }
         } catch (parseErr) {
@@ -325,14 +427,130 @@ If the message says "+1" or "plus one" after a name, that means 2 tickets total 
       }
     }
 
-    // --- Fetch AKB data + recent SMS history for the matched tour ---
-    const [eventsRes, contactsRes, vansRes, tourRes, recentInbound, recentOutbound] = await Promise.all([
-      admin.from("schedule_events").select("event_date, venue, city, load_in, show_time, doors, soundcheck, curfew, notes").eq("tour_id", matchedTourId).order("event_date").limit(50),
-      admin.from("contacts").select("name, role, email, phone, scope, venue").eq("tour_id", matchedTourId).limit(50),
-      admin.from("venue_advance_notes").select("venue_name, city, event_date, van_data").eq("tour_id", matchedTourId).order("event_date").limit(30),
+    // --- SMART CONTEXT: Extract relevance from user message ---
+    const todayStr = new Date().toISOString().split("T")[0];
+
+    // Pre-fetch known cities, venues, and dates for this tour
+    const { data: allEvents } = await admin
+      .from("schedule_events")
+      .select("event_date, venue, city")
+      .eq("tour_id", matchedTourId)
+      .order("event_date");
+
+    const knownCities = [...new Set((allEvents || []).map((e: any) => e.city).filter(Boolean))];
+    const knownVenues = [...new Set((allEvents || []).map((e: any) => e.venue).filter(Boolean))];
+    const eventDates = (allEvents || []).map((e: any) => e.event_date).filter(Boolean) as string[];
+
+    const { targetDates, targetCity, targetVenue } = extractRelevanceFromMessage(
+      messageBody,
+      knownCities as string[],
+      knownVenues as string[],
+      eventDates,
+    );
+
+    // Determine date window for filtered queries
+    let startDate: string;
+    let endDate: string;
+
+    if (targetDates.length > 0) {
+      // Specific date: +/- 1 day
+      const d = new Date(targetDates[0]);
+      const before = new Date(d); before.setDate(before.getDate() - 1);
+      const after = new Date(d); after.setDate(after.getDate() + 1);
+      startDate = before.toISOString().split("T")[0];
+      endDate = after.toISOString().split("T")[0];
+    } else if (targetCity || targetVenue) {
+      // City/venue mentioned but no date: find events at that city/venue
+      const cityVenueEvents = (allEvents || []).filter((e: any) => {
+        if (targetCity && e.city) {
+          const eCityName = e.city.toLowerCase().split(",")[0].trim();
+          const tCityName = targetCity.toLowerCase().split(",")[0].trim();
+          if (eCityName.includes(tCityName) || tCityName.includes(eCityName)) return true;
+        }
+        if (targetVenue && e.venue) {
+          if (e.venue.toLowerCase().includes(targetVenue.toLowerCase().substring(0, 10))) return true;
+        }
+        return false;
+      });
+      if (cityVenueEvents.length > 0) {
+        const dates = cityVenueEvents.map((e: any) => e.event_date).filter(Boolean).sort();
+        startDate = dates[0];
+        const lastD = new Date(dates[dates.length - 1]);
+        lastD.setDate(lastD.getDate() + 1);
+        endDate = lastD.toISOString().split("T")[0];
+      } else {
+        // Fallback: next 5 upcoming
+        startDate = todayStr;
+        const farDate = new Date(); farDate.setDate(farDate.getDate() + 30);
+        endDate = farDate.toISOString().split("T")[0];
+      }
+    } else {
+      // No specific date/city/venue: next 5 upcoming events
+      const futureEvents = (allEvents || []).filter((e: any) => e.event_date && e.event_date >= todayStr);
+      if (futureEvents.length > 0) {
+        startDate = futureEvents[0].event_date;
+        const lastIdx = Math.min(4, futureEvents.length - 1);
+        const lastD = new Date(futureEvents[lastIdx].event_date);
+        lastD.setDate(lastD.getDate() + 1);
+        endDate = lastD.toISOString().split("T")[0];
+      } else {
+        // All events in the past — show last 3
+        const sorted = (allEvents || []).filter((e: any) => e.event_date).sort((a: any, b: any) => b.event_date.localeCompare(a.event_date));
+        if (sorted.length > 0) {
+          endDate = sorted[0].event_date;
+          const firstIdx = Math.min(2, sorted.length - 1);
+          startDate = sorted[firstIdx].event_date;
+        } else {
+          startDate = todayStr;
+          endDate = todayStr;
+        }
+      }
+    }
+
+    // --- Filtered AKB data fetches ---
+    const [eventsRes, contactsRes, vansRes, tourRes, routingRes, policiesRes, recentInbound, recentOutbound] = await Promise.all([
+      admin.from("schedule_events")
+        .select("event_date, venue, city, load_in, show_time, doors, soundcheck, curfew, notes")
+        .eq("tour_id", matchedTourId)
+        .gte("event_date", startDate)
+        .lte("event_date", endDate)
+        .order("event_date")
+        .limit(10),
+      admin.from("contacts")
+        .select("name, role, email, phone, scope, venue")
+        .eq("tour_id", matchedTourId)
+        .limit(50),
+      admin.from("venue_advance_notes")
+        .select("venue_name, city, event_date, van_data")
+        .eq("tour_id", matchedTourId)
+        .gte("event_date", startDate)
+        .lte("event_date", endDate)
+        .order("event_date")
+        .limit(10),
       admin.from("tours").select("name").eq("id", matchedTourId).single(),
-      admin.from("sms_inbound").select("message_text, created_at").eq("from_phone", fromPhone).eq("tour_id", matchedTourId).order("created_at", { ascending: false }).limit(5),
-      admin.from("sms_outbound").select("message_text, created_at").eq("to_phone", fromPhone).eq("tour_id", matchedTourId).order("created_at", { ascending: false }).limit(5),
+      admin.from("tour_routing")
+        .select("event_date, city, hotel_name, hotel_checkin, hotel_checkout, hotel_confirmation, bus_notes, truck_notes, routing_notes")
+        .eq("tour_id", matchedTourId)
+        .gte("event_date", startDate)
+        .lte("event_date", endDate)
+        .order("event_date")
+        .limit(10),
+      admin.from("tour_policies")
+        .select("policy_type, policy_data")
+        .eq("tour_id", matchedTourId)
+        .limit(10),
+      admin.from("sms_inbound")
+        .select("message_text, created_at")
+        .eq("from_phone", fromPhone)
+        .eq("tour_id", matchedTourId)
+        .order("created_at", { ascending: false })
+        .limit(5),
+      admin.from("sms_outbound")
+        .select("message_text, created_at")
+        .eq("to_phone", fromPhone)
+        .eq("tour_id", matchedTourId)
+        .order("created_at", { ascending: false })
+        .limit(5),
     ]);
 
     const tourName = tourRes.data?.name || "Unknown Tour";
@@ -348,18 +566,40 @@ If the message says "+1" or "plus one" after a name, that means 2 tickets total 
     historyMessages.sort((a, b) => a.ts.localeCompare(b.ts));
     const recentHistory = historyMessages.slice(-6);
 
+    // Build focused context
+    const scheduleSection = JSON.stringify(eventsRes.data || [], null, 1);
+    const contactsSection = JSON.stringify(contactsRes.data || [], null, 1);
+    const vansSection = (vansRes.data || []).length > 0
+      ? (vansRes.data || []).map((v: any) =>
+          `${v.venue_name} (${v.city || "?"}, ${v.event_date || "?"}):\n${JSON.stringify(v.van_data, null, 1)}`
+        ).join("\n\n")
+      : "(No VAN data for this date range)";
+    const routingSection = (routingRes.data || []).length > 0
+      ? JSON.stringify(routingRes.data, null, 1)
+      : "(No routing data for this date range)";
+    const policiesSection = (policiesRes.data || []).length > 0
+      ? (policiesRes.data || []).map((p: any) => `${p.policy_type}: ${JSON.stringify(p.policy_data)}`).join("\n")
+      : "(No policies set)";
+
     const akbContext = `
 Tour: ${tourName}
+Date window: ${startDate} to ${endDate}
 
 Schedule:
-${JSON.stringify(eventsRes.data || [], null, 1)}
+${scheduleSection}
 
 Contacts:
-${JSON.stringify(contactsRes.data || [], null, 1)}
+${contactsSection}
 
-Venue Advance Notes:
-${(vansRes.data || []).map((v: any) => `${v.venue_name} (${v.city || "?"}, ${v.event_date || "?"}):\n${JSON.stringify(v.van_data, null, 1)}`).join("\n\n")}
-`.substring(0, 12000);
+Venue Advance Notes (VANs) — contains haze, rigging, labor, power, docks, staging, curfew, SPL limits, and all venue-specific technical details:
+${vansSection}
+
+Routing & Hotels:
+${routingSection}
+
+Tour Policies (guest list, safety SOPs):
+${policiesSection}
+`.substring(0, 16000);
 
     // Build chat messages with history
     const chatMessages: { role: string; content: string }[] = [
@@ -370,6 +610,10 @@ ${(vansRes.data || []).map((v: any) => `${v.venue_name} (${v.city || "?"}, ${v.e
 IMPORTANT: When the user asks about a role (like "PM", "Production Manager", "TM", etc.), search the CONTACTS list for someone with that role — do NOT assume they are asking about themselves. Short abbreviations like "PM" = Production Manager, "TM" = Tour Manager, "LD" = Lighting Director, "FOH" = Front of House.
 
 When the user sends a short follow-up (like "PM?" after asking about load-in), use the conversation history to understand the context.
+
+VENUE DATA: The "Venue Advance Notes (VANs)" section contains the PRIMARY source for venue-specific details like haze policies, labor/union info, rigging distances, power specs, dock logistics, staging notes, curfew, SPL limits, and more. ALWAYS check VANs first when asked about any venue-specific topic.
+
+ROUTING DATA: The "Routing & Hotels" section has hotel names, check-in/out dates, and bus/truck notes. Check here for hotel questions.
 
 AKB DATA:
 ${akbContext}`,
@@ -406,14 +650,14 @@ ${akbContext}`,
       console.error("AI gateway error:", errText);
       const fallback = "Sorry, I'm having trouble right now. Try again in a moment.";
       await sendTwilioSms(fromPhone, fallback, TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_PHONE_NUMBER);
-      return twimlResponse(fallback);
+      return emptyTwiml();
     }
 
     const aiData = await aiResponse.json();
     const rawReply = aiData.choices?.[0]?.message?.content || "I don't have an answer for that right now.";
     const smsReply = toPlaintext(rawReply);
 
-    // --- Send SMS reply via Twilio REST API ---
+    // --- Send SMS reply via Twilio REST API (sole delivery path) ---
     await sendTwilioSms(fromPhone, smsReply, TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_PHONE_NUMBER);
 
     // Log outbound SMS
@@ -424,10 +668,11 @@ ${akbContext}`,
       status: "sent",
     });
 
-    return twimlResponse("");
+    // Always return empty TwiML to prevent double-SMS
+    return emptyTwiml();
   } catch (error) {
     console.error("tourtext-inbound error:", error);
-    return twimlResponse("Sorry, something went wrong. Try again later.");
+    return emptyTwiml();
   }
 });
 
@@ -457,22 +702,10 @@ async function sendTwilioSms(
   }
 }
 
-// --- Return TwiML response ---
-function twimlResponse(message: string): Response {
-  const twiml = message
-    ? `<?xml version="1.0" encoding="UTF-8"?><Response><Message>${escapeXml(message)}</Message></Response>`
-    : `<?xml version="1.0" encoding="UTF-8"?><Response></Response>`;
-
-  return new Response(twiml, {
-    headers: { ...corsHeaders, "Content-Type": "text/xml" },
-  });
-}
-
-function escapeXml(str: string): string {
-  return str
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&apos;");
+// --- Always return empty TwiML (Fix 4: prevents double-SMS) ---
+function emptyTwiml(): Response {
+  return new Response(
+    `<?xml version="1.0" encoding="UTF-8"?><Response></Response>`,
+    { headers: { ...corsHeaders, "Content-Type": "text/xml" } },
+  );
 }
