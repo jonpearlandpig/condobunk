@@ -39,6 +39,7 @@ import { supabase } from "@/integrations/supabase/client";
 import SidebarContactList, { type ActiveInvite } from "@/components/bunk/SidebarContactList";
 import SidebarTelaThreads from "@/components/bunk/SidebarTelaThreads";
 import SidebarArtifacts from "@/components/bunk/SidebarArtifacts";
+import TelaVoiceAgent from "@/components/bunk/TelaVoiceAgent";
 import { Separator } from "@/components/ui/separator";
 import {
   Tooltip,
@@ -223,10 +224,6 @@ const BunkSidebar = () => {
 
         <Separator className="mx-4 w-auto" />
 
-        <SidebarTelaThreads isDemoMode={isDemoMode} />
-
-        <SidebarArtifacts isDemoMode={isDemoMode} />
-
         <SidebarGroup>
           <button
             onClick={() => setTourTeamOpen(!tourTeamOpen)}
@@ -336,10 +333,8 @@ const BunkSidebar = () => {
               ) : tourVenueGroups.length === 0 ? (
                 <p className="px-4 py-1.5 text-xs text-muted-foreground/50 italic">No upcoming venues</p>
               ) : tourVenueGroups.length === 1 ? (
-                /* Single tour: show venue groups directly */
                 <SidebarContactList contacts={venueContacts} onNavigate={handleNavClick} onUpdate={isDemoMode ? undefined : updateContact} onDelete={isDemoMode ? undefined : deleteContact} onlineUserIds={onlineUsers} grouped venueGroups={tourVenueGroups[0].venueGroups} isDemoMode={isDemoMode} />
               ) : (
-                /* Multiple tours: nest under tour folders */
                 <div className="space-y-0.5">
                   {tourVenueGroups.map((tvg) => {
                     const isExpanded = expandedVenueTours.has(tvg.tourId);
@@ -383,6 +378,23 @@ const BunkSidebar = () => {
             </SidebarGroupContent>
           )}
         </SidebarGroup>
+
+        <SidebarTelaThreads isDemoMode={isDemoMode} />
+
+        <SidebarArtifacts isDemoMode={isDemoMode} />
+
+        {tours.length > 0 && !isDemoMode && (
+          <SidebarGroup>
+            <SidebarGroupLabel className="font-mono text-[10px] tracking-[0.2em] text-muted-foreground/60 uppercase px-4">
+              Tela Talk
+            </SidebarGroupLabel>
+            <SidebarGroupContent>
+              <div className="px-4 py-2">
+                <TelaVoiceAgent agentId="agent_8301kjjfsz2febx8748ezrcmz0t8" />
+              </div>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        )}
       </SidebarContent>
     </Sidebar>
   );
