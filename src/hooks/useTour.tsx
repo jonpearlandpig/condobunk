@@ -52,22 +52,18 @@ export const TourProvider = ({ children }: { children: React.ReactNode }) => {
   const [upgradeRequested, setUpgradeRequested] = useState(false);
 
   const autoMatchContacts = async () => {
-    if (!user?.email) return;
-    const { data: matches } = await supabase
-      .rpc("match_contact_tours", { _email: user.email });
-    if (!matches || matches.length === 0) return;
-
-    const { data: existing } = await supabase
-      .from("tour_members")
-      .select("tour_id")
-      .eq("user_id", user.id);
-    const existingTourIds = new Set((existing || []).map(m => m.tour_id));
-
-    const toInsert = (matches || [])
-      .filter((tourId: string) => !existingTourIds.has(tourId))
-      .map((tourId: string) => ({ tour_id: tourId, user_id: user.id, role: "CREW" as const }));
-    if (toInsert.length > 0) {
-      await supabase.from("tour_members").insert(toInsert);
+    if (!user) return;
+    try {
+      const { data, error } = await supabase.rpc("claim_contact_tours" as any);
+      if (error) {
+        console.error("claim_contact_tours failed:", error);
+        return;
+      }
+      if (data) {
+        console.log("Auto-matched tours:", data);
+      }
+    } catch (err) {
+      console.error("Unexpected error in autoMatchContacts:", err);
     }
   };
 
