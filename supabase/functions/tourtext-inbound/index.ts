@@ -7,6 +7,22 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type, x-twilio-signature, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
+// --- US State name → abbreviation map ---
+const STATE_NAME_TO_ABBREV: Record<string, string> = {
+  alabama: "AL", alaska: "AK", arizona: "AZ", arkansas: "AR", california: "CA",
+  colorado: "CO", connecticut: "CT", delaware: "DE", florida: "FL", georgia: "GA",
+  hawaii: "HI", idaho: "ID", illinois: "IL", indiana: "IN", iowa: "IA",
+  kansas: "KS", kentucky: "KY", louisiana: "LA", maine: "ME", maryland: "MD",
+  massachusetts: "MA", michigan: "MI", minnesota: "MN", mississippi: "MS", missouri: "MO",
+  montana: "MT", nebraska: "NE", nevada: "NV", "new hampshire": "NH", "new jersey": "NJ",
+  "new mexico": "NM", "new york": "NY", "north carolina": "NC", "north dakota": "ND",
+  ohio: "OH", oklahoma: "OK", oregon: "OR", pennsylvania: "PA", "rhode island": "RI",
+  "south carolina": "SC", "south dakota": "SD", tennessee: "TN", texas: "TX", utah: "UT",
+  vermont: "VT", virginia: "VA", washington: "WA", "west virginia": "WV",
+  wisconsin: "WI", wyoming: "WY", "district of columbia": "DC",
+};
+const STATE_ABBREV_SET = new Set(Object.values(STATE_NAME_TO_ABBREV));
+
 // --- Twilio signature validation ---
 async function validateTwilioSignature(
   url: string,
@@ -95,7 +111,6 @@ function extractVenueTechFacts(
     let label = topic;
 
     if (t.includes("labor") || t.includes("labour")) {
-      // Check multiple possible locations
       const notes = getField(vanData, "labour.labor_notes", "labor.labor_notes", "Labour.Labor Notes", "Labour.labor_notes");
       const call = getField(vanData, "labour.labor_call", "labor.labor_call", "Labour.Labor Call", "Labour.labor_call");
       const unionVenue = getField(vanData, "labour.union_venue", "labor.union_venue", "Labour.Union Venue", "Labour.union_venue");
@@ -215,14 +230,25 @@ function resolveTargetVan(
     }
   }
 
-  // 2. Exact city (any date)
+  // 2. Exact city (any date) — prefer nearest upcoming anchor
   if (targetCities.length > 0) {
+    const todayStr = new Date().toISOString().split("T")[0];
+    const cityMatches: any[] = [];
     for (const van of vans) {
       const vanCity = (van.city || "").toLowerCase().split(",")[0].trim();
       for (const tc of targetCities) {
         const tCity = tc.toLowerCase().split(",")[0].trim();
-        if (vanCity.includes(tCity) || tCity.includes(vanCity)) return van;
+        if (vanCity.includes(tCity) || tCity.includes(vanCity)) {
+          cityMatches.push(van);
+        }
       }
+    }
+    if (cityMatches.length > 0) {
+      // Prefer nearest upcoming, else latest past
+      const upcoming = cityMatches.filter(v => v.event_date && v.event_date >= todayStr).sort((a: any, b: any) => a.event_date.localeCompare(b.event_date));
+      if (upcoming.length > 0) return upcoming[0];
+      const past = cityMatches.sort((a: any, b: any) => b.event_date.localeCompare(a.event_date));
+      return past[0];
     }
   }
 
@@ -237,14 +263,18 @@ function resolveTargetVan(
 
   // 4. Nearest event-date fallback using schedule events matched to target cities
   if (targetCities.length > 0 && allEvents.length > 0) {
+    const todayStr = new Date().toISOString().split("T")[0];
     for (const tc of targetCities) {
       const tCity = tc.toLowerCase().split(",")[0].trim();
-      const matchedEvent = allEvents.find((e: any) => {
+      // Prefer nearest upcoming event for this city
+      const cityEvents = allEvents.filter((e: any) => {
         const eCity = (e.city || "").toLowerCase().split(",")[0].trim();
         return eCity.includes(tCity) || tCity.includes(eCity);
       });
-      if (matchedEvent?.event_date) {
-        const van = vans.find((v: any) => v.event_date === matchedEvent.event_date);
+      const upcoming = cityEvents.filter((e: any) => e.event_date && e.event_date >= todayStr).sort((a: any, b: any) => a.event_date.localeCompare(b.event_date));
+      const anchor = upcoming[0] || cityEvents.sort((a: any, b: any) => (b.event_date || "").localeCompare(a.event_date || ""))[0];
+      if (anchor?.event_date) {
+        const van = vans.find((v: any) => v.event_date === anchor.event_date);
         if (van) return van;
       }
     }
@@ -267,52 +297,46 @@ function extractTopics(text: string): Set<string> {
   return matched;
 }
 
+// --- Check if message has venue-tech intent keywords ---
+function hasVenueTechIntent(text: string): boolean {
+  const lower = text.toLowerCase();
+  return VENUE_TECH_INTENT_KEYWORDS.some(kw => lower.includes(kw));
+}
+
 // --- Progressive Depth Detection ---
 function detectDepth(
   currentMessage: string,
   recentHistory: { role: string; content: string }[],
 ): 1 | 2 | 3 {
-  const lower = currentMessage.toLowerCase();
-
-  // Explicit depth-3 triggers
   const depth3Triggers = /\b(full rundown|everything about|everything on|give me everything|all the details|complete info|complete details|full breakdown|full detail|tell me everything)\b/i;
   if (depth3Triggers.test(currentMessage)) return 3;
 
-  // Explicit depth-2 triggers
   const depth2Triggers = /\b(tell me more|more details|more info|what else|elaborate|expand on|go deeper|details|specifics|can you explain|more about)\b/i;
   if (depth2Triggers.test(currentMessage)) return 2;
 
-  // Topic-based depth: count how many prior exchanges touch the same topic
   const currentTopics = extractTopics(currentMessage);
-
-  // Short-message auto-bump: if message is under 30 chars and there's recent history, it's a follow-up
   const isShortFollowUp = currentMessage.length < 30 && recentHistory.length >= 1;
 
   if (currentTopics.size === 0) {
-    // No topic match, but short follow-up should still bump depth
     return isShortFollowUp ? 2 : 1;
   }
 
   let sameTopicCount = 0;
   for (const msg of recentHistory) {
     const msgTopics = extractTopics(msg.content);
-    // Check overlap — also count follow_up overlapping with any prior topic
     for (const t of currentTopics) {
       if (msgTopics.has(t)) {
         sameTopicCount++;
         break;
       }
     }
-    // If current is follow_up, count any prior topic as overlap
     if (currentTopics.has("follow_up") && msgTopics.size > 0) {
       sameTopicCount++;
     }
   }
 
-  // 2+ prior messages on same topic = depth 3, 1 prior = depth 2
   if (sameTopicCount >= 3) return 3;
   if (sameTopicCount >= 1) return 2;
-  // Short follow-up still gets depth 2 minimum
   return isShortFollowUp ? 2 : 1;
 }
 
@@ -336,12 +360,76 @@ function normalizePhone(p: string): string {
   return p.replace(/\D/g, "").slice(-10);
 }
 
+// --- Build city-state index from schedule rows ---
+// Returns: { stateAbbrevToCities: { "NC": ["Raleigh, NC"], ... }, cityToState: { "raleigh": "NC" } }
+function buildCityStateIndex(knownCities: string[]): {
+  stateAbbrevToCities: Record<string, string[]>;
+  cityToState: Record<string, string>;
+} {
+  const stateAbbrevToCities: Record<string, string[]> = {};
+  const cityToState: Record<string, string> = {};
+  for (const city of knownCities) {
+    if (!city) continue;
+    // Expect format "City, ST" or "City Name, ST"
+    const parts = city.split(",").map(s => s.trim());
+    if (parts.length >= 2) {
+      const stateAbbrev = parts[parts.length - 1].toUpperCase();
+      if (STATE_ABBREV_SET.has(stateAbbrev)) {
+        if (!stateAbbrevToCities[stateAbbrev]) stateAbbrevToCities[stateAbbrev] = [];
+        stateAbbrevToCities[stateAbbrev].push(city);
+        const cityName = parts.slice(0, -1).join(",").toLowerCase().trim();
+        cityToState[cityName] = stateAbbrev;
+      }
+    }
+  }
+  return { stateAbbrevToCities, cityToState };
+}
+
+// --- Resolve state references in message to matching tour cities ---
+function resolveStateToCities(
+  message: string,
+  stateAbbrevToCities: Record<string, string[]>,
+): string[] {
+  const msgLower = message.toLowerCase().trim();
+  const resolved: string[] = [];
+
+  // Check full state names first (e.g., "north carolina")
+  for (const [stateName, abbrev] of Object.entries(STATE_NAME_TO_ABBREV)) {
+    if (msgLower.includes(stateName)) {
+      const cities = stateAbbrevToCities[abbrev];
+      if (cities) {
+        for (const c of cities) {
+          if (!resolved.includes(c)) resolved.push(c);
+        }
+      }
+    }
+  }
+
+  // Check state abbreviations (e.g., "NC", "N.C.")
+  // Match 2-letter state codes surrounded by word boundaries or punctuation
+  const abbrevPatterns = msgLower.match(/\b([a-z])\.?([a-z])\.?\b/g) || [];
+  for (const pat of abbrevPatterns) {
+    const clean = pat.replace(/\./g, "").toUpperCase();
+    if (clean.length === 2 && STATE_ABBREV_SET.has(clean)) {
+      const cities = stateAbbrevToCities[clean];
+      if (cities) {
+        for (const c of cities) {
+          if (!resolved.includes(c)) resolved.push(c);
+        }
+      }
+    }
+  }
+
+  return resolved;
+}
+
 // --- Extract date/city/venue relevance from user message ---
 function extractRelevanceFromMessage(
   message: string,
   knownCities: string[],
   knownVenues: string[],
   eventDates: string[],
+  stateAbbrevToCities?: Record<string, string[]>,
 ): { targetDates: string[]; targetCities: string[]; targetVenue: string | null } {
   const today = new Date();
   const msgLower = message.toLowerCase();
@@ -350,7 +438,6 @@ function extractRelevanceFromMessage(
   let targetVenue: string | null = null;
 
   // --- Date extraction ---
-  // M/D or M-D patterns
   const mdMatch = msgLower.match(/(\d{1,2})[\/\-](\d{1,2})/);
   if (mdMatch) {
     const month = parseInt(mdMatch[1]);
@@ -364,7 +451,6 @@ function extractRelevanceFromMessage(
     }
   }
 
-  // "tomorrow" / "tonight"
   if (/\btomorrow\b/i.test(message)) {
     const tmrw = new Date(today);
     tmrw.setDate(tmrw.getDate() + 1);
@@ -373,7 +459,6 @@ function extractRelevanceFromMessage(
     targetDates = [today.toISOString().split("T")[0]];
   }
 
-  // Month name + day: "March 5", "Mar 5th"
   const monthNames: Record<string, number> = {
     jan: 1, january: 1, feb: 2, february: 2, mar: 3, march: 3,
     apr: 4, april: 4, may: 5, jun: 6, june: 6, jul: 7, july: 7,
@@ -393,7 +478,6 @@ function extractRelevanceFromMessage(
     }
   }
 
-  // Day names: "Saturday", "next Friday"
   const dayNames = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"];
   const dayMatch = msgLower.match(/\b(next\s+)?(sunday|monday|tuesday|wednesday|thursday|friday|saturday)\b/);
   if (dayMatch && targetDates.length === 0) {
@@ -406,7 +490,6 @@ function extractRelevanceFromMessage(
     targetDates = [target.toISOString().split("T")[0]];
   }
 
-  // "next show" / "next event"
   if (/\bnext\s+(show|event|gig|date)\b/i.test(message) && targetDates.length === 0) {
     const todayStr = today.toISOString().split("T")[0];
     const futureDates = eventDates.filter((d) => d >= todayStr).sort();
@@ -420,19 +503,15 @@ function extractRelevanceFromMessage(
   for (const city of knownCities) {
     if (!city) continue;
     const cityLower = city.toLowerCase();
-    // Extract just city name (strip state abbrev like ", IN" or ", OH")
     const cityName = cityLower.split(",")[0].trim();
     if (cityName.length < 3) continue;
     if (targetCities.includes(city)) continue;
 
-    // Primary: exact substring match (e.g., "boston" in message matches "Boston, MA")
     if (msgLower.includes(cityName)) {
       targetCities.push(city);
       continue;
     }
 
-    // Fallback: first-word partial match for multi-word city names
-    // e.g., "belmont" in message matches "Belmont Park, NY"
     const cityWords = cityName.split(/\s+/).filter(w => w.length >= 3);
     if (cityWords.length > 1) {
       const firstWord = cityWords[0];
@@ -442,11 +521,18 @@ function extractRelevanceFromMessage(
     }
   }
 
+  // --- State-based city resolution (A) ---
+  if (stateAbbrevToCities && targetCities.length === 0) {
+    const stateCities = resolveStateToCities(message, stateAbbrevToCities);
+    for (const sc of stateCities) {
+      if (!targetCities.includes(sc)) targetCities.push(sc);
+    }
+  }
+
   // --- Venue matching ---
   for (const venue of knownVenues) {
     if (!venue) continue;
     const venueLower = venue.toLowerCase();
-    // Check if significant words from the venue name appear in the message
     const venueWords = venueLower.split(/\s+/).filter((w) => w.length > 3);
     const matchCount = venueWords.filter((w) => msgLower.includes(w)).length;
     if (venueWords.length > 0 && matchCount / venueWords.length >= 0.5) {
@@ -465,7 +551,6 @@ async function matchPhoneToTour(
 ): Promise<{ tourId: string | null; senderName: string; senderRole: string | null }> {
   const today = new Date().toISOString().split("T")[0];
 
-  // 1. Search contacts on ACTIVE tours with TOUR scope only
   const { data: matchedContacts } = await admin
     .from("contacts")
     .select("tour_id, name, role, scope, phone, tours!inner(id, status)")
@@ -499,7 +584,6 @@ async function matchPhoneToTour(
     }
   }
 
-  // 2. Fallback: check profiles table
   const { data: profileMatch } = await admin
     .from("profiles")
     .select("id, display_name, phone")
@@ -749,20 +833,32 @@ If the message says "+1" or "plus one" after a name, that means 2 tickets total 
     const knownVenues = [...new Set((allEvents || []).map((e: any) => e.venue).filter(Boolean))];
     const eventDates = (allEvents || []).map((e: any) => e.event_date).filter(Boolean) as string[];
 
+    // Build city-state index for state-based parsing (A)
+    const { stateAbbrevToCities } = buildCityStateIndex(knownCities as string[]);
+
     const { targetDates, targetCities, targetVenue } = extractRelevanceFromMessage(
       messageBody,
       knownCities as string[],
       knownVenues as string[],
       eventDates,
+      stateAbbrevToCities,
     );
+
     // --- Multi-step context carryover for follow-ups (backtrack up to 6 prior messages) ---
+    // Also supports TOPIC CARRYOVER (B): inherit prior tech topic for location-only follow-ups
     let effectiveCities = [...targetCities];
     let effectiveVenue = targetVenue;
     let effectiveDates = [...targetDates];
-    const isFollowUp = effectiveCities.length === 0 && effectiveVenue === null && effectiveDates.length === 0 &&
+    let inheritedTopic: string | null = null; // (B) topic carried from prior turn
+    let inheritedTopicKeywords: string[] = []; // actual keywords for deterministic routing
+
+    const hasCurrentLocation = targetCities.length > 0 || targetVenue !== null;
+    const hasCurrentTopic = hasVenueTechIntent(messageBody) || inboundTopics.has("schedule") || inboundTopics.has("logistics") || inboundTopics.has("contacts") || inboundTopics.has("catering");
+    const isLocationOnlyFollowUp = hasCurrentLocation && !hasCurrentTopic;
+    const isFollowUp = !hasCurrentLocation && effectiveVenue === null && effectiveDates.length === 0 &&
       (CORRECTION_FOLLOW_UP_PATTERNS.test(messageBody.trim()) || messageBody.trim().length < 30);
 
-    if (isFollowUp) {
+    if (isFollowUp || isLocationOnlyFollowUp) {
       // Fetch last 7 inbound messages (current + 6 prior)
       const { data: priorInbound } = await admin
         .from("sms_inbound")
@@ -772,7 +868,6 @@ If the message says "+1" or "plus one" after a name, that means 2 tickets total 
         .order("created_at", { ascending: false })
         .limit(7);
 
-      // Skip the first one (current message we just inserted), backtrack through up to 6 prior
       const priorMessages = (priorInbound || []).slice(1);
       for (const priorMsg of priorMessages) {
         const priorExtracted = extractRelevanceFromMessage(
@@ -780,35 +875,70 @@ If the message says "+1" or "plus one" after a name, that means 2 tickets total 
           knownCities as string[],
           knownVenues as string[],
           eventDates,
+          stateAbbrevToCities,
         );
-        // Take the first prior message that resolves ANY context (city, venue, or date)
-        if (priorExtracted.targetCities.length > 0 || priorExtracted.targetVenue || priorExtracted.targetDates.length > 0) {
-          if (effectiveCities.length === 0 && priorExtracted.targetCities.length > 0) {
-            effectiveCities = priorExtracted.targetCities;
+
+        // (B) Topic carryover: if current message has location but no topic, inherit prior topic
+        if (isLocationOnlyFollowUp && !inheritedTopic) {
+          if (hasVenueTechIntent(priorMsg.message_text)) {
+            inheritedTopic = "venue_tech";
+            inheritedTopicKeywords = VENUE_TECH_INTENT_KEYWORDS.filter(kw => priorMsg.message_text.toLowerCase().includes(kw));
+          } else {
+            const priorTopics = extractTopics(priorMsg.message_text);
+            if (priorTopics.has("schedule")) inheritedTopic = "schedule";
+            else if (priorTopics.has("logistics")) inheritedTopic = "logistics";
+            else if (priorTopics.has("contacts")) inheritedTopic = "contacts";
           }
-          if (!effectiveVenue && priorExtracted.targetVenue) {
-            effectiveVenue = priorExtracted.targetVenue;
+        }
+
+        // Context carryover for pure follow-ups (no location/topic)
+        if (isFollowUp) {
+          if (priorExtracted.targetCities.length > 0 || priorExtracted.targetVenue || priorExtracted.targetDates.length > 0) {
+            if (effectiveCities.length === 0 && priorExtracted.targetCities.length > 0) {
+              effectiveCities = priorExtracted.targetCities;
+            }
+            if (!effectiveVenue && priorExtracted.targetVenue) {
+              effectiveVenue = priorExtracted.targetVenue;
+            }
+            if (effectiveDates.length === 0 && priorExtracted.targetDates.length > 0) {
+              effectiveDates = priorExtracted.targetDates;
+            }
+            // Also inherit topic if not yet found
+            if (!inheritedTopic && hasVenueTechIntent(priorMsg.message_text)) {
+              inheritedTopic = "venue_tech";
+              inheritedTopicKeywords = VENUE_TECH_INTENT_KEYWORDS.filter(kw => priorMsg.message_text.toLowerCase().includes(kw));
+            }
+            console.log("Multi-step carryover from prior message:", JSON.stringify({
+              carriedCities: effectiveCities,
+              carriedVenue: effectiveVenue,
+              carriedDates: effectiveDates,
+              inheritedTopic,
+              fromMessage: priorMsg.message_text.substring(0, 50),
+            }));
+            break;
           }
-          if (effectiveDates.length === 0 && priorExtracted.targetDates.length > 0) {
-            effectiveDates = priorExtracted.targetDates;
-          }
-          console.log("Multi-step carryover from prior message:", JSON.stringify({
-            carriedCities: effectiveCities,
-            carriedVenue: effectiveVenue,
-            carriedDates: effectiveDates,
-            fromMessage: priorMsg.message_text.substring(0, 50),
-          }));
-          break; // Use the most recent resolvable prior message
         }
       }
     }
 
-    console.log("Smart Context:", JSON.stringify({ targetCities, effectiveCities, effectiveVenue, targetDates, effectiveDates, isFollowUp }));
+    console.log("DIAG: Smart Context:", JSON.stringify({
+      targetCities,
+      effectiveCities,
+      effectiveVenue,
+      targetDates,
+      effectiveDates,
+      isFollowUp,
+      isLocationOnlyFollowUp,
+      inheritedTopic,
+      inheritedTopicKeywords: inheritedTopicKeywords.slice(0, 3),
+      stateResolution: Object.keys(stateAbbrevToCities).length > 0 ? Object.keys(stateAbbrevToCities).join(",") : "none",
+      branch: "pending",
+    }));
 
     // --- Deterministic schedule-presence responder ---
     const schedulePresenceIntent = /\b(on\s+(the\s+)?schedule|show\??|on\s+tour|playing|not\s+on\s+(the\s+)?schedule|scheduled)\b/i;
     const isScheduleQuestion = schedulePresenceIntent.test(messageBody) ||
-      (CORRECTION_FOLLOW_UP_PATTERNS.test(messageBody.trim()) && effectiveCities.length > 0 && !inboundTopics.has("venue_tech"));
+      (CORRECTION_FOLLOW_UP_PATTERNS.test(messageBody.trim()) && effectiveCities.length > 0 && !inboundTopics.has("venue_tech") && inheritedTopic !== "venue_tech");
 
     if (isScheduleQuestion && effectiveCities.length > 0) {
       const results: string[] = [];
@@ -824,7 +954,7 @@ If the message says "+1" or "plus one" after a name, that means 2 tickets total 
         }
       }
       const deterministicReply = results.join("\n");
-      console.log("Deterministic schedule reply:", deterministicReply);
+      console.log("DIAG: Deterministic schedule reply:", deterministicReply);
 
       await sendTwilioSms(fromPhone, deterministicReply, TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_PHONE_NUMBER);
       await admin.from("sms_outbound").insert({
@@ -836,22 +966,55 @@ If the message says "+1" or "plus one" after a name, that means 2 tickets total 
       return emptyTwiml();
     }
 
-    // Determine date window for filtered queries
+    // --- (C) Deterministic schedule responder for location-only queries (no topic at all) ---
+    if (isLocationOnlyFollowUp && !inheritedTopic && effectiveCities.length > 0) {
+      const todayAnchor = new Date().toISOString().split("T")[0];
+      const results: string[] = [];
+      for (const city of effectiveCities) {
+        const cityName = city.toLowerCase().split(",")[0].trim();
+        const cityEvents = (allEvents || []).filter((e: any) =>
+          e.city && e.city.toLowerCase().split(",")[0].trim().includes(cityName)
+        );
+        if (cityEvents.length > 0) {
+          // Pick nearest upcoming anchor (D)
+          const upcoming = cityEvents.filter((e: any) => e.event_date && e.event_date >= todayAnchor).sort((a: any, b: any) => a.event_date.localeCompare(b.event_date));
+          const anchor = upcoming[0] || cityEvents.sort((a: any, b: any) => (b.event_date || "").localeCompare(a.event_date || ""))[0];
+          results.push(`${city} — ${anchor.event_date} at ${anchor.venue || "TBD"}`);
+        } else {
+          results.push(`${city} — not found on this tour's schedule`);
+        }
+      }
+      const deterministicReply = results.join("\n");
+      console.log("DIAG: Location-only schedule reply (no inherited topic):", JSON.stringify({
+        branch: "deterministic_schedule_location_only",
+        cities: effectiveCities,
+        reply: deterministicReply,
+      }));
+
+      await sendTwilioSms(fromPhone, deterministicReply, TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_PHONE_NUMBER);
+      await admin.from("sms_outbound").insert({
+        to_phone: fromPhone,
+        message_text: deterministicReply,
+        tour_id: matchedTourId,
+        status: "sent",
+      });
+      return emptyTwiml();
+    }
+
+    // --- (D) Anchor-date windowing instead of min/max multi-year spans ---
     let startDate: string;
     let endDate: string;
 
-    // Use effectiveDates (which includes carried-over dates from follow-ups)
     const activeDates = effectiveDates.length > 0 ? effectiveDates : targetDates;
 
     if (activeDates.length > 0) {
-      // Specific date: +/- 1 day
       const d = new Date(activeDates[0]);
       const before = new Date(d); before.setDate(before.getDate() - 1);
       const after = new Date(d); after.setDate(after.getDate() + 1);
       startDate = before.toISOString().split("T")[0];
       endDate = after.toISOString().split("T")[0];
     } else if (effectiveCities.length > 0 || effectiveVenue) {
-      // City/venue mentioned (or carried over) but no date: find events at those cities/venue
+      // (D) Anchor-date: find nearest upcoming event per city, not min/max across all years
       const cityVenueEvents = (allEvents || []).filter((e: any) => {
         if (effectiveCities.length > 0 && e.city) {
           const eCityName = e.city.toLowerCase().split(",")[0].trim();
@@ -866,21 +1029,33 @@ If the message says "+1" or "plus one" after a name, that means 2 tickets total 
         return false;
       });
       if (cityVenueEvents.length > 0) {
-        const dates = cityVenueEvents.map((e: any) => e.event_date).filter(Boolean).sort();
-        const firstD = new Date(dates[0]);
-        firstD.setDate(firstD.getDate() - 1);
-        startDate = firstD.toISOString().split("T")[0];
-        const lastD = new Date(dates[dates.length - 1]);
-        lastD.setDate(lastD.getDate() + 1);
-        endDate = lastD.toISOString().split("T")[0];
+        // Anchor-date logic: nearest upcoming first, else latest past
+        const upcoming = cityVenueEvents.filter((e: any) => e.event_date && e.event_date >= todayStr)
+          .sort((a: any, b: any) => a.event_date.localeCompare(b.event_date));
+        const anchor = upcoming[0] || cityVenueEvents.sort((a: any, b: any) => (b.event_date || "").localeCompare(a.event_date || ""))[0];
+        if (anchor?.event_date) {
+          const anchorD = new Date(anchor.event_date);
+          const before = new Date(anchorD); before.setDate(before.getDate() - 2);
+          const after = new Date(anchorD); after.setDate(after.getDate() + 2);
+          startDate = before.toISOString().split("T")[0];
+          endDate = after.toISOString().split("T")[0];
+          console.log("DIAG: Anchor-date window:", JSON.stringify({
+            anchorDate: anchor.event_date,
+            anchorCity: anchor.city,
+            anchorVenue: anchor.venue,
+            window: `${startDate} to ${endDate}`,
+          }));
+        } else {
+          startDate = todayStr;
+          const farDate = new Date(); farDate.setDate(farDate.getDate() + 30);
+          endDate = farDate.toISOString().split("T")[0];
+        }
       } else {
-        // Fallback: next 5 upcoming
         startDate = todayStr;
         const farDate = new Date(); farDate.setDate(farDate.getDate() + 30);
         endDate = farDate.toISOString().split("T")[0];
       }
     } else {
-      // No specific date/city/venue: next 5 upcoming events
       const futureEvents = (allEvents || []).filter((e: any) => e.event_date && e.event_date >= todayStr);
       if (futureEvents.length > 0) {
         startDate = futureEvents[0].event_date;
@@ -889,7 +1064,6 @@ If the message says "+1" or "plus one" after a name, that means 2 tickets total 
         lastD.setDate(lastD.getDate() + 1);
         endDate = lastD.toISOString().split("T")[0];
       } else {
-        // All events in the past — show last 3
         const sorted = (allEvents || []).filter((e: any) => e.event_date).sort((a: any, b: any) => b.event_date.localeCompare(a.event_date));
         if (sorted.length > 0) {
           endDate = sorted[0].event_date;
@@ -923,7 +1097,7 @@ If the message says "+1" or "plus one" after a name, that means 2 tickets total 
         .lte("event_date", endDate)
         .order("event_date")
         .limit(10),
-      // ALL VANs for deterministic venue-tech responder (not date-windowed)
+      // (E) ALL VANs for deterministic venue-tech responder (not date-windowed)
       admin.from("venue_advance_notes")
         .select("id, venue_name, city, event_date, van_data")
         .eq("tour_id", matchedTourId)
@@ -976,16 +1150,12 @@ If the message says "+1" or "plus one" after a name, that means 2 tickets total 
     const recentHistory = historyMessages.slice(-6);
 
     // --- FIRST-CONTACT IDENTITY CONFIRMATION ---
-    // Exclude the message we just logged (it's already in sms_inbound) from history count
-    // recentHistory includes the current inbound message we just inserted, so check if there's only 1 (the current one)
-    const priorMessages = historyMessages.filter(m => {
-      // The current message was just inserted; prior messages are everything else
+    const priorMessagesForFirstContact = historyMessages.filter(m => {
       return !(m.role === "user" && m.content === messageBody);
     });
-    const isFirstContact = priorMessages.length === 0;
+    const isFirstContact = priorMessagesForFirstContact.length === 0;
 
     if (isFirstContact) {
-      // Fetch tour code / abbreviation
       const { data: tourMeta } = await admin
         .from("tour_metadata")
         .select("tour_code, akb_id")
@@ -1010,7 +1180,6 @@ If the message says "+1" or "plus one" after a name, that means 2 tickets total 
     }
 
     // --- CONFIRMATION RESPONSE HANDLER ---
-    // Check if the most recent outbound message was an identity confirmation
     const lastOutbound = (recentOutbound.data || [])[0];
     const confirmationPattern = /This is TELA for .+\. I have you as .+\. Text YES to confirm/i;
     
@@ -1045,19 +1214,16 @@ If the message says "+1" or "plus one" after a name, that means 2 tickets total 
         return emptyTwiml();
       }
 
-      // Neither affirmative nor negative — they're engaging with a question, treat as confirmed and fall through
       console.log(`User ${senderName} skipped confirmation, treating as confirmed and processing message`);
     }
 
     // --- DETERMINISTIC ARTIFACT MATCHING ---
-    // For WiFi/password/general tour-note intents, check artifacts directly and skip LLM
     const ARTIFACT_KEYWORDS = /\b(wifi|wi-?fi|wi fi|password|network|internet|tour code|house code|ssid)\b/i;
     if (ARTIFACT_KEYWORDS.test(messageBody) && (artifactsRes.data || []).length > 0) {
       const msgLower = messageBody.toLowerCase();
       const matchedArtifact = (artifactsRes.data || []).find((a: any) => {
         const titleLower = (a.title || "").toLowerCase();
         const contentLower = (a.content || "").toLowerCase();
-        // Match if artifact title or content contains the keyword
         return (
           (msgLower.includes("wifi") || msgLower.includes("wi-fi") || msgLower.includes("wi fi")) &&
           (titleLower.includes("wifi") || titleLower.includes("wi-fi") || titleLower.includes("wi fi") ||
@@ -1090,13 +1256,19 @@ If the message says "+1" or "plus one" after a name, that means 2 tickets total 
     }
 
     // --- DETERMINISTIC VENUE-TECH RESPONDER ---
-    // For venue-tech intents, bypass LLM and extract facts directly from VAN JSON
+    // Includes (B) topic carryover: if inherited topic is venue_tech, use inherited keywords
     const allVans = allVansRes.data || [];
     const msgLowerForTech = messageBody.toLowerCase();
-    const matchedVenueTechTopics = VENUE_TECH_INTENT_KEYWORDS.filter(kw => msgLowerForTech.includes(kw));
+    let matchedVenueTechTopics = VENUE_TECH_INTENT_KEYWORDS.filter(kw => msgLowerForTech.includes(kw));
+
+    // (B) If no direct tech keywords but inherited topic is venue_tech, use inherited keywords
+    if (matchedVenueTechTopics.length === 0 && inheritedTopic === "venue_tech" && inheritedTopicKeywords.length > 0) {
+      matchedVenueTechTopics = inheritedTopicKeywords;
+      console.log("DIAG: Topic carryover activated — inherited venue-tech keywords:", inheritedTopicKeywords);
+    }
 
     if (matchedVenueTechTopics.length > 0 && (effectiveCities.length > 0 || effectiveVenue || effectiveDates.length > 0)) {
-      // Resolve target VAN deterministically
+      // (E) Resolve target VAN from ALL VANs first, not just date-windowed
       const targetVan = resolveTargetVan(allVans, effectiveCities, effectiveVenue, effectiveDates, allEvents || []);
 
       if (targetVan) {
@@ -1113,14 +1285,17 @@ If the message says "+1" or "plus one" after a name, that means 2 tickets total 
         }
 
         const deterministicReply = `${cityLabel}${dateLabel ? ` (${dateLabel})` : ""}:\n${parts.join("\n")}`;
-        console.log("DETERMINISTIC VENUE-TECH REPLY:", JSON.stringify({
-          intent: matchedVenueTechTopics,
+        console.log("DIAG: DETERMINISTIC VENUE-TECH REPLY:", JSON.stringify({
+          intent: matchedVenueTechTopics.slice(0, 5),
           vanId: targetVan.id,
           city: targetVan.city,
           venue: targetVan.venue_name,
+          anchorDate: targetVan.event_date,
           foundFields: Object.keys(found),
           missingFields: missing,
           branch: "deterministic",
+          topicCarryover: inheritedTopic === "venue_tech",
+          targetVanIncluded: true,
         }));
 
         await sendTwilioSms(fromPhone, deterministicReply, TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_PHONE_NUMBER);
@@ -1132,7 +1307,6 @@ If the message says "+1" or "plus one" after a name, that means 2 tickets total 
         });
         return emptyTwiml();
       } else if (effectiveCities.length === 0 && !effectiveVenue && effectiveDates.length === 0) {
-        // No venue could be resolved — ask clarification
         const clarifyReply = "Which city or date are you asking about?";
         await sendTwilioSms(fromPhone, clarifyReply, TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_PHONE_NUMBER);
         await admin.from("sms_outbound").insert({
@@ -1141,12 +1315,11 @@ If the message says "+1" or "plus one" after a name, that means 2 tickets total 
           tour_id: matchedTourId,
           status: "sent",
         });
-        console.log("DETERMINISTIC VENUE-TECH: no venue resolved, asked clarification", JSON.stringify({ intent: matchedVenueTechTopics }));
+        console.log("DIAG: VENUE-TECH: no venue resolved, asked clarification", JSON.stringify({ intent: matchedVenueTechTopics.slice(0, 5) }));
         return emptyTwiml();
       }
-      // If we have city/venue context but no VAN match, fall through to LLM with enhanced context
-      console.log("VENUE-TECH: city/venue resolved but no VAN match, falling through to LLM", JSON.stringify({
-        intent: matchedVenueTechTopics,
+      console.log("DIAG: VENUE-TECH: city/venue resolved but no VAN match, falling through to LLM", JSON.stringify({
+        intent: matchedVenueTechTopics.slice(0, 5),
         cities: effectiveCities,
         venue: effectiveVenue,
         branch: "llm_fallback",
@@ -1159,14 +1332,13 @@ If the message says "+1" or "plus one" after a name, that means 2 tickets total 
     ).join("\n");
 
     // --- RELEVANCE-FIRST VAN PACKING ---
-    // Target VAN always goes first; per-venue cap prevents one venue crowding out others
     const BUDGET_ARTIFACTS = 4000;
     const BUDGET_SCHEDULE = 3000;
     const BUDGET_CONTACTS = 2000;
     const BUDGET_ROUTING = 2000;
     const BUDGET_POLICIES = 1000;
-    const BUDGET_VANS = 6000; // Increased from 4000 to ensure target venue fits
-    const PER_VENUE_CAP = 2500; // Per-venue cap
+    const BUDGET_VANS = 6000;
+    const PER_VENUE_CAP = 2500;
     const TOTAL_CAP = 16000;
 
     const artifactsSection = (artifactsRes.data || []).length > 0
@@ -1178,9 +1350,9 @@ If the message says "+1" or "plus one" after a name, that means 2 tickets total 
     const scheduleSection = JSON.stringify(eventsRes.data || [], null, 1).substring(0, BUDGET_SCHEDULE);
     const contactsSection = JSON.stringify(contactsRes.data || [], null, 1).substring(0, BUDGET_CONTACTS);
 
-    // Relevance-first VAN packing: target venue first, then others within budget
+    // (E) Relevance-first VAN packing: resolve target from ALL VANs first
     const dateWindowVans = vansRes.data || [];
-    const targetVanForPacking = resolveTargetVan(dateWindowVans.length > 0 ? dateWindowVans : allVans, effectiveCities, effectiveVenue, effectiveDates, allEvents || []);
+    const targetVanForPacking = resolveTargetVan(allVans.length > 0 ? allVans : dateWindowVans, effectiveCities, effectiveVenue, effectiveDates, allEvents || []);
     let vansSection = "";
     let vansBudgetRemaining = BUDGET_VANS;
     const includedVanIds = new Set<string>();
@@ -1207,7 +1379,7 @@ If the message says "+1" or "plus one" after a name, that means 2 tickets total 
     if (!vansSection) vansSection = "(No VAN data for this date range)";
 
     const targetVanIncluded = targetVanForPacking ? includedVanIds.has(`${targetVanForPacking.venue_name}-${targetVanForPacking.event_date}`) : false;
-    console.log("VAN packing:", JSON.stringify({
+    console.log("DIAG: VAN packing:", JSON.stringify({
       targetVan: targetVanForPacking ? `${targetVanForPacking.venue_name} (${targetVanForPacking.city})` : null,
       targetIncluded: targetVanIncluded,
       totalVansIncluded: includedVanIds.size,
@@ -1230,9 +1402,9 @@ If the message says "+1" or "plus one" after a name, that means 2 tickets total 
       policies_len: policiesSection.length,
     }));
 
-    // Build "Verified Venue Facts" block if target VAN exists (prepended for LLM reliability)
+    // Build "Verified Venue Facts" block if target VAN exists
     let verifiedFactsBlock = "";
-    if (targetVanForPacking && (inboundTopics.has("venue_tech") || matchedVenueTechTopics.length > 0)) {
+    if (targetVanForPacking && (inboundTopics.has("venue_tech") || matchedVenueTechTopics.length > 0 || inheritedTopic === "venue_tech")) {
       const allTopics = ["labor", "haze", "curfew", "power", "dock", "rigging", "staging", "spl", "dead case", "forklift", "follow spot", "house electrician"];
       const { found, missing } = extractVenueTechFacts(targetVanForPacking.van_data || {}, allTopics);
       const factLines = Object.entries(found).map(([k, v]) => `  ${k}: ${v}`);
@@ -1293,6 +1465,8 @@ ABSOLUTE RULE: NEVER fabricate, guess, or infer any information not explicitly p
 
 SELF-CORRECTION RULE: If your previous replies in the conversation history contained errors or incomplete information, correct them in your current response — do NOT repeat previous mistakes.
 
+IMPORTANT: The user is currently asking about ${effectiveCities.length > 0 ? effectiveCities.join(", ") : effectiveVenue || "the tour in general"}. Focus your answer ONLY on this location. Do NOT reference or repeat information about other cities from earlier in the conversation unless the user explicitly asks about them.
+
 ${depthInstruction}
 
 === SCHEDULE FACTS (AUTHORITATIVE — DO NOT CONTRADICT) ===
@@ -1322,10 +1496,22 @@ ${akbContext}`,
       },
     ];
 
-    // Add conversation history — USER MESSAGES ONLY to prevent assistant-history contamination
+    // (F) Scoped history: when new location is explicit, filter out stale city references
+    const hasNewExplicitLocation = targetCities.length > 0 || targetVenue !== null;
     for (const msg of recentHistory.slice(0, -1)) {
       if (msg.role === "user") {
-        chatMessages.push({ role: "user", content: msg.content });
+        if (hasNewExplicitLocation) {
+          // Only include prior user turns that are relevant to current location/topic
+          // or are very recent (within last 2 turns)
+          const msgIdx = recentHistory.indexOf(msg);
+          const isRecent = msgIdx >= recentHistory.length - 3;
+          if (isRecent) {
+            chatMessages.push({ role: "user", content: msg.content });
+          }
+          // Skip older user turns about different cities to prevent stale context bleed
+        } else {
+          chatMessages.push({ role: "user", content: msg.content });
+        }
       }
     }
 
@@ -1360,6 +1546,13 @@ ${akbContext}`,
     const aiData = await aiResponse.json();
     const rawReply = aiData.choices?.[0]?.message?.content || "I don't have an answer for that right now.";
     const smsReply = toPlaintext(rawReply);
+
+    console.log("DIAG: LLM fallback used, branch=llm", JSON.stringify({
+      effectiveCities,
+      effectiveVenue,
+      inheritedTopic,
+      historyMessagesIncluded: chatMessages.length - 2, // minus system + current
+    }));
 
     // --- Send SMS reply via Twilio REST API (sole delivery path) ---
     await sendTwilioSms(fromPhone, smsReply, TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_PHONE_NUMBER);
@@ -1406,7 +1599,7 @@ async function sendTwilioSms(
   }
 }
 
-// --- Always return empty TwiML (Fix 4: prevents double-SMS) ---
+// --- Always return empty TwiML (prevents double-SMS) ---
 function emptyTwiml(): Response {
   return new Response(
     `<?xml version="1.0" encoding="UTF-8"?><Response></Response>`,
