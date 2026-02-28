@@ -37,7 +37,7 @@ async function validateTwilioSignature(
 // --- Topic keyword groups for Progressive Depth ---
 const TOPIC_GROUPS: Record<string, string[]> = {
   schedule: ["load-in", "load in", "loadin", "doors", "soundcheck", "curfew", "show time", "showtime", "set time", "settime", "set list", "setlist", "downbeat", "changeover"],
-  venue_tech: ["haze", "haze machine", "fog", "rigging", "steel", "power", "docks", "dock", "labor", "union", "staging", "spl", "decibel", "db limit", "pyro", "confetti", "co2", "laser", "barricade", "pit"],
+  venue_tech: ["haze", "haze machine", "fog", "rigging", "steel", "power", "docks", "dock", "labor", "labour", "union", "staging", "spl", "decibel", "db limit", "pyro", "confetti", "co2", "laser", "barricade", "pit"],
   logistics: ["hotel", "routing", "bus", "truck", "travel", "drive", "fly", "flight", "van", "lobby", "checkout", "check-in", "checkin", "day room"],
   tour_info: ["wifi", "wi-fi", "wi fi", "password", "network", "internet", "tour code", "house code", "ssid", "sop", "packing list", "checklist"],
   contacts: ["pm", "tm", "ld", "foh", "monitor", "prod manager", "production manager", "tour manager", "lighting director", "stage manager", "sm", "who is", "who's the", "contact"],
@@ -45,6 +45,213 @@ const TOPIC_GROUPS: Record<string, string[]> = {
   catering: ["catering", "hospitality", "buyout", "meal", "breakfast", "lunch", "dinner", "rider"],
   follow_up: ["special notes", "notes", "anything else", "what about", "details", "more", "anything special", "restrictions", "rules", "policy", "policies", "what else", "other info", "other details", "more info"],
 };
+
+// --- Venue-tech intent keywords for deterministic responder ---
+const VENUE_TECH_INTENT_KEYWORDS = [
+  "labor", "labour", "labor notes", "labour notes", "labor call", "labour call",
+  "haze", "haze restrictions", "haze machine", "hazer", "fog",
+  "union", "union venue", "union house",
+  "power", "available power", "catering power",
+  "dock", "docks", "loading dock", "push distance",
+  "rigging", "low steel", "steel", "rigging points",
+  "staging", "vip riser", "foh riser", "camera riser", "bike rack",
+  "spl", "spl limit", "spl restrictions", "audio spl", "decibel", "db limit",
+  "curfew",
+  "dead case", "dead case storage",
+  "forklift", "plant equipment", "co2",
+  "follow spot", "follow spots", "house electrician",
+];
+
+// --- Correction/follow-up intent patterns (expanded) ---
+const CORRECTION_FOLLOW_UP_PATTERNS = /^(look again|check again|again|that's wrong|thats wrong|you're wrong|youre wrong|not right|not correct|incorrect|try again|wrong answer|nope wrong|no that's wrong|come on|seriously|really|what|huh|bull|bs|dude|bro|yes|yeah|yep|yup|no|nope|nah|it is|it's not|correct|right|exactly|absolutely|definitely|for sure|not true|true|details|more)$/i;
+
+// --- Extract venue-tech facts deterministically from VAN JSON ---
+function extractVenueTechFacts(
+  vanData: Record<string, any>,
+  requestedTopics: string[],
+): { found: Record<string, string>; missing: string[] } {
+  const found: Record<string, string> = {};
+  const missing: string[] = [];
+
+  // Helper: deep-get with alias-safe access
+  const getField = (obj: Record<string, any>, ...paths: string[]): string | null => {
+    for (const path of paths) {
+      const parts = path.split(".");
+      let cur: any = obj;
+      for (const p of parts) {
+        if (cur == null || typeof cur !== "object") { cur = null; break; }
+        // Case-insensitive key lookup
+        const key = Object.keys(cur).find(k => k.toLowerCase() === p.toLowerCase());
+        cur = key ? cur[key] : null;
+      }
+      if (cur != null && cur !== "") return String(cur);
+    }
+    return null;
+  };
+
+  for (const topic of requestedTopics) {
+    const t = topic.toLowerCase();
+    let value: string | null = null;
+    let label = topic;
+
+    if (t.includes("labor") || t.includes("labour")) {
+      // Check multiple possible locations
+      const notes = getField(vanData, "labour.labor_notes", "labor.labor_notes", "Labour.Labor Notes", "Labour.labor_notes");
+      const call = getField(vanData, "labour.labor_call", "labor.labor_call", "Labour.Labor Call", "Labour.labor_call");
+      const unionVenue = getField(vanData, "labour.union_venue", "labor.union_venue", "Labour.Union Venue", "Labour.union_venue");
+      const houseElec = getField(vanData, "labour.house_electrician", "labor.house_electrician", "Labour.House Electrician");
+      const followSpots = getField(vanData, "labour.follow_spots", "labor.follow_spots", "Labour.Follow Spots");
+      const feedCount = getField(vanData, "labour.feed_count", "labor.feed_count", "Labour.Feed Count");
+      const parts: string[] = [];
+      if (unionVenue) parts.push(`Union: ${unionVenue}`);
+      if (notes) parts.push(`Notes: ${notes}`);
+      if (call) parts.push(`Call: ${call}`);
+      if (houseElec) parts.push(`House Electrician: ${houseElec}`);
+      if (followSpots) parts.push(`Follow Spots: ${followSpots}`);
+      if (feedCount) parts.push(`Feed Count: ${feedCount}`);
+      value = parts.length > 0 ? parts.join(" | ") : null;
+      label = "Labor/Labour";
+    } else if (t.includes("haze") || t.includes("fog")) {
+      value = getField(vanData, "misc.haze_restrictions", "Misc.Haze Restrictions", "misc.Haze Restrictions", "Misc.haze_restrictions");
+      label = "Haze Restrictions";
+    } else if (t.includes("spl") || t.includes("decibel") || t.includes("db limit")) {
+      value = getField(vanData, "misc.audio_spl_restrictions", "Misc.Audio SPL Restrictions", "misc.Audio SPL Restrictions", "Misc.audio_spl_restrictions");
+      label = "SPL Restrictions";
+    } else if (t === "curfew") {
+      value = getField(vanData, "misc.curfew", "Misc.Curfew", "misc.Curfew");
+      label = "Curfew";
+    } else if (t.includes("dead case")) {
+      value = getField(vanData, "misc.dead_case_storage", "Misc.Dead Case Storage", "misc.Dead Case Storage");
+      label = "Dead Case Storage";
+    } else if (t.includes("union")) {
+      value = getField(vanData, "labour.union_venue", "labor.union_venue", "Labour.Union Venue");
+      label = "Union Venue";
+    } else if (t.includes("power")) {
+      const avail = getField(vanData, "power.available_power", "Power.Available Power", "power.Available Power");
+      const catering = getField(vanData, "power.catering_power", "Power.Catering Power", "power.Catering Power");
+      const parts: string[] = [];
+      if (avail) parts.push(`Available: ${avail}`);
+      if (catering) parts.push(`Catering: ${catering}`);
+      value = parts.length > 0 ? parts.join(" | ") : null;
+      label = "Power";
+    } else if (t.includes("dock") || t.includes("push")) {
+      const dock = getField(vanData, "dock_logistics.loading_dock", "Dock & Logistics.Loading Dock", "dock_logistics.Loading Dock");
+      const push = getField(vanData, "dock_logistics.push_distance", "Dock & Logistics.Push Distance", "dock_logistics.Push Distance");
+      const truck = getField(vanData, "dock_logistics.truck_parking", "Dock & Logistics.Truck Parking", "dock_logistics.Truck Parking");
+      const parts: string[] = [];
+      if (dock) parts.push(`Dock: ${dock}`);
+      if (push) parts.push(`Push: ${push}`);
+      if (truck) parts.push(`Truck Parking: ${truck}`);
+      value = parts.length > 0 ? parts.join(" | ") : null;
+      label = "Dock & Logistics";
+    } else if (t.includes("rigging") || t.includes("steel")) {
+      const steel = getField(vanData, "summary.low_steel_distance", "Summary.Low Steel Distance", "summary.Low Steel Distance");
+      const cad = getField(vanData, "summary.cad", "Summary.CAD", "summary.CAD");
+      const overlay = getField(vanData, "summary.rigging_overlay", "Summary.Rigging Overlay", "summary.Rigging Overlay");
+      const parts: string[] = [];
+      if (steel) parts.push(`Low Steel: ${steel}`);
+      if (cad) parts.push(`CAD: ${cad}`);
+      if (overlay) parts.push(`Rigging Overlay: ${overlay}`);
+      value = parts.length > 0 ? parts.join(" | ") : null;
+      label = "Rigging";
+    } else if (t.includes("staging") || t.includes("riser") || t.includes("bike rack")) {
+      const sections = ["staging", "Staging"];
+      for (const sec of sections) {
+        const block = vanData[sec];
+        if (block && typeof block === "object") {
+          const parts = Object.entries(block).map(([k, v]) => `${k}: ${v}`);
+          if (parts.length > 0) { value = parts.join(" | "); break; }
+        }
+      }
+      label = "Staging";
+    } else if (t.includes("forklift") || t.includes("plant")) {
+      const sections = ["plant_equipment", "Plant Equipment"];
+      for (const sec of sections) {
+        const block = vanData[sec];
+        if (block && typeof block === "object") {
+          const parts = Object.entries(block).map(([k, v]) => `${k}: ${v}`);
+          if (parts.length > 0) { value = parts.join(" | "); break; }
+        }
+      }
+      label = "Plant Equipment";
+    } else if (t.includes("follow spot")) {
+      value = getField(vanData, "labour.follow_spots", "labor.follow_spots", "Labour.Follow Spots");
+      label = "Follow Spots";
+    } else if (t.includes("house electrician")) {
+      value = getField(vanData, "labour.house_electrician", "labor.house_electrician", "Labour.House Electrician");
+      label = "House Electrician";
+    }
+
+    if (value) {
+      found[label] = value;
+    } else {
+      missing.push(label);
+    }
+  }
+
+  return { found, missing };
+}
+
+// --- Resolve best VAN match for a city/venue/date ---
+function resolveTargetVan(
+  vans: any[],
+  targetCities: string[],
+  targetVenue: string | null,
+  targetDates: string[],
+  allEvents: any[],
+): any | null {
+  if (vans.length === 0) return null;
+
+  // 1. Exact city + date
+  if (targetCities.length > 0 && targetDates.length > 0) {
+    for (const van of vans) {
+      const vanCity = (van.city || "").toLowerCase().split(",")[0].trim();
+      for (const tc of targetCities) {
+        const tCity = tc.toLowerCase().split(",")[0].trim();
+        if (vanCity.includes(tCity) || tCity.includes(vanCity)) {
+          if (targetDates.includes(van.event_date)) return van;
+        }
+      }
+    }
+  }
+
+  // 2. Exact city (any date)
+  if (targetCities.length > 0) {
+    for (const van of vans) {
+      const vanCity = (van.city || "").toLowerCase().split(",")[0].trim();
+      for (const tc of targetCities) {
+        const tCity = tc.toLowerCase().split(",")[0].trim();
+        if (vanCity.includes(tCity) || tCity.includes(vanCity)) return van;
+      }
+    }
+  }
+
+  // 3. Venue name match
+  if (targetVenue) {
+    const tvLower = targetVenue.toLowerCase();
+    for (const van of vans) {
+      const vnLower = (van.venue_name || "").toLowerCase();
+      if (vnLower.includes(tvLower.substring(0, 10)) || tvLower.includes(vnLower.substring(0, 10))) return van;
+    }
+  }
+
+  // 4. Nearest event-date fallback using schedule events matched to target cities
+  if (targetCities.length > 0 && allEvents.length > 0) {
+    for (const tc of targetCities) {
+      const tCity = tc.toLowerCase().split(",")[0].trim();
+      const matchedEvent = allEvents.find((e: any) => {
+        const eCity = (e.city || "").toLowerCase().split(",")[0].trim();
+        return eCity.includes(tCity) || tCity.includes(eCity);
+      });
+      if (matchedEvent?.event_date) {
+        const van = vans.find((v: any) => v.event_date === matchedEvent.event_date);
+        if (van) return van;
+      }
+    }
+  }
+
+  return null;
+}
 
 function extractTopics(text: string): Set<string> {
   const lower = text.toLowerCase();
@@ -548,39 +755,60 @@ If the message says "+1" or "plus one" after a name, that means 2 tickets total 
       knownVenues as string[],
       eventDates,
     );
-    // --- City carryover for short follow-ups ---
+    // --- Multi-step context carryover for follow-ups (backtrack up to 6 prior messages) ---
     let effectiveCities = [...targetCities];
-    const shortFollowUp = /^(yes|yeah|yep|yup|no|nope|nah|it is|it's not|that's wrong|wrong|correct|right|exactly|absolutely|definitely|for sure|not true|true|bull|bs|come on|dude|bro|seriously|really|what|huh)/i;
-    if (effectiveCities.length === 0 && shortFollowUp.test(messageBody.trim())) {
-      const { data: lastInbound } = await admin
+    let effectiveVenue = targetVenue;
+    let effectiveDates = [...targetDates];
+    const isFollowUp = effectiveCities.length === 0 && effectiveVenue === null && effectiveDates.length === 0 &&
+      (CORRECTION_FOLLOW_UP_PATTERNS.test(messageBody.trim()) || messageBody.trim().length < 30);
+
+    if (isFollowUp) {
+      // Fetch last 7 inbound messages (current + 6 prior)
+      const { data: priorInbound } = await admin
         .from("sms_inbound")
         .select("message_text")
         .eq("from_phone", fromPhone)
         .eq("tour_id", matchedTourId)
         .order("created_at", { ascending: false })
-        .limit(2);
+        .limit(7);
 
-      const priorMsg = lastInbound && lastInbound.length > 1 ? lastInbound[1] : null;
-      if (priorMsg) {
+      // Skip the first one (current message we just inserted), backtrack through up to 6 prior
+      const priorMessages = (priorInbound || []).slice(1);
+      for (const priorMsg of priorMessages) {
         const priorExtracted = extractRelevanceFromMessage(
           priorMsg.message_text,
           knownCities as string[],
           knownVenues as string[],
           eventDates,
         );
-        if (priorExtracted.targetCities.length > 0) {
-          effectiveCities = priorExtracted.targetCities;
-          console.log("City carryover from prior message:", effectiveCities);
+        // Take the first prior message that resolves ANY context (city, venue, or date)
+        if (priorExtracted.targetCities.length > 0 || priorExtracted.targetVenue || priorExtracted.targetDates.length > 0) {
+          if (effectiveCities.length === 0 && priorExtracted.targetCities.length > 0) {
+            effectiveCities = priorExtracted.targetCities;
+          }
+          if (!effectiveVenue && priorExtracted.targetVenue) {
+            effectiveVenue = priorExtracted.targetVenue;
+          }
+          if (effectiveDates.length === 0 && priorExtracted.targetDates.length > 0) {
+            effectiveDates = priorExtracted.targetDates;
+          }
+          console.log("Multi-step carryover from prior message:", JSON.stringify({
+            carriedCities: effectiveCities,
+            carriedVenue: effectiveVenue,
+            carriedDates: effectiveDates,
+            fromMessage: priorMsg.message_text.substring(0, 50),
+          }));
+          break; // Use the most recent resolvable prior message
         }
       }
     }
 
-    console.log("Smart Context:", JSON.stringify({ targetCities, effectiveCities, targetVenue, targetDates }));
+    console.log("Smart Context:", JSON.stringify({ targetCities, effectiveCities, effectiveVenue, targetDates, effectiveDates, isFollowUp }));
 
     // --- Deterministic schedule-presence responder ---
     const schedulePresenceIntent = /\b(on\s+(the\s+)?schedule|show\??|on\s+tour|playing|not\s+on\s+(the\s+)?schedule|scheduled)\b/i;
     const isScheduleQuestion = schedulePresenceIntent.test(messageBody) ||
-      (shortFollowUp.test(messageBody.trim()) && effectiveCities.length > 0);
+      (CORRECTION_FOLLOW_UP_PATTERNS.test(messageBody.trim()) && effectiveCities.length > 0 && !inboundTopics.has("venue_tech"));
 
     if (isScheduleQuestion && effectiveCities.length > 0) {
       const results: string[] = [];
@@ -612,14 +840,17 @@ If the message says "+1" or "plus one" after a name, that means 2 tickets total 
     let startDate: string;
     let endDate: string;
 
-    if (targetDates.length > 0) {
+    // Use effectiveDates (which includes carried-over dates from follow-ups)
+    const activeDates = effectiveDates.length > 0 ? effectiveDates : targetDates;
+
+    if (activeDates.length > 0) {
       // Specific date: +/- 1 day
-      const d = new Date(targetDates[0]);
+      const d = new Date(activeDates[0]);
       const before = new Date(d); before.setDate(before.getDate() - 1);
       const after = new Date(d); after.setDate(after.getDate() + 1);
       startDate = before.toISOString().split("T")[0];
       endDate = after.toISOString().split("T")[0];
-    } else if (effectiveCities.length > 0 || targetVenue) {
+    } else if (effectiveCities.length > 0 || effectiveVenue) {
       // City/venue mentioned (or carried over) but no date: find events at those cities/venue
       const cityVenueEvents = (allEvents || []).filter((e: any) => {
         if (effectiveCities.length > 0 && e.city) {
@@ -629,8 +860,8 @@ If the message says "+1" or "plus one" after a name, that means 2 tickets total 
             if (eCityName.includes(tCityName) || tCityName.includes(eCityName)) return true;
           }
         }
-        if (targetVenue && e.venue) {
-          if (e.venue.toLowerCase().includes(targetVenue.toLowerCase().substring(0, 10))) return true;
+        if (effectiveVenue && e.venue) {
+          if (e.venue.toLowerCase().includes(effectiveVenue.toLowerCase().substring(0, 10))) return true;
         }
         return false;
       });
@@ -672,8 +903,8 @@ If the message says "+1" or "plus one" after a name, that means 2 tickets total 
     }
     console.log("Date window:", { startDate, endDate });
 
-    // --- Filtered AKB data fetches ---
-    const [eventsRes, contactsRes, vansRes, tourRes, routingRes, policiesRes, recentInbound, recentOutbound, artifactsRes] = await Promise.all([
+    // --- Filtered AKB data fetches + ALL VANs for deterministic responder ---
+    const [eventsRes, contactsRes, vansRes, allVansRes, tourRes, routingRes, policiesRes, recentInbound, recentOutbound, artifactsRes] = await Promise.all([
       admin.from("schedule_events")
         .select("event_date, venue, city, load_in, show_time, doors, soundcheck, curfew, notes")
         .eq("tour_id", matchedTourId)
@@ -692,6 +923,12 @@ If the message says "+1" or "plus one" after a name, that means 2 tickets total 
         .lte("event_date", endDate)
         .order("event_date")
         .limit(10),
+      // ALL VANs for deterministic venue-tech responder (not date-windowed)
+      admin.from("venue_advance_notes")
+        .select("id, venue_name, city, event_date, van_data")
+        .eq("tour_id", matchedTourId)
+        .order("event_date")
+        .limit(50),
       admin.from("tours").select("name").eq("id", matchedTourId).single(),
       admin.from("tour_routing")
         .select("event_date, city, hotel_name, hotel_checkin, hotel_checkout, hotel_confirmation, bus_notes, truck_notes, routing_notes")
@@ -852,19 +1089,84 @@ If the message says "+1" or "plus one" after a name, that means 2 tickets total 
       }
     }
 
+    // --- DETERMINISTIC VENUE-TECH RESPONDER ---
+    // For venue-tech intents, bypass LLM and extract facts directly from VAN JSON
+    const allVans = allVansRes.data || [];
+    const msgLowerForTech = messageBody.toLowerCase();
+    const matchedVenueTechTopics = VENUE_TECH_INTENT_KEYWORDS.filter(kw => msgLowerForTech.includes(kw));
+
+    if (matchedVenueTechTopics.length > 0 && (effectiveCities.length > 0 || effectiveVenue || effectiveDates.length > 0)) {
+      // Resolve target VAN deterministically
+      const targetVan = resolveTargetVan(allVans, effectiveCities, effectiveVenue, effectiveDates, allEvents || []);
+
+      if (targetVan) {
+        const { found, missing } = extractVenueTechFacts(targetVan.van_data || {}, matchedVenueTechTopics);
+        const cityLabel = targetVan.city || targetVan.venue_name || "venue";
+        const dateLabel = targetVan.event_date || "";
+
+        const parts: string[] = [];
+        for (const [label, value] of Object.entries(found)) {
+          parts.push(`${label}: ${value}`);
+        }
+        for (const label of missing) {
+          parts.push(`${label}: not listed in ${cityLabel} VAN`);
+        }
+
+        const deterministicReply = `${cityLabel}${dateLabel ? ` (${dateLabel})` : ""}:\n${parts.join("\n")}`;
+        console.log("DETERMINISTIC VENUE-TECH REPLY:", JSON.stringify({
+          intent: matchedVenueTechTopics,
+          vanId: targetVan.id,
+          city: targetVan.city,
+          venue: targetVan.venue_name,
+          foundFields: Object.keys(found),
+          missingFields: missing,
+          branch: "deterministic",
+        }));
+
+        await sendTwilioSms(fromPhone, deterministicReply, TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_PHONE_NUMBER);
+        await admin.from("sms_outbound").insert({
+          to_phone: fromPhone,
+          message_text: deterministicReply,
+          tour_id: matchedTourId,
+          status: "sent",
+        });
+        return emptyTwiml();
+      } else if (effectiveCities.length === 0 && !effectiveVenue && effectiveDates.length === 0) {
+        // No venue could be resolved — ask clarification
+        const clarifyReply = "Which city or date are you asking about?";
+        await sendTwilioSms(fromPhone, clarifyReply, TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_PHONE_NUMBER);
+        await admin.from("sms_outbound").insert({
+          to_phone: fromPhone,
+          message_text: clarifyReply,
+          tour_id: matchedTourId,
+          status: "sent",
+        });
+        console.log("DETERMINISTIC VENUE-TECH: no venue resolved, asked clarification", JSON.stringify({ intent: matchedVenueTechTopics }));
+        return emptyTwiml();
+      }
+      // If we have city/venue context but no VAN match, fall through to LLM with enhanced context
+      console.log("VENUE-TECH: city/venue resolved but no VAN match, falling through to LLM", JSON.stringify({
+        intent: matchedVenueTechTopics,
+        cities: effectiveCities,
+        venue: effectiveVenue,
+        branch: "llm_fallback",
+      }));
+    }
+
     // Build Schedule Facts — authoritative city list for prompt hardening
     const scheduleFacts = (allEvents || []).map((e: any) =>
       `${e.event_date} | ${e.city || "?"} | ${e.venue || "TBD"}`
     ).join("\n");
 
-    // Build focused context with SECTION-LEVEL BUDGETS
-    // Artifacts and schedule go first (high priority), VANs get capped (often 30k+)
+    // --- RELEVANCE-FIRST VAN PACKING ---
+    // Target VAN always goes first; per-venue cap prevents one venue crowding out others
     const BUDGET_ARTIFACTS = 4000;
     const BUDGET_SCHEDULE = 3000;
     const BUDGET_CONTACTS = 2000;
     const BUDGET_ROUTING = 2000;
     const BUDGET_POLICIES = 1000;
-    const BUDGET_VANS = 4000;
+    const BUDGET_VANS = 6000; // Increased from 4000 to ensure target venue fits
+    const PER_VENUE_CAP = 2500; // Per-venue cap
     const TOTAL_CAP = 16000;
 
     const artifactsSection = (artifactsRes.data || []).length > 0
@@ -875,11 +1177,43 @@ If the message says "+1" or "plus one" after a name, that means 2 tickets total 
 
     const scheduleSection = JSON.stringify(eventsRes.data || [], null, 1).substring(0, BUDGET_SCHEDULE);
     const contactsSection = JSON.stringify(contactsRes.data || [], null, 1).substring(0, BUDGET_CONTACTS);
-    const vansSection = ((vansRes.data || []).length > 0
-      ? (vansRes.data || []).map((v: any) =>
-          `${v.venue_name} (${v.city || "?"}, ${v.event_date || "?"}):\n${JSON.stringify(v.van_data, null, 1)}`
-        ).join("\n\n")
-      : "(No VAN data for this date range)").substring(0, BUDGET_VANS);
+
+    // Relevance-first VAN packing: target venue first, then others within budget
+    const dateWindowVans = vansRes.data || [];
+    const targetVanForPacking = resolveTargetVan(dateWindowVans.length > 0 ? dateWindowVans : allVans, effectiveCities, effectiveVenue, effectiveDates, allEvents || []);
+    let vansSection = "";
+    let vansBudgetRemaining = BUDGET_VANS;
+    const includedVanIds = new Set<string>();
+
+    // 1. Target VAN first (guaranteed inclusion)
+    if (targetVanForPacking) {
+      const vanStr = `${targetVanForPacking.venue_name} (${targetVanForPacking.city || "?"}, ${targetVanForPacking.event_date || "?"}):\n${JSON.stringify(targetVanForPacking.van_data, null, 1)}`.substring(0, PER_VENUE_CAP);
+      vansSection += vanStr;
+      vansBudgetRemaining -= vanStr.length;
+      includedVanIds.add(`${targetVanForPacking.venue_name}-${targetVanForPacking.event_date}`);
+    }
+
+    // 2. Fill remaining budget with other date-window VANs
+    for (const v of dateWindowVans) {
+      const vKey = `${v.venue_name}-${v.event_date}`;
+      if (includedVanIds.has(vKey)) continue;
+      if (vansBudgetRemaining <= 200) break;
+      const vanStr = `\n\n${v.venue_name} (${v.city || "?"}, ${v.event_date || "?"}):\n${JSON.stringify(v.van_data, null, 1)}`.substring(0, Math.min(PER_VENUE_CAP, vansBudgetRemaining));
+      vansSection += vanStr;
+      vansBudgetRemaining -= vanStr.length;
+      includedVanIds.add(vKey);
+    }
+
+    if (!vansSection) vansSection = "(No VAN data for this date range)";
+
+    const targetVanIncluded = targetVanForPacking ? includedVanIds.has(`${targetVanForPacking.venue_name}-${targetVanForPacking.event_date}`) : false;
+    console.log("VAN packing:", JSON.stringify({
+      targetVan: targetVanForPacking ? `${targetVanForPacking.venue_name} (${targetVanForPacking.city})` : null,
+      targetIncluded: targetVanIncluded,
+      totalVansIncluded: includedVanIds.size,
+      vansLength: vansSection.length,
+    }));
+
     const routingSection = ((routingRes.data || []).length > 0
       ? JSON.stringify(routingRes.data, null, 1)
       : "(No routing data for this date range)").substring(0, BUDGET_ROUTING);
@@ -896,11 +1230,26 @@ If the message says "+1" or "plus one" after a name, that means 2 tickets total 
       policies_len: policiesSection.length,
     }));
 
-    // Artifacts FIRST so they are never truncated
+    // Build "Verified Venue Facts" block if target VAN exists (prepended for LLM reliability)
+    let verifiedFactsBlock = "";
+    if (targetVanForPacking && (inboundTopics.has("venue_tech") || matchedVenueTechTopics.length > 0)) {
+      const allTopics = ["labor", "haze", "curfew", "power", "dock", "rigging", "staging", "spl", "dead case", "forklift", "follow spot", "house electrician"];
+      const { found, missing } = extractVenueTechFacts(targetVanForPacking.van_data || {}, allTopics);
+      const factLines = Object.entries(found).map(([k, v]) => `  ${k}: ${v}`);
+      const gapLines = missing.map(k => `  ${k}: NOT IN VAN`);
+      verifiedFactsBlock = `
+=== VERIFIED VENUE FACTS (${targetVanForPacking.venue_name}, ${targetVanForPacking.city || "?"}, ${targetVanForPacking.event_date || "?"}) ===
+${factLines.join("\n")}
+${gapLines.length > 0 ? `GAPS:\n${gapLines.join("\n")}` : ""}
+=== END VERIFIED FACTS ===
+`;
+    }
+
+    // Artifacts FIRST so they are never truncated, verified facts prepended
     const akbContext = `
 Tour: ${tourName}
 Date window: ${startDate} to ${endDate}
-
+${verifiedFactsBlock}
 Tour Artifacts (crew-shared notes, WiFi, SOPs, checklists):
 ${artifactsSection}
 
