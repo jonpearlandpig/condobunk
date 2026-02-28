@@ -296,7 +296,7 @@ const MobileBottomNav = ({ avatarUrl, displayName, user, signOut, fileInputRef }
                     Tela Talk
                   </p>
                   <div className="px-1 py-1">
-                    <TelaVoiceAgent agentId="agent_8301kjjfsz2febx8748ezrcmz0t8" />
+                    <TelaVoiceAgent agentId="agent_8301kjjfsz2febx8748ezrcmz0t8" tourId={tourId} />
                   </div>
                 </div>
               )}
