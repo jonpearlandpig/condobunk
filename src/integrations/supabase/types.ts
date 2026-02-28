@@ -1950,6 +1950,7 @@ export type Database = {
         Args: { _request_id: string }
         Returns: boolean
       }
+      claim_contact_tours: { Args: never; Returns: Json }
       cleanup_expired_demos: { Args: never; Returns: undefined }
       deactivate_demo_mode: { Args: never; Returns: boolean }
       deny_upgrade_request: { Args: { _request_id: string }; Returns: boolean }
