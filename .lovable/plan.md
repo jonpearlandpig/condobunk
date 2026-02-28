@@ -1,31 +1,28 @@
 
 
-## Add Blinking Notification for Bunk Chat Messages
+## Update TELA Voice Agent ID in Chat
 
 ### What Changes
 
-Add a pulsing/blinking animation to the unread message indicators so they catch the user's eye when new messages come in.
+The voice button is already wired into the TELA chat header (top-right, next to the sidebar trigger). It just needs the correct ElevenLabs Agent ID swapped in.
 
-### Locations to Update
+### Current State
 
-1. **Mobile Bottom Nav** (`src/components/bunk/MobileBottomNav.tsx`)
-   - The small dot on the MessageCircle icon (line 318) -- add `animate-pulse` class to make it blink
+In `src/pages/bunk/BunkChat.tsx` (line 411), the `TelaVoiceAgent` component is rendered with a placeholder agent ID `"DXFkLCBUTmvXpp2QwZjA"`.
 
-2. **Desktop Sidebar** (`src/components/bunk/BunkSidebar.tsx`)
-   - The unread count badge next to "Tour Team" (line 245) -- add `animate-pulse` class to the badge
+### Update
 
-3. **Desktop Header** (`src/pages/bunk/BunkLayout.tsx`)
-   - Add a small blinking dot on the sidebar logo trigger when there are unread DMs, so users notice even when the sidebar is collapsed
+Replace the agent ID with your actual one: `agent_8301kjjfsz2febx8748ezrcmz0t8`.
 
-### Implementation Details
+### File Modified
 
-- Use the existing `animate-pulse` Tailwind utility (already available) for the blinking effect
-- The mobile dot gets `animate-pulse` so it pulses orange
-- The desktop sidebar badge gets `animate-pulse` so the count badge pulses
-- Add an unread indicator dot to the desktop header logo area (BunkLayout) that pulses when `totalUnread > 0`, since the sidebar is usually collapsed
+- `src/pages/bunk/BunkChat.tsx` -- change `agentId` prop from `"DXFkLCBUTmvXpp2QwZjA"` to `"agent_8301kjjfsz2febx8748ezrcmz0t8"`
 
-### Files Modified
-- `src/components/bunk/MobileBottomNav.tsx` -- add animate-pulse to unread dot
-- `src/components/bunk/BunkSidebar.tsx` -- add animate-pulse to unread badge
-- `src/pages/bunk/BunkLayout.tsx` -- import `useUnreadDMs`, add blinking dot near the logo trigger when unread > 0
+### How It Works
+
+1. User taps the mic icon in the TELA chat header
+2. Browser requests microphone permission
+3. The `elevenlabs-conversation-token` edge function (already deployed) fetches a secure WebRTC token from ElevenLabs using your API key
+4. WebRTC session starts -- user speaks, TELA responds via voice
+5. Transcripts are appended to the chat message list via the existing `onTranscript` callback
 
