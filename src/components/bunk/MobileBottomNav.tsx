@@ -315,7 +315,7 @@ const MobileBottomNav = ({ avatarUrl, displayName, user, signOut, fileInputRef }
           >
             <MessageCircle className="h-5 w-5" />
             {totalUnread > 0 && (
-              <span className="absolute top-1 right-1 h-2 w-2 rounded-full bg-primary" />
+              <span className="absolute top-1 right-1 h-2 w-2 rounded-full bg-primary animate-pulse" />
             )}
           </button>
         </NavTooltip>

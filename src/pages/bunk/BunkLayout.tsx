@@ -12,6 +12,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { useRef, useState, useEffect } from "react";
 import { useAkbAlerts } from "@/hooks/useAkbAlerts";
+import { useUnreadDMs } from "@/hooks/useUnreadDMs";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -20,14 +21,17 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 
-const SidebarLogoTrigger = () => {
+const SidebarLogoTrigger = ({ hasUnread }: { hasUnread?: boolean }) => {
   const { toggleSidebar } = useSidebar();
   return (
     <button
       onClick={toggleSidebar}
-      className="flex items-center gap-2 px-2 py-1 rounded-md hover:bg-accent/50 cursor-pointer transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+      className="flex items-center gap-2 px-2 py-1 rounded-md hover:bg-accent/50 cursor-pointer transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary relative"
     >
       <img src={whiteBunks} alt="Condo Bunk" className="h-5 w-5 object-contain" />
+      {hasUnread && (
+        <span className="absolute -top-0.5 -right-0.5 h-2 w-2 rounded-full bg-primary animate-pulse" />
+      )}
       <span className="font-mono text-xs text-muted-foreground tracking-widest hidden md:inline">
         CONDO BUNK
       </span>
@@ -64,6 +68,7 @@ const BunkLayoutInner = () => {
 
   // Real-time CRITICAL AKB change alerts
   useAkbAlerts();
+  const { totalUnread: headerUnread } = useUnreadDMs();
 
   const { data: profile } = useQuery({
     queryKey: ["profile-avatar", user?.id],
@@ -141,7 +146,7 @@ const BunkLayoutInner = () => {
         />
         <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
           <header className="hidden md:flex h-12 items-center justify-between border-b border-border px-4 bg-card/50">
-            <SidebarLogoTrigger />
+            <SidebarLogoTrigger hasUnread={headerUnread > 0} />
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <button className="h-7 w-7 rounded-full overflow-hidden ring-1 ring-border hover:ring-primary transition-all focus:outline-none focus:ring-2 focus:ring-primary" aria-label="Account menu">

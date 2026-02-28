@@ -242,7 +242,7 @@ const BunkSidebar = () => {
               </span>
             )}
             {totalUnread > 0 && (
-              <span className="h-4 min-w-4 px-1 flex items-center justify-center rounded-full bg-primary text-primary-foreground text-[9px] font-bold leading-none">
+              <span className="h-4 min-w-4 px-1 flex items-center justify-center rounded-full bg-primary text-primary-foreground text-[9px] font-bold leading-none animate-pulse">
                 {totalUnread > 99 ? "99+" : totalUnread}
               </span>
             )}
