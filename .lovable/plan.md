@@ -1,36 +1,44 @@
 
+## Fix: Inject Current Date + Strengthen Anti-Hallucination Rules in All TELA Prompts
 
-## Remove TELA Talk from Menus, Keep Voice in Ask TELA Chat Window
+### Problem
+TELA hallucinates dates (e.g., says "today is March 4th" when it isn't) because none of the three main system prompts include the actual current date. The model falls back to guessing. Additionally, the anti-hallucination guardrails need reinforcement across all three interfaces.
 
-### What Changes
+### Changes
 
-Remove the standalone "TELA Talk" section from both the desktop sidebar and mobile messaging drawer. The voice agent already lives inside the Ask TELA chat page header bar -- that's the only place it needs to be.
+**1. `supabase/functions/akb-chat/index.ts`** (Web chat)
+- Inject `Today's date is YYYY-MM-DD.` at the top of the system prompt (right after the opening line, ~line 260)
+- Add explicit anti-hallucination rule: "NEVER fabricate, guess, or infer information not present in the data below. If the answer is not in your provided data, say 'I don't have that information' and cite the gap."
 
-### Menu Order (both sidebar and mobile drawer)
+**2. `supabase/functions/tourtext-inbound/index.ts`** (SMS)
+- Inject `Today's date is YYYY-MM-DD.` into the main system prompt (~line 939, after the opening line)
+- Add the same anti-hallucination rule to the SMS system prompt
 
-1. Tour Team
-2. Venue Partners
-3. Ask TELA
-4. Artifacts
+**3. `supabase/functions/elevenlabs-conversation-token/index.ts`** (Voice)
+- Inject `Today's date is YYYY-MM-DD.` into the voice system prompt (after the opening line in the systemPrompt template)
+- The voice prompt already says "Say 'I don't have that information' if the data is missing. Never guess." -- this stays as-is
+
+### Implementation Detail
+All three use the same date injection:
+```
+Today's date is ${new Date().toISOString().split("T")[0]}.
+```
+
+This is computed at request time on the edge function server, so it's always accurate regardless of the user's timezone or the model's training cutoff.
+
+### Anti-Hallucination Rule (added to akb-chat and tourtext-inbound)
+```
+ABSOLUTE RULE: NEVER fabricate, guess, or infer any information not explicitly present in the data sections below. If the answer is not in your data, respond with "I don't have that information" and cite it as a Gap. Do NOT use your training data to fill in missing tour details. Wrong information is infinitely worse than no information.
+```
 
 ### Files Modified
+| File | Change |
+|---|---|
+| `supabase/functions/akb-chat/index.ts` | Add today's date + anti-hallucination rule to system prompt |
+| `supabase/functions/tourtext-inbound/index.ts` | Add today's date + anti-hallucination rule to main system prompt |
+| `supabase/functions/elevenlabs-conversation-token/index.ts` | Add today's date to voice system prompt |
 
-**1. `src/components/bunk/BunkSidebar.tsx`**
-- Remove the TELA Talk `SidebarGroup` block (lines 386-397)
-- Remove the `TelaVoiceAgent` import (line 42)
-- Order stays: Tour Team -> Venue Partners -> Ask TELA threads -> Artifacts
-
-**2. `src/components/bunk/MobileBottomNav.tsx`**
-- Remove the TELA Talk section (lines 292-302)
-- Remove the `TelaVoiceAgent` import (line 25)
-- Order stays: Tour Team -> Venue Partners -> Ask TELA -> Artifacts
-
-### What's Kept
-
-The `TelaVoiceAgent` component in `BunkChat.tsx` (the Ask TELA page) stays exactly as-is -- it's already in the top bar of the chat window (line 410-417), with tour context and transcript forwarding.
-
-### No Other Impact
-
-- The edge function (`elevenlabs-conversation-token`) and `TelaVoiceAgent.tsx` component are unchanged
-- Voice is still accessible via the mic icon in the Ask TELA chat header
-
+### No Other Changes
+- No database changes
+- No frontend changes
+- No new secrets needed
