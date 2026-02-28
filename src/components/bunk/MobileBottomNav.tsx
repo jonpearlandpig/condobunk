@@ -23,7 +23,7 @@ import SidebarContactList from "@/components/bunk/SidebarContactList";
 import SidebarTelaThreads from "@/components/bunk/SidebarTelaThreads";
 import DMChatScreen from "@/components/bunk/DMChatScreen";
 import SidebarArtifacts from "@/components/bunk/SidebarArtifacts";
-import TelaVoiceAgent from "@/components/bunk/TelaVoiceAgent";
+
 import {
   Sheet,
   SheetContent,
@@ -289,17 +289,6 @@ const MobileBottomNav = ({ avatarUrl, displayName, user, signOut, fileInputRef }
                 <SidebarArtifacts isDemoMode={isDemoMode} />
               </SidebarProvider>
 
-              {/* TELA Talk */}
-              {tours.length > 0 && !isDemoMode && (
-                <div className="py-2 px-1">
-                  <p className="font-mono text-[11px] tracking-[0.2em] text-muted-foreground/80 font-semibold uppercase py-1.5 px-1">
-                    Tela Talk
-                  </p>
-                  <div className="px-1 py-1">
-                    <TelaVoiceAgent agentId="agent_8301kjjfsz2febx8748ezrcmz0t8" tourId={tourId} />
-                  </div>
-                </div>
-              )}
           </div>
 
           {/* Pinned profile footer */}
