@@ -1,46 +1,31 @@
 
 
-## Make TELA;QR Show Team-Wide Attribution
-
-### What's Happening Now
-The TLDR queries already pull data across the whole tour (not filtered by user), but they **don't include who made each change**. The `akb_change_log` query selects only `change_summary, entity_type, severity, created_at` -- no user info. Same for `user_artifacts` -- no `user_id` or name. So the AI can't say "Sidney updated the post-show food" -- it just says "post-show food was updated."
+## Add Blinking Notification for Bunk Chat Messages
 
 ### What Changes
 
-**1. Add user attribution to context queries**
+Add a pulsing/blinking animation to the unread message indicators so they catch the user's eye when new messages come in.
 
-File: `src/pages/bunk/BunkOverview.tsx` -- in the `generateTldr()` Promise.all block
+### Locations to Update
 
-- `akb_change_log` query: add `user_id` to the select
-- `user_artifacts` query: add `user_id` to the select  
-- After the Promise.all, do a single profiles lookup for all unique `user_id` values across both result sets (same pattern used in `BunkChangeLog.tsx`)
-- Map display names into the context objects:
-  - `recent_akb_changes` gets a `changed_by` field (e.g., "Sidney B.")
-  - `recent_artifact_updates` gets an `updated_by` field
+1. **Mobile Bottom Nav** (`src/components/bunk/MobileBottomNav.tsx`)
+   - The small dot on the MessageCircle icon (line 318) -- add `animate-pulse` class to make it blink
 
-**2. Update the `generate-tldr` prompt to use attribution**
+2. **Desktop Sidebar** (`src/components/bunk/BunkSidebar.tsx`)
+   - The unread count badge next to "Tour Team" (line 245) -- add `animate-pulse` class to the badge
 
-File: `supabase/functions/generate-tldr/index.ts`
+3. **Desktop Header** (`src/pages/bunk/BunkLayout.tsx`)
+   - Add a small blinking dot on the sidebar logo trigger when there are unread DMs, so users notice even when the sidebar is collapsed
 
-Add to the system prompt:
-- "When `changed_by` or `updated_by` fields are present, include the person's name in the briefing item (e.g., 'Sidney updated W2 Post Show Food' instead of 'W2 Post Show Food was updated')."
-- "Surface team activity as a feature -- tour managers want to know who is making changes."
+### Implementation Details
 
-### Technical Details
+- Use the existing `animate-pulse` Tailwind utility (already available) for the blinking effect
+- The mobile dot gets `animate-pulse` so it pulses orange
+- The desktop sidebar badge gets `animate-pulse` so the count badge pulses
+- Add an unread indicator dot to the desktop header logo area (BunkLayout) that pulses when `totalUnread > 0`, since the sidebar is usually collapsed
 
-| Item | Detail |
-|------|--------|
-| Files modified | `src/pages/bunk/BunkOverview.tsx`, `supabase/functions/generate-tldr/index.ts` |
-| New queries | None -- just adding `user_id` to existing selects + one profiles lookup |
-| Schema changes | None |
-| RLS impact | None -- akb_change_log and user_artifacts SELECT policies already allow tour-wide reads |
-
-### Example Output After This Change
-
-```text
-> Sidney updated W2 Post Show Food with 4 new stops.  [VIEW]
-> Jonathan resolved 2 calendar conflicts for Mar 3-4.  [VIEW]  
-> W2 lists Five Guys in 3 of 4 stops -- same as W1. Consider rotating.  [VIEW]
-> Next event Feb 28 at Allen County War Memorial, Fort Wayne, IN.
-```
+### Files Modified
+- `src/components/bunk/MobileBottomNav.tsx` -- add animate-pulse to unread dot
+- `src/components/bunk/BunkSidebar.tsx` -- add animate-pulse to unread badge
+- `src/pages/bunk/BunkLayout.tsx` -- import `useUnreadDMs`, add blinking dot near the logo trigger when unread > 0
 
