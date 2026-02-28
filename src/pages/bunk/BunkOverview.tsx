@@ -240,7 +240,7 @@ const BunkOverview = () => {
         // Recent artifact updates (last 48h, tourtext/condobunk visibility)
         supabase
           .from("user_artifacts")
-          .select("title, artifact_type, visibility, updated_at, content")
+          .select("title, artifact_type, visibility, updated_at, content, user_id")
           .in("tour_id", tourIds)
           .in("visibility", ["tourtext", "condobunk"])
           .gte("updated_at", cutoff48h)
@@ -249,7 +249,7 @@ const BunkOverview = () => {
         // Recent AKB changelog (last 48h)
         supabase
           .from("akb_change_log")
-          .select("change_summary, entity_type, severity, created_at")
+          .select("change_summary, entity_type, severity, created_at, user_id")
           .in("tour_id", tourIds)
           .gte("created_at", cutoff48h)
           .order("created_at", { ascending: false })
@@ -268,6 +268,22 @@ const BunkOverview = () => {
       const upcomingEvents = eventsRes.data || [];
       const openGaps = gapsRes.data || [];
       const openConflicts = conflictsRes.data || [];
+
+      // Collect unique user_ids from recent artifacts + changelog for attribution
+      const artifactUserIds = (recentArtifactsRes.data || []).map(a => (a as any).user_id).filter(Boolean);
+      const changeLogUserIds = (akbChangeLogRes.data || []).map(c => (c as any).user_id).filter(Boolean);
+      const allUserIds = [...new Set([...artifactUserIds, ...changeLogUserIds])];
+
+      let profileMap: Record<string, string> = {};
+      if (allUserIds.length > 0) {
+        const { data: profiles } = await supabase
+          .from("profiles")
+          .select("id, display_name")
+          .in("id", allUserIds);
+        for (const p of profiles || []) {
+          profileMap[p.id] = p.display_name || "Unknown";
+        }
+      }
 
       // If AKB is completely empty, show "Begin Tour Build"
       if (upcomingEvents.length === 0 && openGaps.length === 0 && openConflicts.length === 0) {
@@ -302,13 +318,14 @@ const BunkOverview = () => {
         day_title: e.notes?.split("\n")[0] || null,
       });
 
-      // Build recent updates context
+      // Build recent updates context with attribution
       const recentArtifactUpdates = (recentArtifactsRes.data || []).map(a => ({
         title: a.title,
         artifact_type: a.artifact_type,
         visibility: a.visibility,
         updated_at: a.updated_at,
         content_preview: (a.content || "").substring(0, 500),
+        updated_by: profileMap[(a as any).user_id] || null,
       }));
 
       const recentAkbChanges = (akbChangeLogRes.data || []).map(c => ({
@@ -316,6 +333,7 @@ const BunkOverview = () => {
         entity_type: c.entity_type,
         severity: c.severity,
         created_at: c.created_at,
+        changed_by: profileMap[(c as any).user_id] || null,
       }));
 
       const patternArtifacts = (patternArtifactsRes.data || []).map(a => ({

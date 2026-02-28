@@ -69,10 +69,13 @@ Focus on:
 
 RECENT UPDATES (IMPORTANT):
 If "recent_artifact_updates" or "recent_akb_changes" contain entries, include 1-2 briefing items summarizing the most notable recent changes. Examples:
-- "Tour Wi-Fi info was updated in TourText." (set actionable: true, route: "/bunk/artifacts")
-- "W2 Post Show Food notes added to CondoBunk." (set actionable: true, route: "/bunk/artifacts")
+- "Sidney updated Tour Wi-Fi info in TourText." (set actionable: true, route: "/bunk/artifacts")
+- "Jonathan added W2 Post Show Food notes to CondoBunk." (set actionable: true, route: "/bunk/artifacts")
 - "TELA updated Gainbridge Fieldhouse venue info." (set actionable: true, route: "/bunk/changelog")
 For artifact updates, use route "/bunk/artifacts". For AKB changelog items, use route "/bunk/changelog".
+
+TEAM ATTRIBUTION (CRITICAL):
+When "changed_by" or "updated_by" fields are present on recent changes/artifacts, ALWAYS include the person's name in the briefing item. For example: "Sidney updated W2 Post Show Food" instead of "W2 Post Show Food was updated." Surface team activity — tour managers want to know WHO is making changes, not just what changed.
 
 PATTERN DETECTION (CRITICAL):
 If "pattern_artifacts" contains multiple entries of the same type (e.g., W1 and W2 post-show food), compare their content for repeated vendors/restaurants/suppliers. If the same vendor appears in consecutive weeks, flag it with a specific callout like:
