@@ -6,12 +6,13 @@ import { cn } from "@/lib/utils";
 
 interface TelaVoiceAgentProps {
   agentId: string;
+  tourId?: string;
   onTranscript?: (role: "user" | "assistant", text: string) => void;
 }
 
 type VoiceStatus = "idle" | "connecting" | "connected" | "error";
 
-const TelaVoiceAgent = ({ agentId, onTranscript }: TelaVoiceAgentProps) => {
+const TelaVoiceAgent = ({ agentId, tourId, onTranscript }: TelaVoiceAgentProps) => {
   const [status, setStatus] = useState<VoiceStatus>("idle");
   const [micGranted, setMicGranted] = useState<boolean | null>(null);
 
@@ -66,7 +67,7 @@ const TelaVoiceAgent = ({ agentId, onTranscript }: TelaVoiceAgentProps) => {
             "Content-Type": "application/json",
             Authorization: `Bearer ${token}`,
           },
-          body: JSON.stringify({ agent_id: agentId }),
+          body: JSON.stringify({ agent_id: agentId, ...(tourId ? { tour_id: tourId } : {}) }),
         }
       );
 
@@ -77,17 +78,28 @@ const TelaVoiceAgent = ({ agentId, onTranscript }: TelaVoiceAgentProps) => {
         return;
       }
 
-      const { token: conversationToken } = await resp.json();
+      const { token: conversationToken, system_prompt: systemPrompt } = await resp.json();
       if (!conversationToken) {
         console.error("[voice] No conversation token received");
         setStatus("error");
         return;
       }
 
-      await conversation.startSession({
+      const sessionOpts: any = {
         conversationToken,
         connectionType: "webrtc",
-      });
+      };
+
+      // Apply AKB context as conversation override if available
+      if (systemPrompt) {
+        sessionOpts.overrides = {
+          agent: {
+            prompt: { prompt: systemPrompt },
+          },
+        };
+      }
+
+      await conversation.startSession(sessionOpts);
     } catch (err) {
       console.error("[voice] Failed to start:", err);
       if ((err as any)?.name === "NotAllowedError") {
@@ -96,7 +108,7 @@ const TelaVoiceAgent = ({ agentId, onTranscript }: TelaVoiceAgentProps) => {
       setStatus("error");
       setTimeout(() => setStatus("idle"), 3000);
     }
-  }, [conversation, agentId, status]);
+  }, [conversation, agentId, tourId, status]);
 
   const endConversation = useCallback(async () => {
     await conversation.endSession();

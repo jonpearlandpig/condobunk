@@ -409,6 +409,7 @@ const BunkChat = () => {
           {hasTours && !isDemoMode && (
             <TelaVoiceAgent
               agentId="agent_8301kjjfsz2febx8748ezrcmz0t8"
+              tourId={selectedTourId || tours[0]?.id}
               onTranscript={(role, text) => {
                 setMessages(prev => [...prev, { role, content: text }]);
               }}

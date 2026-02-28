@@ -390,7 +390,7 @@ const BunkSidebar = () => {
             </SidebarGroupLabel>
             <SidebarGroupContent>
               <div className="px-4 py-2">
-                <TelaVoiceAgent agentId="agent_8301kjjfsz2febx8748ezrcmz0t8" />
+                <TelaVoiceAgent agentId="agent_8301kjjfsz2febx8748ezrcmz0t8" tourId={tourId} />
               </div>
             </SidebarGroupContent>
           </SidebarGroup>
