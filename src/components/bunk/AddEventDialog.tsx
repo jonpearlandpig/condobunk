@@ -22,7 +22,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { toast } from "@/hooks/use-toast";
-import { Loader2 } from "lucide-react";
+import { Loader2, Bell } from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
 import AkbEditSignoff, { type SignoffData } from "./AkbEditSignoff";
 
 interface AddEventDialogProps {
@@ -52,6 +53,18 @@ const AddEventDialog = ({ open, onOpenChange, defaultDate, onCreated }: AddEvent
   const [showTime, setShowTime] = useState("");
   const [loadIn, setLoadIn] = useState("");
   const [notes, setNotes] = useState("");
+  const [remindMe, setRemindMe] = useState(false);
+  const [remindLeadMinutes, setRemindLeadMinutes] = useState("120");
+  const [phone, setPhone] = useState("");
+
+  // Load phone from profile
+  const phoneLoadedRef = useRef(false);
+  if (!phoneLoadedRef.current && user) {
+    phoneLoadedRef.current = true;
+    supabase.from("profiles").select("phone").eq("id", user.id).single().then(({ data }) => {
+      if (data?.phone) setPhone(data.phone);
+    });
+  }
 
   const reset = () => {
     setVenue("");
@@ -60,6 +73,8 @@ const AddEventDialog = ({ open, onOpenChange, defaultDate, onCreated }: AddEvent
     setShowTime("");
     setLoadIn("");
     setNotes("");
+    setRemindMe(false);
+    setRemindLeadMinutes("120");
   };
 
   const toTimestamp = (date: string, time: string): string | null => {
@@ -121,6 +136,22 @@ const AddEventDialog = ({ open, onOpenChange, defaultDate, onCreated }: AddEvent
         body: { change_log_id: event.id, tour_id: tourId },
       });
     } catch {}
+
+    // Create reminder if requested
+    if (remindMe && phone.trim() && (loadIn || showTime)) {
+      const remindType = loadIn ? "load_in" : "show_time";
+      await supabase.from("event_reminders").insert({
+        tour_id: tourId!,
+        event_id: event.id,
+        user_id: user!.id,
+        phone: phone.trim(),
+        remind_type: remindType,
+        remind_before_minutes: parseInt(remindLeadMinutes),
+        enabled: true,
+      } as any);
+      // Save phone to profile
+      await supabase.from("profiles").update({ phone: phone.trim() }).eq("id", user!.id);
+    }
 
     toast({ title: "Event added" });
     reset();
@@ -184,6 +215,44 @@ const AddEventDialog = ({ open, onOpenChange, defaultDate, onCreated }: AddEvent
             <Label className="text-xs font-mono">Notes</Label>
             <Textarea className="text-sm min-h-[60px]" value={notes} onChange={e => setNotes(e.target.value)} placeholder="Address, details..." />
           </div>
+
+          {/* Remind me toggle */}
+          {(showTime || loadIn) && (
+            <div className="rounded-lg border border-border bg-muted/30 p-3 space-y-2">
+              <div className="flex items-center gap-2">
+                <Checkbox
+                  id="remind-me"
+                  checked={remindMe}
+                  onCheckedChange={(v) => setRemindMe(v === true)}
+                />
+                <label htmlFor="remind-me" className="text-xs font-mono flex items-center gap-1.5 cursor-pointer">
+                  <Bell className="h-3 w-3 text-primary" />
+                  Remind me via SMS
+                </label>
+              </div>
+              {remindMe && (
+                <div className="grid grid-cols-2 gap-2 pl-6">
+                  <Select value={remindLeadMinutes} onValueChange={setRemindLeadMinutes}>
+                    <SelectTrigger className="h-7 text-[10px] font-mono">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="30" className="text-xs font-mono">30 min before</SelectItem>
+                      <SelectItem value="60" className="text-xs font-mono">1 hr before</SelectItem>
+                      <SelectItem value="120" className="text-xs font-mono">2 hrs before</SelectItem>
+                      <SelectItem value="1440" className="text-xs font-mono">Day before</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <Input
+                    className="h-7 text-[10px] font-mono"
+                    placeholder="Phone #"
+                    value={phone}
+                    onChange={(e) => setPhone(e.target.value)}
+                  />
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         <ResponsiveDialogFooter>

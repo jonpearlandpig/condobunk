@@ -42,6 +42,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import VenueTelaMini from "@/components/bunk/VenueTelaMini";
+import EventReminderSection from "@/components/bunk/EventReminderSection";
 import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
 import AddEventDialog from "@/components/bunk/AddEventDialog";
 import EventNoteEditor from "@/components/bunk/EventNoteEditor";
@@ -942,6 +943,25 @@ const BunkCalendar = () => {
                       SMS
                     </Button>
                   </div>
+
+                  {/* SMS Reminder */}
+                  {selectedEntry.category === "SHOW" && (() => {
+                    const slots: { key: string; label: string }[] = [];
+                    if (selectedEntry.loadIn) slots.push({ key: "load_in", label: "Load-in" });
+                    if (selectedEntry.showTime) slots.push({ key: "show_time", label: "Showtime" });
+                    // Check raw event data for doors/soundcheck
+                    const rawEvent = entries.find(e => e.id === selectedEntry.id);
+                    if (rawEvent?.details?.some(d => d.toLowerCase().includes("door"))) slots.push({ key: "doors", label: "Doors" });
+                    if (rawEvent?.details?.some(d => d.toLowerCase().includes("soundcheck"))) slots.push({ key: "soundcheck", label: "Soundcheck" });
+                    if (slots.length === 0) return null;
+                    return (
+                      <EventReminderSection
+                        eventId={selectedEntry.id}
+                        tourId={selectedEntry.tourId}
+                        availableSlots={slots}
+                      />
+                    );
+                  })()}
 
                   {/* Editable notes */}
                   {selectedEntry.category === "SHOW" && (
