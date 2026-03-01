@@ -161,7 +161,56 @@ Deno.serve(async (req) => {
       }
     }
 
-    return new Response(JSON.stringify({ sent: sentCount }), {
+    // ─── Scheduled Messages (personal reminders + outbound texts) ───
+    let scheduledSent = 0;
+    const { data: scheduled, error: schedError } = await admin
+      .from("scheduled_messages")
+      .select("*")
+      .eq("sent", false)
+      .lte("send_at", new Date(now.getTime() + 7.5 * 60 * 1000).toISOString());
+
+    if (schedError) {
+      console.error("Error fetching scheduled_messages:", schedError);
+    } else if (scheduled && scheduled.length > 0) {
+      for (const msg of scheduled) {
+        // Validate E.164
+        if (!/^\+[1-9]\d{1,14}$/.test(msg.to_phone)) {
+          console.warn("Skipping invalid phone:", msg.to_phone);
+          continue;
+        }
+
+        const smsBody = `${msg.message_text}. -TELA`;
+        const success = await sendTwilioSms(
+          msg.to_phone,
+          smsBody,
+          TWILIO_ACCOUNT_SID,
+          TWILIO_AUTH_TOKEN,
+          TWILIO_PHONE_NUMBER,
+        );
+
+        if (success) {
+          // Mark as sent
+          await admin.from("scheduled_messages").update({ sent: true }).eq("id", msg.id);
+
+          // Log to sms_outbound — no contact creation for external recipients
+          await admin.from("sms_outbound").insert({
+            to_phone: msg.to_phone,
+            message_text: smsBody,
+            tour_id: msg.tour_id,
+            status: "sent",
+          });
+
+          scheduledSent++;
+          console.log(`Sent scheduled ${msg.is_self ? "reminder" : "text"} to ${msg.to_phone}`);
+        }
+      }
+    }
+
+    // Auto-cleanup: delete sent scheduled messages older than 7 days
+    const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString();
+    await admin.from("scheduled_messages").delete().eq("sent", true).lt("created_at", sevenDaysAgo);
+
+    return new Response(JSON.stringify({ sent: sentCount, scheduled_sent: scheduledSent }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (err) {

@@ -14,7 +14,8 @@ export type TelaActionType =
   | "update_van"
   | "delete_event"
   | "delete_contact"
-  | "create_event";
+  | "create_event"
+  | "schedule_sms";
 
 export interface TelaAction {
   type: TelaActionType;
@@ -67,6 +68,8 @@ export function getActionLabel(action: TelaAction): string {
       return "Remove Contact";
     case "create_event":
       return "Add Event";
+    case "schedule_sms":
+      return "Schedule Text";
     default:
       return "Apply Fix";
   }
@@ -375,6 +378,38 @@ export function useTelaActions() {
           window.dispatchEvent(new Event("akb-changed"));
           const createEvtTourName = await getTourName(createEvtTourId);
           toast({ title: "Event added", description: `${action.fields.venue || "Event"} added to ${createEvtTourName}.` });
+          return true;
+        }
+        case "schedule_sms": {
+          if (!action.fields) throw new Error("No fields provided");
+          const toPhone = action.fields.to_phone ? String(action.fields.to_phone) : "";
+          const msgText = action.fields.message_text ? String(action.fields.message_text) : "";
+          const sendAtStr = action.fields.send_at ? String(action.fields.send_at) : "";
+          const isSelf = action.fields.is_self === true;
+
+          if (!/^\+[1-9]\d{1,14}$/.test(toPhone)) throw new Error("Invalid phone number — use E.164 format (e.g. +15551234567)");
+          if (!msgText || msgText.length > 1500) throw new Error("Message is required and must be under 1500 characters");
+          const sendAtDate = new Date(sendAtStr);
+          if (isNaN(sendAtDate.getTime()) || sendAtDate <= new Date()) throw new Error("send_at must be a valid future timestamp");
+
+          const smsTourId = await resolveTourId(action, callerTourId);
+          const { error } = await supabase
+            .from("scheduled_messages" as any)
+            .insert({
+              user_id: user!.id,
+              tour_id: smsTourId,
+              to_phone: toPhone,
+              message_text: msgText,
+              send_at: sendAtDate.toISOString(),
+              is_self: isSelf,
+            } as any);
+          if (error) throw error;
+
+          const smsTourName = await getTourName(smsTourId);
+          toast({
+            title: isSelf ? "Reminder set" : "Text scheduled",
+            description: `${isSelf ? "Reminder" : "Message to " + toPhone} scheduled in ${smsTourName}.`,
+          });
           return true;
         }
         default:
