@@ -23,6 +23,16 @@ interface AddQuickReminderDialogProps {
 
 const E164_RE = /^\+[1-9]\d{1,14}$/;
 
+const normalizePhone = (raw: string): string => {
+  // If already E.164, return as-is
+  if (raw.startsWith("+")) return raw.replace(/[^\d+]/g, "");
+  // Strip everything except digits
+  const digits = raw.replace(/\D/g, "");
+  if (digits.length === 10) return `+1${digits}`;
+  if (digits.length === 11 && digits.startsWith("1")) return `+${digits}`;
+  return `+${digits}`; // fallback — will fail E.164 check if truly invalid
+};
+
 const AddQuickReminderDialog = ({ open, onOpenChange }: AddQuickReminderDialogProps) => {
   const { user } = useAuth();
   const { selectedTourId } = useTour();
@@ -75,8 +85,9 @@ const AddQuickReminderDialog = ({ open, onOpenChange }: AddQuickReminderDialogPr
       toast({ title: "No tour selected", variant: "destructive" });
       return;
     }
-    if (!phone || !E164_RE.test(phone)) {
-      toast({ title: "Invalid phone", description: "Use E.164 format (e.g. +15551234567)", variant: "destructive" });
+    const normalized = normalizePhone(phone);
+    if (!normalized || !E164_RE.test(normalized)) {
+      toast({ title: "Could not parse phone number", description: "Try a format like 615-788-4644", variant: "destructive" });
       return;
     }
     if (!message.trim()) {
@@ -97,7 +108,7 @@ const AddQuickReminderDialog = ({ open, onOpenChange }: AddQuickReminderDialogPr
     const { error } = await supabase.from("scheduled_messages" as any).insert({
       user_id: user!.id,
       tour_id: selectedTourId,
-      to_phone: phone,
+      to_phone: normalizePhone(phone),
       message_text: message.trim(),
       send_at: sendAtDate.toISOString(),
       is_self: isSelf,
@@ -138,7 +149,7 @@ const AddQuickReminderDialog = ({ open, onOpenChange }: AddQuickReminderDialogPr
             <Input
               value={phone}
               onChange={(e) => setPhone(e.target.value)}
-              placeholder="+15551234567"
+              placeholder="615-788-4644"
               className="font-mono text-sm"
               disabled={isSelf && !!userPhone}
             />

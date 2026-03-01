@@ -80,12 +80,6 @@ Deno.serve(async (req) => {
       });
     }
 
-    if (!reminders || reminders.length === 0) {
-      return new Response(JSON.stringify({ sent: 0, message: "No active reminders" }), {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-
     const now = new Date();
     let sentCount = 0;
 
