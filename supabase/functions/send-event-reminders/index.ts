@@ -97,7 +97,7 @@ Deno.serve(async (req) => {
 
       // Check if we're within the reminder window (±7.5 minutes of the configured lead time)
       const reminderWindow = reminder.remind_before_minutes;
-      if (diffMinutes < reminderWindow - 7.5 || diffMinutes > reminderWindow + 7.5) {
+      if (diffMinutes < reminderWindow - 2.5 || diffMinutes > reminderWindow + 2.5) {
         continue;
       }
 
