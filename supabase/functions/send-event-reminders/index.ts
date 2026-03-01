@@ -129,7 +129,7 @@ Deno.serve(async (req) => {
           ? `in ${Math.round(reminderWindow / 60)} hour${Math.round(reminderWindow / 60) !== 1 ? "s" : ""}`
           : `in ${reminderWindow} min`;
 
-      const smsBody = `REMINDER: ${typeLabel} at ${venue}${city} ${leadLabel} — ${timeFormatted}. -CondoBunk`;
+      const smsBody = `REMINDER: ${typeLabel} at ${venue}${city} ${leadLabel} — ${timeFormatted}. -TELA`;
 
       const success = await sendTwilioSms(
         reminder.phone,
