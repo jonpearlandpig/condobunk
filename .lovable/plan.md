@@ -1,41 +1,37 @@
 
 
-# Fix: Scheduled Messages Not Sending + Flexible Phone Input
+# Tighten Reminder Cron to Every 5 Minutes
 
-## Bug: Why Your 12:15 PM Reminder Didn't Send
+## What Changes
+The cron job `send-event-reminders-every-15min` currently runs at `:00`, `:15`, `:30`, `:45`. We'll update it to run every 5 minutes (`:00`, `:05`, `:10`, ..., `:55`), so scheduled reminders fire within ~5 minutes of their target time instead of ~15.
 
-**Root Cause**: In `send-event-reminders/index.ts` (lines 83-87), when the `event_reminders` table query returns zero rows, the function exits early with `"No active reminders"` -- and the `scheduled_messages` processing block (line 164+) is never reached.
+## Steps
 
-Since you have no event reminders configured, the function always short-circuits before it can process your scheduled text.
+1. **Unschedule the existing cron job** (`jobid: 2`, named `send-event-reminders-every-15min`)
+2. **Create a new cron job** with a `*/5 * * * *` schedule and an updated name (`send-event-reminders-every-5min`)
+3. **Update the reminder window** in `supabase/functions/send-event-reminders/index.ts` -- change the `+-7.5 minute` dedup window to `+-2.5 minutes` so event reminders don't double-fire on the tighter cadence
 
-**Fix**: Remove the early return on lines 83-87. Instead, let the function continue through the event reminders loop (which will simply skip if empty) and proceed to the scheduled messages block.
+## Technical Detail
 
-## Feature: Flexible Phone Number Input
+**SQL (run via query, not migration -- contains project-specific keys):**
+```sql
+SELECT cron.unschedule('send-event-reminders-every-15min');
 
-Add a `normalizePhone()` helper to `AddQuickReminderDialog.tsx` that converts common formats into E.164 before validation:
+SELECT cron.schedule(
+  'send-event-reminders-every-5min',
+  '*/5 * * * *',
+  $$
+  SELECT net.http_post(
+    url := '...functions/v1/send-event-reminders',
+    headers := '...'::jsonb,
+    body := '{}'::jsonb
+  ) AS request_id;
+  $$
+);
+```
 
-- `615-788-4644` becomes `+16157884644`
-- `1-615-788-4644` becomes `+16157884644`
-- `(615) 788-4644` becomes `+16157884644`
-- `615.788.4644` becomes `+16157884644`
-- `+16157884644` stays as-is
+**Edge function change (`send-event-reminders/index.ts`):**
+- Line with `reminderWindow - 7.5` / `reminderWindow + 7.5` changes to `reminderWindow - 2.5` / `reminderWindow + 2.5`
 
-Update the input placeholder to `615-788-4644` and make the error message friendlier ("Could not parse phone number" instead of E.164 jargon).
-
-## Files to Modify
-
-1. **`supabase/functions/send-event-reminders/index.ts`**
-   - Remove the early return at lines 83-87 (the "No active reminders" block)
-   - Keep the error return for `remError` (lines 75-80)
-   - Initialize `now` and `sentCount` before the event reminders loop regardless
-
-2. **`src/components/bunk/AddQuickReminderDialog.tsx`**
-   - Add `normalizePhone(raw)` helper function
-   - Call it in `handleSubmit` before E.164 validation
-   - Update placeholder to `615-788-4644`
-   - Update error toast text
-
-## After Fix
-
-Once deployed, the cron will process your still-pending "Receipt picture" scheduled message on its next 15-minute cycle (it's still `sent: false` in the database).
+This is a minimal change -- two SQL statements and one line in the edge function.
 
