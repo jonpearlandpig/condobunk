@@ -45,3 +45,6 @@ verify_jwt = false
 
 [functions.backfill-schedule-events]
 verify_jwt = false
+
+[functions.send-event-reminders]
+verify_jwt = false

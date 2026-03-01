@@ -7,7 +7,8 @@ import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "@/hooks/use-toast";
-import { Loader2, Bell, Shield, Clock, DollarSign } from "lucide-react";
+import { Loader2, Bell, Shield, Clock, DollarSign, Phone } from "lucide-react";
+import { Input } from "@/components/ui/input";
 
 interface NotifPrefs {
   notify_schedule_changes: boolean;
@@ -215,9 +216,84 @@ const BunkNotificationSettings = () => {
         </div>
       </div>
 
+      {/* SMS Reminders */}
+      <ReminderSettingsCard userId={user!.id} />
+
       <Button onClick={handleSave} disabled={saving} className="w-full">
         {saving && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
         Save Preferences
+      </Button>
+    </div>
+  );
+};
+
+/* ---------- Reminder Settings Card ---------- */
+const ReminderSettingsCard = ({ userId }: { userId: string }) => {
+  const [phone, setPhone] = useState("");
+  const [defaultLead, setDefaultLead] = useState("120");
+  const [saving, setSaving] = useState(false);
+  const [loaded, setLoaded] = useState(false);
+
+  useEffect(() => {
+    supabase.from("profiles").select("phone").eq("id", userId).single().then(({ data }) => {
+      if (data?.phone) setPhone(data.phone);
+      setLoaded(true);
+    });
+  }, [userId]);
+
+  const handleSave = async () => {
+    setSaving(true);
+    const { error } = await supabase.from("profiles").update({ phone: phone.trim() }).eq("id", userId);
+    if (error) {
+      toast({ title: "Failed to save phone", description: error.message, variant: "destructive" });
+    } else {
+      toast({ title: "Reminder settings saved" });
+    }
+    setSaving(false);
+  };
+
+  if (!loaded) return null;
+
+  return (
+    <div className="rounded-lg border border-border bg-card p-4 space-y-3">
+      <h2 className="text-xs font-mono tracking-wider text-muted-foreground uppercase flex items-center gap-2">
+        <Bell className="h-3.5 w-3.5 text-primary" />
+        SMS Event Reminders
+      </h2>
+      <p className="text-xs text-muted-foreground">
+        Set per-event SMS reminders from the Calendar. Your phone number is used for all reminders.
+      </p>
+
+      <div className="space-y-1">
+        <Label className="text-xs font-mono flex items-center gap-1">
+          <Phone className="h-3 w-3" /> Phone Number
+        </Label>
+        <Input
+          className="h-8 text-sm font-mono"
+          placeholder="+1 (555) 123-4567"
+          value={phone}
+          onChange={(e) => setPhone(e.target.value)}
+        />
+      </div>
+
+      <div className="space-y-1">
+        <Label className="text-xs font-mono">Default Lead Time</Label>
+        <Select value={defaultLead} onValueChange={setDefaultLead}>
+          <SelectTrigger className="h-8 text-xs font-mono">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="30" className="text-xs font-mono">30 min before</SelectItem>
+            <SelectItem value="60" className="text-xs font-mono">1 hour before</SelectItem>
+            <SelectItem value="120" className="text-xs font-mono">2 hours before</SelectItem>
+            <SelectItem value="1440" className="text-xs font-mono">Day before</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+
+      <Button size="sm" variant="outline" className="w-full" onClick={handleSave} disabled={saving}>
+        {saving && <Loader2 className="h-3 w-3 animate-spin mr-1" />}
+        Save Reminder Settings
       </Button>
     </div>
   );

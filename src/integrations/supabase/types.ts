@@ -306,6 +306,57 @@ export type Database = {
           },
         ]
       }
+      event_reminders: {
+        Row: {
+          created_at: string
+          enabled: boolean
+          event_id: string
+          id: string
+          phone: string
+          remind_before_minutes: number
+          remind_type: string
+          tour_id: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          enabled?: boolean
+          event_id: string
+          id?: string
+          phone: string
+          remind_before_minutes?: number
+          remind_type?: string
+          tour_id: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          enabled?: boolean
+          event_id?: string
+          id?: string
+          phone?: string
+          remind_before_minutes?: number
+          remind_type?: string
+          tour_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "event_reminders_event_id_fkey"
+            columns: ["event_id"]
+            isOneToOne: false
+            referencedRelation: "schedule_events"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "event_reminders_tour_id_fkey"
+            columns: ["tour_id"]
+            isOneToOne: false
+            referencedRelation: "tours"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       finance_lines: {
         Row: {
           amount: number | null
@@ -686,6 +737,48 @@ export type Database = {
             columns: ["tour_id"]
             isOneToOne: false
             referencedRelation: "tours"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      sent_reminders: {
+        Row: {
+          event_id: string
+          id: string
+          phone: string
+          remind_type: string
+          reminder_id: string | null
+          sent_at: string
+        }
+        Insert: {
+          event_id: string
+          id?: string
+          phone: string
+          remind_type: string
+          reminder_id?: string | null
+          sent_at?: string
+        }
+        Update: {
+          event_id?: string
+          id?: string
+          phone?: string
+          remind_type?: string
+          reminder_id?: string | null
+          sent_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sent_reminders_event_id_fkey"
+            columns: ["event_id"]
+            isOneToOne: false
+            referencedRelation: "schedule_events"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sent_reminders_reminder_id_fkey"
+            columns: ["reminder_id"]
+            isOneToOne: false
+            referencedRelation: "event_reminders"
             referencedColumns: ["id"]
           },
         ]
