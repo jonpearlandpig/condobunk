@@ -741,6 +741,50 @@ export type Database = {
           },
         ]
       }
+      scheduled_messages: {
+        Row: {
+          created_at: string
+          id: string
+          is_self: boolean
+          message_text: string
+          send_at: string
+          sent: boolean
+          to_phone: string
+          tour_id: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          is_self?: boolean
+          message_text: string
+          send_at: string
+          sent?: boolean
+          to_phone: string
+          tour_id: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          is_self?: boolean
+          message_text?: string
+          send_at?: string
+          sent?: boolean
+          to_phone?: string
+          tour_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "scheduled_messages_tour_id_fkey"
+            columns: ["tour_id"]
+            isOneToOne: false
+            referencedRelation: "tours"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       sent_reminders: {
         Row: {
           event_id: string

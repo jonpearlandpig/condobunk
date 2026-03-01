@@ -38,6 +38,7 @@ import {
   Plus,
   Rss,
   Link as LinkIcon,
+  Bell,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
@@ -45,6 +46,7 @@ import VenueTelaMini from "@/components/bunk/VenueTelaMini";
 import EventReminderSection from "@/components/bunk/EventReminderSection";
 import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
 import AddEventDialog from "@/components/bunk/AddEventDialog";
+import AddQuickReminderDialog from "@/components/bunk/AddQuickReminderDialog";
 import EventNoteEditor from "@/components/bunk/EventNoteEditor";
 import { Button } from "@/components/ui/button";
 import {
@@ -140,6 +142,7 @@ const BunkCalendar = () => {
   const [addEventOpen, setAddEventOpen] = useState(false);
   const [addEventDefaultDate, setAddEventDefaultDate] = useState<string | undefined>();
   const [feedCopied, setFeedCopied] = useState(false);
+  const [quickReminderOpen, setQuickReminderOpen] = useState(false);
 
   const tourColorMap = useMemo(() => {
     const map: Record<string, number> = {};
@@ -530,6 +533,10 @@ const BunkCalendar = () => {
           <Button size="sm" className="h-8 gap-1 font-mono text-xs" onClick={() => { setAddEventDefaultDate(undefined); setAddEventOpen(true); }}>
             <Plus className="h-3.5 w-3.5" />
             <span className="hidden sm:inline">Add Event</span>
+          </Button>
+          <Button size="sm" variant="outline" className="h-8 gap-1 font-mono text-xs" onClick={() => setQuickReminderOpen(true)}>
+            <Bell className="h-3.5 w-3.5" />
+            <span className="hidden sm:inline">Reminder</span>
           </Button>
           {feedTourId && (
             <Popover>
@@ -995,6 +1002,7 @@ const BunkCalendar = () => {
         defaultDate={addEventDefaultDate}
         onCreated={() => loadCalendar(true)}
       />
+      <AddQuickReminderDialog open={quickReminderOpen} onOpenChange={setQuickReminderOpen} />
     </div>
     </PullToRefresh>
   );
