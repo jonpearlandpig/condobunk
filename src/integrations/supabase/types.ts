@@ -14,6 +14,348 @@ export type Database = {
   }
   public: {
     Tables: {
+      advance_decision_log: {
+        Row: {
+          action_type: string
+          created_at: string
+          created_by: string | null
+          field_key: string | null
+          id: string
+          new_value: string | null
+          owner_operator: string | null
+          prior_value: string | null
+          rationale: string | null
+          show_advance_id: string
+          tai_d: string
+        }
+        Insert: {
+          action_type: string
+          created_at?: string
+          created_by?: string | null
+          field_key?: string | null
+          id?: string
+          new_value?: string | null
+          owner_operator?: string | null
+          prior_value?: string | null
+          rationale?: string | null
+          show_advance_id: string
+          tai_d: string
+        }
+        Update: {
+          action_type?: string
+          created_at?: string
+          created_by?: string | null
+          field_key?: string | null
+          id?: string
+          new_value?: string | null
+          owner_operator?: string | null
+          prior_value?: string | null
+          rationale?: string | null
+          show_advance_id?: string
+          tai_d?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "advance_decision_log_show_advance_id_fkey"
+            columns: ["show_advance_id"]
+            isOneToOne: false
+            referencedRelation: "show_advances"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "advance_decision_log_show_advance_id_fkey"
+            columns: ["show_advance_id"]
+            isOneToOne: false
+            referencedRelation: "v_show_advance_readiness"
+            referencedColumns: ["show_advance_id"]
+          },
+        ]
+      }
+      advance_field_evidence: {
+        Row: {
+          advance_field_id: string
+          confidence_score: number | null
+          created_at: string
+          extracted_value: string | null
+          id: string
+          parser_notes: string | null
+          source_id: string
+          source_snippet: string | null
+          speaker_name: string | null
+          speaker_role: string | null
+          timestamp_in_source: string | null
+        }
+        Insert: {
+          advance_field_id: string
+          confidence_score?: number | null
+          created_at?: string
+          extracted_value?: string | null
+          id?: string
+          parser_notes?: string | null
+          source_id: string
+          source_snippet?: string | null
+          speaker_name?: string | null
+          speaker_role?: string | null
+          timestamp_in_source?: string | null
+        }
+        Update: {
+          advance_field_id?: string
+          confidence_score?: number | null
+          created_at?: string
+          extracted_value?: string | null
+          id?: string
+          parser_notes?: string | null
+          source_id?: string
+          source_snippet?: string | null
+          speaker_name?: string | null
+          speaker_role?: string | null
+          timestamp_in_source?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "advance_field_evidence_advance_field_id_fkey"
+            columns: ["advance_field_id"]
+            isOneToOne: false
+            referencedRelation: "advance_fields"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "advance_field_evidence_source_id_fkey"
+            columns: ["source_id"]
+            isOneToOne: false
+            referencedRelation: "advance_sources"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      advance_field_templates: {
+        Row: {
+          canonical_label: string
+          display_order: number
+          field_criticality: string
+          field_key: string
+          help_text: string | null
+          id: string
+          money_sensitive_boolean: boolean
+          required_boolean: boolean
+          section_criticality: string
+          section_key: string
+          value_type: string
+        }
+        Insert: {
+          canonical_label: string
+          display_order?: number
+          field_criticality?: string
+          field_key: string
+          help_text?: string | null
+          id?: string
+          money_sensitive_boolean?: boolean
+          required_boolean?: boolean
+          section_criticality?: string
+          section_key: string
+          value_type?: string
+        }
+        Update: {
+          canonical_label?: string
+          display_order?: number
+          field_criticality?: string
+          field_key?: string
+          help_text?: string | null
+          id?: string
+          money_sensitive_boolean?: boolean
+          required_boolean?: boolean
+          section_criticality?: string
+          section_key?: string
+          value_type?: string
+        }
+        Relationships: []
+      }
+      advance_fields: {
+        Row: {
+          canonical_label: string
+          confidence_score: number | null
+          current_value: string | null
+          field_criticality: string
+          field_key: string
+          flag_level: string
+          id: string
+          locked_boolean: boolean
+          money_sensitive_boolean: boolean
+          section_criticality: string
+          section_key: string
+          show_advance_id: string
+          status: string
+          updated_at: string
+          updated_by: string | null
+          value_unit: string | null
+        }
+        Insert: {
+          canonical_label: string
+          confidence_score?: number | null
+          current_value?: string | null
+          field_criticality?: string
+          field_key: string
+          flag_level?: string
+          id?: string
+          locked_boolean?: boolean
+          money_sensitive_boolean?: boolean
+          section_criticality?: string
+          section_key: string
+          show_advance_id: string
+          status?: string
+          updated_at?: string
+          updated_by?: string | null
+          value_unit?: string | null
+        }
+        Update: {
+          canonical_label?: string
+          confidence_score?: number | null
+          current_value?: string | null
+          field_criticality?: string
+          field_key?: string
+          flag_level?: string
+          id?: string
+          locked_boolean?: boolean
+          money_sensitive_boolean?: boolean
+          section_criticality?: string
+          section_key?: string
+          show_advance_id?: string
+          status?: string
+          updated_at?: string
+          updated_by?: string | null
+          value_unit?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "advance_fields_show_advance_id_fkey"
+            columns: ["show_advance_id"]
+            isOneToOne: false
+            referencedRelation: "show_advances"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "advance_fields_show_advance_id_fkey"
+            columns: ["show_advance_id"]
+            isOneToOne: false
+            referencedRelation: "v_show_advance_readiness"
+            referencedColumns: ["show_advance_id"]
+          },
+        ]
+      }
+      advance_flags: {
+        Row: {
+          category: string | null
+          created_at: string
+          description: string | null
+          id: string
+          linked_field_key: string | null
+          resolution_note: string | null
+          resolved_at: string | null
+          resolved_by: string | null
+          severity: string
+          show_advance_id: string
+          source_ids: Json | null
+          status: string
+          title: string
+        }
+        Insert: {
+          category?: string | null
+          created_at?: string
+          description?: string | null
+          id?: string
+          linked_field_key?: string | null
+          resolution_note?: string | null
+          resolved_at?: string | null
+          resolved_by?: string | null
+          severity: string
+          show_advance_id: string
+          source_ids?: Json | null
+          status?: string
+          title: string
+        }
+        Update: {
+          category?: string | null
+          created_at?: string
+          description?: string | null
+          id?: string
+          linked_field_key?: string | null
+          resolution_note?: string | null
+          resolved_at?: string | null
+          resolved_by?: string | null
+          severity?: string
+          show_advance_id?: string
+          source_ids?: Json | null
+          status?: string
+          title?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "advance_flags_show_advance_id_fkey"
+            columns: ["show_advance_id"]
+            isOneToOne: false
+            referencedRelation: "show_advances"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "advance_flags_show_advance_id_fkey"
+            columns: ["show_advance_id"]
+            isOneToOne: false
+            referencedRelation: "v_show_advance_readiness"
+            referencedColumns: ["show_advance_id"]
+          },
+        ]
+      }
+      advance_sources: {
+        Row: {
+          created_at: string
+          id: string
+          raw_text: string | null
+          show_advance_id: string
+          source_datetime: string | null
+          source_owner: string | null
+          source_title: string | null
+          source_type: string
+          uploaded_by: string | null
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          raw_text?: string | null
+          show_advance_id: string
+          source_datetime?: string | null
+          source_owner?: string | null
+          source_title?: string | null
+          source_type: string
+          uploaded_by?: string | null
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          raw_text?: string | null
+          show_advance_id?: string
+          source_datetime?: string | null
+          source_owner?: string | null
+          source_title?: string | null
+          source_type?: string
+          uploaded_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "advance_sources_show_advance_id_fkey"
+            columns: ["show_advance_id"]
+            isOneToOne: false
+            referencedRelation: "show_advances"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "advance_sources_show_advance_id_fkey"
+            columns: ["show_advance_id"]
+            isOneToOne: false
+            referencedRelation: "v_show_advance_readiness"
+            referencedColumns: ["show_advance_id"]
+          },
+        ]
+      }
       akb_change_log: {
         Row: {
           action: string
@@ -823,6 +1165,65 @@ export type Database = {
             columns: ["reminder_id"]
             isOneToOne: false
             referencedRelation: "event_reminders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      show_advances: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          event_date: string | null
+          id: string
+          last_reviewed_by: string | null
+          show_id: string | null
+          status: string
+          taid: string
+          tid: string
+          tour_id: string
+          updated_at: string
+          venue_city: string | null
+          venue_name: string | null
+          venue_state: string | null
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          event_date?: string | null
+          id?: string
+          last_reviewed_by?: string | null
+          show_id?: string | null
+          status?: string
+          taid: string
+          tid: string
+          tour_id: string
+          updated_at?: string
+          venue_city?: string | null
+          venue_name?: string | null
+          venue_state?: string | null
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          event_date?: string | null
+          id?: string
+          last_reviewed_by?: string | null
+          show_id?: string | null
+          status?: string
+          taid?: string
+          tid?: string
+          tour_id?: string
+          updated_at?: string
+          venue_city?: string | null
+          venue_name?: string | null
+          venue_state?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "show_advances_tour_id_fkey"
+            columns: ["tour_id"]
+            isOneToOne: false
+            referencedRelation: "tours"
             referencedColumns: ["id"]
           },
         ]
@@ -2078,7 +2479,41 @@ export type Database = {
       }
     }
     Views: {
-      [_ in never]: never
+      v_show_advance_readiness: {
+        Row: {
+          critical_unresolved_count: number | null
+          readiness_status: string | null
+          red_flag_open_count: number | null
+          show_advance_id: string | null
+          status: string | null
+          tour_id: string | null
+        }
+        Insert: {
+          critical_unresolved_count?: never
+          readiness_status?: never
+          red_flag_open_count?: never
+          show_advance_id?: string | null
+          status?: string | null
+          tour_id?: string | null
+        }
+        Update: {
+          critical_unresolved_count?: never
+          readiness_status?: never
+          red_flag_open_count?: never
+          show_advance_id?: string | null
+          status?: string | null
+          tour_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "show_advances_tour_id_fkey"
+            columns: ["tour_id"]
+            isOneToOne: false
+            referencedRelation: "tours"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Functions: {
       accept_tour_invite: { Args: { _token: string }; Returns: Json }
@@ -2091,6 +2526,19 @@ export type Database = {
       cleanup_expired_demos: { Args: never; Returns: undefined }
       deactivate_demo_mode: { Args: never; Returns: boolean }
       deny_upgrade_request: { Args: { _request_id: string }; Returns: boolean }
+      is_advance_admin: { Args: { _show_advance_id: string }; Returns: boolean }
+      is_advance_field_admin: {
+        Args: { _advance_field_id: string }
+        Returns: boolean
+      }
+      is_advance_field_member: {
+        Args: { _advance_field_id: string }
+        Returns: boolean
+      }
+      is_advance_member: {
+        Args: { _show_advance_id: string }
+        Returns: boolean
+      }
       is_tour_admin_or_mgmt: { Args: { _tour_id: string }; Returns: boolean }
       is_tour_member: { Args: { _tour_id: string }; Returns: boolean }
       match_contact_tours: { Args: { _email: string }; Returns: string[] }
