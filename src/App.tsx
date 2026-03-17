@@ -80,6 +80,12 @@ const App = () => (
               <Route path="setup" element={<BunkSetup />} />
               <Route path="artifacts" element={<BunkArtifacts />} />
               <Route path="changelog" element={<BunkChangeLog />} />
+              <Route path="advance" element={<AdvanceLedger />} />
+              <Route path="advance/:id" element={<AdvanceShow />} />
+              <Route path="advance/:id/fields" element={<AdvanceFields />} />
+              <Route path="advance/:id/sources" element={<AdvanceSources />} />
+              <Route path="advance/:id/conflicts" element={<AdvanceConflicts />} />
+              <Route path="advance/:id/export" element={<AdvanceExport />} />
             </Route>
             <Route path="*" element={<NotFound />} />
             <Route path="/site" element={<SiteLayout />}>
