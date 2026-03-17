@@ -48,3 +48,6 @@ verify_jwt = false
 
 [functions.send-event-reminders]
 verify_jwt = false
+
+[functions.advance-parse]
+verify_jwt = false
