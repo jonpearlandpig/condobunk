@@ -19,6 +19,12 @@ import BunkAdmin from "./pages/bunk/BunkAdmin";
 import BunkSetup from "./pages/bunk/BunkSetup";
 import BunkArtifacts from "./pages/bunk/BunkArtifacts";
 import BunkChangeLog from "./pages/bunk/BunkChangeLog";
+import AdvanceLedger from "./pages/bunk/AdvanceLedger";
+import AdvanceShow from "./pages/bunk/AdvanceShow";
+import AdvanceFields from "./pages/bunk/AdvanceFields";
+import AdvanceSources from "./pages/bunk/AdvanceSources";
+import AdvanceConflicts from "./pages/bunk/AdvanceConflicts";
+import AdvanceExport from "./pages/bunk/AdvanceExport";
 import NotFound from "./pages/NotFound";
 import SiteLayout from "./components/site/SiteLayout";
 import SiteLanding from "./pages/site/SiteLanding";
@@ -74,6 +80,12 @@ const App = () => (
               <Route path="setup" element={<BunkSetup />} />
               <Route path="artifacts" element={<BunkArtifacts />} />
               <Route path="changelog" element={<BunkChangeLog />} />
+              <Route path="advance" element={<AdvanceLedger />} />
+              <Route path="advance/:id" element={<AdvanceShow />} />
+              <Route path="advance/:id/fields" element={<AdvanceFields />} />
+              <Route path="advance/:id/sources" element={<AdvanceSources />} />
+              <Route path="advance/:id/conflicts" element={<AdvanceConflicts />} />
+              <Route path="advance/:id/export" element={<AdvanceExport />} />
             </Route>
             <Route path="*" element={<NotFound />} />
             <Route path="/site" element={<SiteLayout />}>
