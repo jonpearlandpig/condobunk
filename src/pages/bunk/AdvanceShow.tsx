@@ -1,5 +1,6 @@
+import { useState } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import type { ShowAdvance, AdvanceField, AdvanceFlag, AdvanceSource, AdvanceReadiness } from "@/stores/advanceStore";
 import { format } from "date-fns";
@@ -12,6 +13,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Separator } from "@/components/ui/separator";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { toast } from "sonner";
 
 const SECTION_ORDER = [
   "EVENT_DETAILS", "PRODUCTION_CONTACT", "HOUSE_RIGGER_CONTACT", "SUMMARY",
@@ -38,6 +41,9 @@ const readinessConfig: Record<string, { label: string; color: string; icon: type
 export default function AdvanceShow() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const [parseOpen, setParseOpen] = useState(false);
+  const [selectedSourceId, setSelectedSourceId] = useState<string | null>(null);
 
   const { data: show, isLoading } = useQuery({
     queryKey: ["show-advance", id],
@@ -72,7 +78,7 @@ export default function AdvanceShow() {
   const { data: sources } = useQuery({
     queryKey: ["advance-sources", id],
     queryFn: async () => {
-      const { data, error } = await supabase.from("advance_sources").select("*").eq("show_advance_id", id!);
+      const { data, error } = await supabase.from("advance_sources").select("*").eq("show_advance_id", id!).order("created_at", { ascending: false });
       if (error) throw error;
       return data as AdvanceSource[];
     },
@@ -87,6 +93,31 @@ export default function AdvanceShow() {
       return data as AdvanceReadiness;
     },
     enabled: !!id,
+  });
+
+  const parseMutation = useMutation({
+    mutationFn: async (sourceId: string) => {
+      const { data, error } = await supabase.functions.invoke("advance-parse", {
+        body: { show_advance_id: id, source_id: sourceId },
+      });
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["advance-fields", id] });
+      queryClient.invalidateQueries({ queryKey: ["advance-flags", id] });
+      queryClient.invalidateQueries({ queryKey: ["advance-readiness-single", id] });
+      queryClient.invalidateQueries({ queryKey: ["advance-decision-log", id] });
+      setParseOpen(false);
+      setSelectedSourceId(null);
+      toast.success("Parse complete", {
+        description: `${data.fields_updated} updated, ${data.conflicts_detected} conflicts, ${data.flags_generated} flags`,
+      });
+    },
+    onError: (err: any) => {
+      const msg = err?.message || "Parse failed";
+      toast.error("Parse failed", { description: msg });
+    },
   });
 
   if (isLoading || !show) {
@@ -104,7 +135,6 @@ export default function AdvanceShow() {
   const openFlags = flags?.filter((f) => f.status === "open") || [];
   const redCount = openFlags.filter((f) => f.severity === "red").length;
   const yellowCount = openFlags.filter((f) => f.severity === "yellow").length;
-  const greenCount = fields?.filter((f) => f.flag_level === "green").length || 0;
 
   const criticalMissing = fields?.filter((f) => f.field_criticality === "critical" && f.status === "not_provided").length || 0;
   const conflicts = fields?.filter((f) => f.status === "conflict").length || 0;
@@ -114,7 +144,6 @@ export default function AdvanceShow() {
   const rCfg = readinessConfig[readiness?.readiness_status || "not_ready"];
   const ReadinessIcon = rCfg.icon;
 
-  // Group fields by section for progress
   const sectionProgress = SECTION_ORDER.map((sk) => {
     const sectionFields = fields?.filter((f) => f.section_key === sk) || [];
     const confirmed = sectionFields.filter((f) => f.status === "confirmed" && f.locked_boolean).length;
@@ -160,30 +189,22 @@ export default function AdvanceShow() {
 
       {/* KPI Row */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <Card>
-          <CardContent className="py-3 px-4 text-center">
-            <p className="text-2xl font-bold font-mono text-destructive">{redCount}</p>
-            <p className="text-[10px] text-muted-foreground font-mono tracking-wider">RED FLAGS</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="py-3 px-4 text-center">
-            <p className="text-2xl font-bold font-mono text-warning">{yellowCount}</p>
-            <p className="text-[10px] text-muted-foreground font-mono tracking-wider">YELLOW FLAGS</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="py-3 px-4 text-center">
-            <p className="text-2xl font-bold font-mono text-success">{lockedCritical}/{totalCritical}</p>
-            <p className="text-[10px] text-muted-foreground font-mono tracking-wider">CRITICAL LOCKED</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="py-3 px-4 text-center">
-            <p className="text-2xl font-bold font-mono">{sources?.length || 0}</p>
-            <p className="text-[10px] text-muted-foreground font-mono tracking-wider">SOURCES</p>
-          </CardContent>
-        </Card>
+        <Card><CardContent className="py-3 px-4 text-center">
+          <p className="text-2xl font-bold font-mono text-destructive">{redCount}</p>
+          <p className="text-[10px] text-muted-foreground font-mono tracking-wider">RED FLAGS</p>
+        </CardContent></Card>
+        <Card><CardContent className="py-3 px-4 text-center">
+          <p className="text-2xl font-bold font-mono text-warning">{yellowCount}</p>
+          <p className="text-[10px] text-muted-foreground font-mono tracking-wider">YELLOW FLAGS</p>
+        </CardContent></Card>
+        <Card><CardContent className="py-3 px-4 text-center">
+          <p className="text-2xl font-bold font-mono text-success">{lockedCritical}/{totalCritical}</p>
+          <p className="text-[10px] text-muted-foreground font-mono tracking-wider">CRITICAL LOCKED</p>
+        </CardContent></Card>
+        <Card><CardContent className="py-3 px-4 text-center">
+          <p className="text-2xl font-bold font-mono">{sources?.length || 0}</p>
+          <p className="text-[10px] text-muted-foreground font-mono tracking-wider">SOURCES</p>
+        </CardContent></Card>
       </div>
 
       {/* Two Column Layout */}
@@ -208,7 +229,6 @@ export default function AdvanceShow() {
 
         {/* Right: Activity Panel */}
         <div className="md:col-span-2 space-y-4">
-          {/* Metrics */}
           <Card>
             <CardHeader className="py-2.5 px-4">
               <CardTitle className="text-xs font-mono tracking-wider text-muted-foreground/60">OPERATIONAL METRICS</CardTitle>
@@ -233,7 +253,6 @@ export default function AdvanceShow() {
             </CardContent>
           </Card>
 
-          {/* Open Flags */}
           {openFlags.length > 0 && (
             <Card>
               <CardHeader className="py-2.5 px-4">
@@ -263,6 +282,15 @@ export default function AdvanceShow() {
             <Upload className="h-3.5 w-3.5 mr-1.5" />Add Source
           </Link>
         </Button>
+        <Button
+          variant="default"
+          size="sm"
+          className="gap-1.5"
+          onClick={() => setParseOpen(true)}
+          disabled={!sources?.length}
+        >
+          <Zap className="h-3.5 w-3.5" />Run Parse
+        </Button>
         <Button variant="outline" size="sm" asChild>
           <Link to={`/bunk/advance/${id}/fields`}>
             <FileText className="h-3.5 w-3.5 mr-1.5" />Review Fields
@@ -279,6 +307,41 @@ export default function AdvanceShow() {
           </Link>
         </Button>
       </div>
+
+      {/* Parse Source Selection Dialog */}
+      <Dialog open={parseOpen} onOpenChange={setParseOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader><DialogTitle>Run Parse</DialogTitle></DialogHeader>
+          <p className="text-xs text-muted-foreground">Select a source to extract fields from:</p>
+          <div className="space-y-2 max-h-60 overflow-y-auto">
+            {sources?.map((s) => (
+              <button
+                key={s.id}
+                onClick={() => setSelectedSourceId(s.id)}
+                className={`w-full text-left p-3 rounded-md border transition-colors ${
+                  selectedSourceId === s.id ? "border-primary bg-primary/5" : "border-border hover:border-primary/50"
+                }`}
+              >
+                <p className="text-sm font-medium">{s.source_title || s.source_type}</p>
+                <p className="text-[10px] text-muted-foreground mt-0.5">
+                  {s.source_type} · {format(new Date(s.created_at), "MMM d, h:mm a")}
+                </p>
+              </button>
+            ))}
+          </div>
+          <Button
+            className="w-full gap-1.5"
+            disabled={!selectedSourceId || parseMutation.isPending}
+            onClick={() => selectedSourceId && parseMutation.mutate(selectedSourceId)}
+          >
+            {parseMutation.isPending ? (
+              <><Loader2 className="h-4 w-4 animate-spin" />Parsing...</>
+            ) : (
+              <><Zap className="h-4 w-4" />Parse Selected Source</>
+            )}
+          </Button>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
