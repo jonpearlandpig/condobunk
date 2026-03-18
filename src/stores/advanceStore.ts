@@ -83,6 +83,8 @@ export interface AdvanceReadiness {
 }
 
 export type VenueDocCategory = "tech_packet" | "production_book" | "rigging_guide" | "venue_map" | "power_sheet" | "equipment_list";
+export type TourDocCategory = "production_rider" | "rigging_plot" | "input_list" | "patch_list";
+export type TourDocProcessingStatus = "uploaded" | "processing" | "complete" | "failed";
 export type VenueDocProcessingStatus = "uploaded" | "processing" | "complete" | "failed";
 
 export interface AdvanceVenueDoc {
