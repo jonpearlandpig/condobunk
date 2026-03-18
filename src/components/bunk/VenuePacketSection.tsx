@@ -29,10 +29,12 @@ const STATUS_BADGE: Record<string, { label: string; variant: "default" | "second
 
 interface Props {
   showAdvanceId: string;
+  tourId: string;
   onAnalysisComplete?: () => void;
 }
 
-export default function VenuePacketSection({ showAdvanceId, onAnalysisComplete }: Props) {
+export default function VenuePacketSection({ showAdvanceId, tourId, onAnalysisComplete }: Props) {
+  const { user } = useAuth();
   const queryClient = useQueryClient();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
