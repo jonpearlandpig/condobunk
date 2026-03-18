@@ -158,7 +158,9 @@ export default function AdvanceShow() {
 
   const totalFields = fields?.length || 0;
   const confirmedLocked = fields?.filter((f) => f.status === "confirmed" && f.locked_boolean).length || 0;
+  const capturedFields = fields?.filter((f) => f.current_value != null && f.current_value !== "").length || 0;
   const confirmedPct = totalFields > 0 ? Math.round((confirmedLocked / totalFields) * 100) : 0;
+  const capturedPct = totalFields > 0 ? Math.round((capturedFields / totalFields) * 100) : 0;
 
   const openFlags = flags?.filter((f) => f.status === "open") || [];
   const redCount = openFlags.filter((f) => f.severity === "red").length;
