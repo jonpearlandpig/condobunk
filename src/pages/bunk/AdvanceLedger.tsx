@@ -4,7 +4,8 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { useTour } from "@/hooks/useTour";
-import type { ShowAdvance, AdvanceReadiness } from "@/stores/advanceStore";
+import type { ShowAdvance, AdvanceReadiness, AdvanceField } from "@/stores/advanceStore";
+import { Progress } from "@/components/ui/progress";
 import { format } from "date-fns";
 import {
   Plus, CalendarDays, MapPin, ChevronRight, Loader2, BookOpen,
