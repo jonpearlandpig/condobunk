@@ -341,6 +341,9 @@ export default function AdvanceShow() {
         onAnalysisComplete={() => {
           queryClient.invalidateQueries({ queryKey: ["advance-intelligence", id] });
           queryClient.invalidateQueries({ queryKey: ["advance-venue-docs", id] });
+          queryClient.invalidateQueries({ queryKey: ["advance-fields", id] });
+          queryClient.invalidateQueries({ queryKey: ["advance-readiness-single", id] });
+          queryClient.invalidateQueries({ queryKey: ["advance-flags", id] });
         }}
       />
 

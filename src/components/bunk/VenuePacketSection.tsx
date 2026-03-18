@@ -106,6 +106,8 @@ export default function VenuePacketSection({ showAdvanceId, tourId, onAnalysisCo
       queryClient.invalidateQueries({ queryKey: ["advance-venue-docs", showAdvanceId] });
       queryClient.invalidateQueries({ queryKey: ["advance-intelligence", showAdvanceId] });
       queryClient.invalidateQueries({ queryKey: ["advance-venue-extractions", showAdvanceId] });
+      queryClient.invalidateQueries({ queryKey: ["advance-fields"] });
+      queryClient.invalidateQueries({ queryKey: ["advance-readiness-single"] });
       onAnalysisComplete?.();
       toast.success("Analysis complete", {
         description: `${data.docs_processed} docs processed${data.docs_failed ? `, ${data.docs_failed} failed` : ""}`,
