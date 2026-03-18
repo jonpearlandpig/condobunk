@@ -337,6 +337,7 @@ export default function AdvanceShow() {
       {/* Venue Packets */}
       <VenuePacketSection
         showAdvanceId={id!}
+        tourId={show?.tour_id || ""}
         onAnalysisComplete={() => {
           queryClient.invalidateQueries({ queryKey: ["advance-intelligence", id] });
           queryClient.invalidateQueries({ queryKey: ["advance-venue-docs", id] });

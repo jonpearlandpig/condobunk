@@ -1,6 +1,7 @@
 import { useState, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/hooks/useAuth";
 import type { AdvanceVenueDoc, VenueDocCategory } from "@/stores/advanceStore";
 import { format } from "date-fns";
 import { Upload, FileText, Loader2, Zap, RefreshCw, Trash2 } from "lucide-react";
@@ -28,10 +29,12 @@ const STATUS_BADGE: Record<string, { label: string; variant: "default" | "second
 
 interface Props {
   showAdvanceId: string;
+  tourId: string;
   onAnalysisComplete?: () => void;
 }
 
-export default function VenuePacketSection({ showAdvanceId, onAnalysisComplete }: Props) {
+export default function VenuePacketSection({ showAdvanceId, tourId, onAnalysisComplete }: Props) {
+  const { user } = useAuth();
   const queryClient = useQueryClient();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
@@ -55,7 +58,7 @@ export default function VenuePacketSection({ showAdvanceId, onAnalysisComplete }
     try {
       const timestamp = Date.now();
       const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
-      const filePath = `advance-packets/${showAdvanceId}/${timestamp}_${safeName}`;
+      const filePath = `${tourId}/advance-packets/${showAdvanceId}/${timestamp}_${safeName}`;
 
       const { error: uploadErr } = await supabase.storage
         .from("document-files")
@@ -71,6 +74,7 @@ export default function VenuePacketSection({ showAdvanceId, onAnalysisComplete }
           file_path: filePath,
           file_type: ext,
           document_category: selectedCategory,
+          uploaded_by: user?.id,
         } as any);
       if (insertErr) throw insertErr;
 
