@@ -2701,6 +2701,18 @@ export type Database = {
       cleanup_expired_demos: { Args: never; Returns: undefined }
       deactivate_demo_mode: { Args: never; Returns: boolean }
       deny_upgrade_request: { Args: { _request_id: string }; Returns: boolean }
+      get_invite_preview: {
+        Args: { _token: string }
+        Returns: {
+          email: string
+          expires_at: string
+          id: string
+          role: string
+          tour_id: string
+          tour_name: string
+          used_at: string
+        }[]
+      }
       is_advance_admin: { Args: { _show_advance_id: string }; Returns: boolean }
       is_advance_field_admin: {
         Args: { _advance_field_id: string }
