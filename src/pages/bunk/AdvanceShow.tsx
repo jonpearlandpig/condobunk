@@ -178,8 +178,40 @@ export default function AdvanceShow() {
     return { key: sk, label: SECTION_LABELS[sk], total: sectionFields.length, confirmed };
   });
 
+  // Status banner logic
+  const noPackets = !venueDocs?.length;
+  const hasProcessing = venueDocs?.some(d => d.processing_status === "processing");
+  const hasRedFlags = (intelReport?.red_flags as any[])?.length > 0;
+  const hasMissing = (intelReport?.missing_unknown as any[])?.length > 0;
+
   return (
     <div className="max-w-5xl mx-auto space-y-6">
+      {/* Status Banners */}
+      {noPackets && (
+        <div className="flex items-center gap-2 px-3 py-2 rounded-md bg-muted/50 border border-border/50">
+          <PackageOpen className="h-4 w-4 text-muted-foreground" />
+          <span className="text-xs text-muted-foreground">No venue packet uploaded — upload a tech packet to unlock TELA analysis</span>
+        </div>
+      )}
+      {hasProcessing && (
+        <div className="flex items-center gap-2 px-3 py-2 rounded-md bg-primary/5 border border-primary/20">
+          <Loader2 className="h-4 w-4 text-primary animate-spin" />
+          <span className="text-xs text-primary">Analysis in progress...</span>
+        </div>
+      )}
+      {hasRedFlags && (
+        <div className="flex items-center gap-2 px-3 py-2 rounded-md bg-destructive/5 border border-destructive/20">
+          <ShieldAlert className="h-4 w-4 text-destructive" />
+          <span className="text-xs text-destructive">Red flags detected — review advance intelligence below</span>
+        </div>
+      )}
+      {hasMissing && !hasRedFlags && (
+        <div className="flex items-center gap-2 px-3 py-2 rounded-md bg-warning/5 border border-warning/20">
+          <AlertTriangle className="h-4 w-4 text-warning" />
+          <span className="text-xs text-warning">Missing critical data — check advance intelligence for unknowns</span>
+        </div>
+      )}
+
       {/* Header */}
       <div className="flex items-start gap-3">
         <Button variant="ghost" size="icon" className="shrink-0 mt-0.5" onClick={() => navigate("/bunk/advance")}>
