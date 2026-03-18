@@ -209,36 +209,16 @@ const intelligenceTool = {
   },
 };
 
-/* ── Text extraction helpers ── */
+/* ── Chunked base64 encoding (avoids stack overflow on large files) ── */
 
-function extractTextFromBinaryPdf(bytes: Uint8Array): string {
-  // Simple text extraction from PDF streams
-  const decoder = new TextDecoder("latin1");
-  const raw = decoder.decode(bytes);
-  const textChunks: string[] = [];
-
-  // Extract text between BT...ET blocks
-  const btEtRegex = /BT\s([\s\S]*?)ET/g;
-  let match;
-  while ((match = btEtRegex.exec(raw)) !== null) {
-    const block = match[1];
-    const tjRegex = /\(([^)]*)\)\s*Tj/g;
-    let tjMatch;
-    while ((tjMatch = tjRegex.exec(block)) !== null) {
-      textChunks.push(tjMatch[1]);
-    }
-    const tjArrayRegex = /\[([^\]]*)\]\s*TJ/g;
-    let tjArrMatch;
-    while ((tjArrMatch = tjArrayRegex.exec(block)) !== null) {
-      const inner = tjArrMatch[1];
-      const parts = inner.match(/\(([^)]*)\)/g);
-      if (parts) {
-        textChunks.push(parts.map((p: string) => p.slice(1, -1)).join(""));
-      }
-    }
+function uint8ArrayToBase64(bytes: Uint8Array): string {
+  const CHUNK = 8192;
+  let binary = "";
+  for (let i = 0; i < bytes.length; i += CHUNK) {
+    const slice = bytes.subarray(i, Math.min(i + CHUNK, bytes.length));
+    binary += String.fromCharCode(...slice);
   }
-
-  return textChunks.join(" ").replace(/\s+/g, " ").trim();
+  return btoa(binary);
 }
 
 serve(async (req) => {
@@ -358,17 +338,16 @@ serve(async (req) => {
           throw new Error(`Failed to download file: ${fileErr?.message || "unknown"}`);
         }
 
-        // Extract text based on file type
+        // Extract text or base64 based on file type
         let text = "";
+        let pdfBase64 = "";
         const ext = (doc.file_name || "").split(".").pop()?.toLowerCase();
 
         if (ext === "pdf") {
+          // Send PDF binary directly to the AI via multimodal endpoint
           const bytes = new Uint8Array(await fileData.arrayBuffer());
-          text = extractTextFromBinaryPdf(bytes);
-          if (text.length < 50) {
-            // Fallback: try reading as text
-            text = await fileData.text();
-          }
+          pdfBase64 = uint8ArrayToBase64(bytes);
+          console.log(`PDF ${doc.file_name}: ${bytes.length} bytes → base64 (${pdfBase64.length} chars)`);
         } else if (ext === "xlsx" || ext === "xls") {
           // Try to import XLSX
           try {
@@ -387,12 +366,13 @@ serve(async (req) => {
           text = await fileData.text();
         }
 
-        if (!text || text.trim().length < 20) {
+        // For non-PDF: validate we got enough text
+        if (!pdfBase64 && (!text || text.trim().length < 20)) {
           throw new Error("Document text too short or empty after extraction");
         }
 
-        // Truncate to ~60k chars to stay within AI context
-        const truncatedText = text.slice(0, 60000);
+        // Truncate text to ~60k chars to stay within AI context
+        const truncatedText = text ? text.slice(0, 60000) : "";
 
         // Call AI for structured extraction
         const extractionPrompt = `You are a venue technical packet parser for live event production.
@@ -409,6 +389,14 @@ RULES:
 - Include source snippet where possible
 - For boolean-like fields (union_house, haze_allowed etc), use "yes"/"no"/"approval required" as values`;
 
+        // Build messages: multimodal for PDF, text for everything else
+        const userContent = pdfBase64
+          ? [
+              { type: "text", text: `Document: ${doc.file_name} (${doc.document_category})` },
+              { type: "image_url", image_url: { url: `data:application/pdf;base64,${pdfBase64}` } },
+            ]
+          : `Document: ${doc.file_name} (${doc.document_category})\n\n---\n\n${truncatedText}`;
+
         const aiResp = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
           method: "POST",
           headers: {
@@ -419,7 +407,7 @@ RULES:
             model: "google/gemini-2.5-pro",
             messages: [
               { role: "system", content: extractionPrompt },
-              { role: "user", content: `Document: ${doc.file_name} (${doc.document_category})\n\n---\n\n${truncatedText}` },
+              { role: "user", content: userContent },
             ],
             tools: [extractionTool],
             tool_choice: { type: "function", function: { name: "extract_venue_data" } },
