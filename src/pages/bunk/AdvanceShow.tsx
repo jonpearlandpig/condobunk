@@ -350,6 +350,9 @@ export default function AdvanceShow() {
         </div>
       </div>
 
+      {/* Tour Production Docs (Rider, Rigging Plot) */}
+      <TourRiderSection tourId={show?.tour_id || ""} />
+
       {/* Venue Packets */}
       <VenuePacketSection
         showAdvanceId={id!}
