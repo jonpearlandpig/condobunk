@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from "react";
-import { Settings, RefreshCw, Plus, Trash2, Copy, CheckCircle, XCircle, Clock, Loader2, Users, Mail, Link, UserPlus, Send, Eye, MessageSquareText, Contact } from "lucide-react";
+import { useNavigate } from "react-router-dom";
+import { Settings, RefreshCw, Plus, Trash2, Copy, CheckCircle, XCircle, Clock, Loader2, Users, Mail, Link, UserPlus, Send, Eye, MessageSquareText, Contact, BookOpen, ChevronRight } from "lucide-react";
 import { TourTextDashboard } from "@/components/bunk/TourTextDashboard";
 import { TourTextInbox } from "@/components/bunk/TourTextInbox";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -170,6 +171,7 @@ const PendingUpgradeRequests = ({ tourId, ownerId, userId }: { tourId: string; o
 const BunkAdmin = () => {
   const { selectedTourId, selectedTour, isDemoMode } = useTour();
   const { user } = useAuth();
+  const navigate = useNavigate();
   const [integrations, setIntegrations] = useState<Integration[]>([]);
   const [syncLogs, setSyncLogs] = useState<SyncLog[]>([]);
   const [members, setMembers] = useState<TourMember[]>([]);
@@ -516,6 +518,23 @@ const BunkAdmin = () => {
           {syncingVanContacts ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <RefreshCw className="h-4 w-4 mr-1" />}
           Sync
         </Button>
+      </Card>
+
+      {/* Advance Ledger */}
+      <Card
+        className="p-4 flex items-center justify-between cursor-pointer hover:bg-accent/50 transition-colors"
+        onClick={() => navigate("/bunk/advance")}
+      >
+        <div className="flex items-center gap-3">
+          <BookOpen className="h-5 w-5 text-primary" />
+          <div>
+            <p className="text-sm font-semibold">Advance Ledger</p>
+            <p className="text-xs text-muted-foreground font-mono">
+              Show advances, fields & readiness tracking
+            </p>
+          </div>
+        </div>
+        <ChevronRight className="h-4 w-4 text-muted-foreground" />
       </Card>
 
       {/* Team Management */}

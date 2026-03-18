@@ -1,25 +1,37 @@
 
 
-# Add Advance Ledger to Mobile Navigation
+# Tighten Reminder Cron to Every 5 Minutes
 
-## Problem
-Advance Ledger is only accessible via the desktop sidebar (`BunkSidebar.tsx`). The mobile bottom nav (`MobileBottomNav.tsx`) has 5 fixed items and no entry for Advance Ledger. At 393px viewport, users cannot reach `/bunk/advance`.
+## What Changes
+The cron job `send-event-reminders-every-15min` currently runs at `:00`, `:15`, `:30`, `:45`. We'll update it to run every 5 minutes (`:00`, `:05`, `:10`, ..., `:55`), so scheduled reminders fire within ~5 minutes of their target time instead of ~15.
 
-## Solution
-Add "Advance" as a nav item in the mobile bottom nav. Since the bottom bar already has 5 items (the typical max for thumb-reach), the cleanest approach is to nest Advance Ledger under the **Admin** tab as a sub-route, or replace one of the existing items. However, given Advance Ledger is a primary workflow module, I recommend adding it as a 6th item using a compact icon layout (shrinking icon+label sizing slightly to fit 6).
+## Steps
 
-Alternatively, the Admin screen likely already links to sub-features — I can add an "Advance Ledger" card/link on the Admin page so mobile users can navigate there from Admin.
+1. **Unschedule the existing cron job** (`jobid: 2`, named `send-event-reminders-every-15min`)
+2. **Create a new cron job** with a `*/5 * * * *` schedule and an updated name (`send-event-reminders-every-5min`)
+3. **Update the reminder window** in `supabase/functions/send-event-reminders/index.ts` -- change the `+-7.5 minute` dedup window to `+-2.5 minutes` so event reminders don't double-fire on the tighter cadence
 
-**Recommended approach:** Add a prominent "Advance Ledger" navigation card on the `/bunk/admin` page (where the user currently is) that links to `/bunk/advance`, keeping the bottom nav at 5 items. This follows the existing pattern where Admin acts as a hub for management features.
+## Technical Detail
 
-## Changes
+**SQL (run via query, not migration -- contains project-specific keys):**
+```sql
+SELECT cron.unschedule('send-event-reminders-every-15min');
 
-### `src/pages/bunk/BunkAdmin.tsx`
-- Add an "Advance Ledger" card/link near the top that navigates to `/bunk/advance`
-- Use the `BookOpen` icon (already imported in sidebar) with the operational styling
+SELECT cron.schedule(
+  'send-event-reminders-every-5min',
+  '*/5 * * * *',
+  $$
+  SELECT net.http_post(
+    url := '...functions/v1/send-event-reminders',
+    headers := '...'::jsonb,
+    body := '{}'::jsonb
+  ) AS request_id;
+  $$
+);
+```
 
-### `src/components/bunk/MobileBottomNav.tsx`  
-- No changes to the 5-item bottom nav (keeps thumb-reach optimization intact)
+**Edge function change (`send-event-reminders/index.ts`):**
+- Line with `reminderWindow - 7.5` / `reminderWindow + 7.5` changes to `reminderWindow - 2.5` / `reminderWindow + 2.5`
 
-This keeps mobile UX clean while making Advance Ledger discoverable from the Admin hub, which is already the settings/management entry point on mobile.
+This is a minimal change -- two SQL statements and one line in the edge function.
 
