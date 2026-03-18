@@ -158,7 +158,9 @@ export default function AdvanceShow() {
 
   const totalFields = fields?.length || 0;
   const confirmedLocked = fields?.filter((f) => f.status === "confirmed" && f.locked_boolean).length || 0;
+  const capturedFields = fields?.filter((f) => f.current_value != null && f.current_value !== "").length || 0;
   const confirmedPct = totalFields > 0 ? Math.round((confirmedLocked / totalFields) * 100) : 0;
+  const capturedPct = totalFields > 0 ? Math.round((capturedFields / totalFields) * 100) : 0;
 
   const openFlags = flags?.filter((f) => f.status === "open") || [];
   const redCount = openFlags.filter((f) => f.severity === "red").length;
@@ -174,8 +176,9 @@ export default function AdvanceShow() {
 
   const sectionProgress = SECTION_ORDER.map((sk) => {
     const sectionFields = fields?.filter((f) => f.section_key === sk) || [];
-    const confirmed = sectionFields.filter((f) => f.status === "confirmed" && f.locked_boolean).length;
-    return { key: sk, label: SECTION_LABELS[sk], total: sectionFields.length, confirmed };
+    const locked = sectionFields.filter((f) => f.status === "confirmed" && f.locked_boolean).length;
+    const captured = sectionFields.filter((f) => f.current_value != null && f.current_value !== "").length;
+    return { key: sk, label: SECTION_LABELS[sk], total: sectionFields.length, locked, captured };
   });
 
   // Status banner logic
@@ -240,9 +243,12 @@ export default function AdvanceShow() {
               {readiness?.critical_unresolved_count || 0} critical unresolved · {readiness?.red_flag_open_count || 0} red flags open
             </p>
           </div>
-          <div className="text-right">
-            <p className="text-2xl font-bold font-mono">{confirmedPct}%</p>
-            <p className="text-[10px] text-muted-foreground">fields locked</p>
+          <div className="text-right space-y-0.5">
+            <p className="text-2xl font-bold font-mono">{capturedPct}%</p>
+            <p className="text-[10px] text-muted-foreground">captured</p>
+            {confirmedLocked > 0 && (
+              <p className="text-[10px] text-success font-mono">{confirmedPct}% locked</p>
+            )}
           </div>
         </CardContent>
       </Card>
@@ -258,12 +264,12 @@ export default function AdvanceShow() {
           <p className="text-[10px] text-muted-foreground font-mono tracking-wider">YELLOW FLAGS</p>
         </CardContent></Card>
         <Card><CardContent className="py-3 px-4 text-center">
-          <p className="text-2xl font-bold font-mono text-success">{lockedCritical}/{totalCritical}</p>
-          <p className="text-[10px] text-muted-foreground font-mono tracking-wider">CRITICAL LOCKED</p>
+          <p className="text-2xl font-bold font-mono">{capturedFields}/{totalFields}</p>
+          <p className="text-[10px] text-muted-foreground font-mono tracking-wider">CAPTURED</p>
         </CardContent></Card>
         <Card><CardContent className="py-3 px-4 text-center">
-          <p className="text-2xl font-bold font-mono">{sources?.length || 0}</p>
-          <p className="text-[10px] text-muted-foreground font-mono tracking-wider">SOURCES</p>
+          <p className="text-2xl font-bold font-mono text-success">{confirmedLocked}/{totalFields}</p>
+          <p className="text-[10px] text-muted-foreground font-mono tracking-wider">LOCKED</p>
         </CardContent></Card>
       </div>
 
@@ -276,10 +282,19 @@ export default function AdvanceShow() {
             <Card key={s.key} className="cursor-pointer hover:bg-accent/50 transition-colors" onClick={() => navigate(`/bunk/advance/${id}/fields`)}>
               <CardContent className="flex items-center gap-3 py-2.5 px-4">
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium">{s.label}</p>
-                  <div className="flex items-center gap-2 mt-1">
-                    <Progress value={s.total > 0 ? (s.confirmed / s.total) * 100 : 0} className="h-1.5 flex-1" />
-                    <span className="text-[10px] font-mono text-muted-foreground">{s.confirmed}/{s.total}</span>
+                  <div className="flex items-center justify-between">
+                    <p className="text-sm font-medium">{s.label}</p>
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] font-mono text-muted-foreground">{s.captured}/{s.total} captured</span>
+                      {s.locked > 0 && (
+                        <span className="text-[10px] font-mono text-success flex items-center gap-0.5">
+                          <Lock className="h-2.5 w-2.5" />{s.locked}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-1 mt-1">
+                    <Progress value={s.total > 0 ? (s.captured / s.total) * 100 : 0} className="h-1.5 flex-1" />
                   </div>
                 </div>
               </CardContent>

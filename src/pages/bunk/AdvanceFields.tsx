@@ -146,8 +146,14 @@ export default function AdvanceFields() {
                     <div className="flex items-center gap-2">
                       {SECTION_LABELS[sk]}
                       <span className="text-[10px] font-mono text-muted-foreground/50">
-                        {sectionFields.filter((f) => f.status === "confirmed" && f.locked_boolean).length}/{sectionFields.length}
+                        {sectionFields.filter((f) => f.current_value != null && f.current_value !== "").length}/{sectionFields.length} captured
                       </span>
+                      {sectionFields.filter((f) => f.status === "confirmed" && f.locked_boolean).length > 0 && (
+                        <span className="text-[10px] font-mono text-success flex items-center gap-0.5">
+                          <Lock className="h-2.5 w-2.5" />
+                          {sectionFields.filter((f) => f.status === "confirmed" && f.locked_boolean).length}
+                        </span>
+                      )}
                     </div>
                   </AccordionTrigger>
                   <AccordionContent className="px-4 pb-3 space-y-1">
