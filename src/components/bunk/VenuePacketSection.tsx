@@ -216,7 +216,7 @@ export default function VenuePacketSection({ showAdvanceId, tourId, onAnalysisCo
                   <div className="flex-1 min-w-0">
                     <p className="text-xs font-medium truncate">{doc.file_name}</p>
                     <p className="text-[10px] text-muted-foreground">
-                      {CATEGORY_LABELS[doc.document_category]} · {format(new Date(doc.uploaded_at), "MMM d, h:mm a")}
+                      {CATEGORY_LABELS[doc.document_category]} · {(() => { const d = new Date(doc.uploaded_at); return isNaN(d.getTime()) ? "Unknown" : format(d, "MMM d, h:mm a"); })()}
                     </p>
                     {doc.processing_error && (
                       <p className="text-[10px] text-destructive truncate">{doc.processing_error}</p>

@@ -223,7 +223,7 @@ export default function AdvanceShow() {
             <Badge variant="outline" className="text-[10px] uppercase">{show.status}</Badge>
           </div>
           <div className="flex items-center gap-3 mt-0.5 text-xs text-muted-foreground">
-            {show.event_date && <span>{format(new Date(show.event_date), "EEEE, MMM d, yyyy")}</span>}
+            {show.event_date && (() => { const d = new Date(show.event_date + "T00:00:00"); return isNaN(d.getTime()) ? null : <span>{format(d, "EEEE, MMM d, yyyy")}</span>; })()}
             {show.venue_city && <span>· {show.venue_city}{show.venue_state ? `, ${show.venue_state}` : ""}</span>}
             <span className="font-mono text-[10px] text-muted-foreground/40">{show.tid}</span>
           </div>
@@ -397,7 +397,7 @@ export default function AdvanceShow() {
               >
                 <p className="text-sm font-medium">{s.source_title || s.source_type}</p>
                 <p className="text-[10px] text-muted-foreground mt-0.5">
-                  {s.source_type} · {format(new Date(s.created_at), "MMM d, h:mm a")}
+                  {s.source_type} · {(() => { const d = new Date(s.created_at); return isNaN(d.getTime()) ? "Unknown" : format(d, "MMM d, h:mm a"); })()}
                 </p>
               </button>
             ))}
