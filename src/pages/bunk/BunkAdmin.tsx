@@ -520,6 +520,23 @@ const BunkAdmin = () => {
         </Button>
       </Card>
 
+      {/* Advance Ledger */}
+      <Card
+        className="p-4 flex items-center justify-between cursor-pointer hover:bg-accent/50 transition-colors"
+        onClick={() => navigate("/bunk/advance")}
+      >
+        <div className="flex items-center gap-3">
+          <BookOpen className="h-5 w-5 text-primary" />
+          <div>
+            <p className="text-sm font-semibold">Advance Ledger</p>
+            <p className="text-xs text-muted-foreground font-mono">
+              Show advances, fields & readiness tracking
+            </p>
+          </div>
+        </div>
+        <ChevronRight className="h-4 w-4 text-muted-foreground" />
+      </Card>
+
       {/* Team Management */}
       <div className="space-y-3">
         <div className="flex items-center justify-between">
