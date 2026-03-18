@@ -176,8 +176,9 @@ export default function AdvanceShow() {
 
   const sectionProgress = SECTION_ORDER.map((sk) => {
     const sectionFields = fields?.filter((f) => f.section_key === sk) || [];
-    const confirmed = sectionFields.filter((f) => f.status === "confirmed" && f.locked_boolean).length;
-    return { key: sk, label: SECTION_LABELS[sk], total: sectionFields.length, confirmed };
+    const locked = sectionFields.filter((f) => f.status === "confirmed" && f.locked_boolean).length;
+    const captured = sectionFields.filter((f) => f.current_value != null && f.current_value !== "").length;
+    return { key: sk, label: SECTION_LABELS[sk], total: sectionFields.length, locked, captured };
   });
 
   // Status banner logic
