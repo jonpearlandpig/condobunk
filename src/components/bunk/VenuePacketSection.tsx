@@ -74,6 +74,7 @@ export default function VenuePacketSection({ showAdvanceId, tourId, onAnalysisCo
           file_path: filePath,
           file_type: ext,
           document_category: selectedCategory,
+          uploaded_by: user?.id,
         } as any);
       if (insertErr) throw insertErr;
 
