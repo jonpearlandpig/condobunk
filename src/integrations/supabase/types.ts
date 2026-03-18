@@ -2055,6 +2055,98 @@ export type Database = {
           },
         ]
       }
+      tour_production_docs: {
+        Row: {
+          document_category: string
+          file_name: string
+          file_path: string
+          file_type: string | null
+          id: string
+          processed_at: string | null
+          processing_error: string | null
+          processing_status: string
+          tour_id: string
+          uploaded_at: string
+          uploaded_by: string | null
+        }
+        Insert: {
+          document_category?: string
+          file_name: string
+          file_path: string
+          file_type?: string | null
+          id?: string
+          processed_at?: string | null
+          processing_error?: string | null
+          processing_status?: string
+          tour_id: string
+          uploaded_at?: string
+          uploaded_by?: string | null
+        }
+        Update: {
+          document_category?: string
+          file_name?: string
+          file_path?: string
+          file_type?: string | null
+          id?: string
+          processed_at?: string | null
+          processing_error?: string | null
+          processing_status?: string
+          tour_id?: string
+          uploaded_at?: string
+          uploaded_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tour_production_docs_tour_id_fkey"
+            columns: ["tour_id"]
+            isOneToOne: false
+            referencedRelation: "tours"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      tour_production_extractions: {
+        Row: {
+          document_id: string
+          extracted_data: Json
+          extraction_confidence: Json | null
+          id: string
+          processed_at: string
+          tour_id: string
+        }
+        Insert: {
+          document_id: string
+          extracted_data?: Json
+          extraction_confidence?: Json | null
+          id?: string
+          processed_at?: string
+          tour_id: string
+        }
+        Update: {
+          document_id?: string
+          extracted_data?: Json
+          extraction_confidence?: Json | null
+          id?: string
+          processed_at?: string
+          tour_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tour_production_extractions_document_id_fkey"
+            columns: ["document_id"]
+            isOneToOne: false
+            referencedRelation: "tour_production_docs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tour_production_extractions_tour_id_fkey"
+            columns: ["tour_id"]
+            isOneToOne: false
+            referencedRelation: "tours"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       tour_routing: {
         Row: {
           bus_notes: string | null
