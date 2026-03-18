@@ -16,6 +16,7 @@ import { Separator } from "@/components/ui/separator";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { toast } from "sonner";
 import VenuePacketSection from "@/components/bunk/VenuePacketSection";
+import TourRiderSection from "@/components/bunk/TourRiderSection";
 import AdvanceIntelligenceSection from "@/components/bunk/AdvanceIntelligenceSection";
 
 const SECTION_ORDER = [
