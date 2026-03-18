@@ -2,11 +2,11 @@ import { useState } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import type { ShowAdvance, AdvanceField, AdvanceFlag, AdvanceSource, AdvanceReadiness } from "@/stores/advanceStore";
+import type { ShowAdvance, AdvanceField, AdvanceFlag, AdvanceSource, AdvanceReadiness, AdvanceVenueDoc, AdvanceIntelligenceReport } from "@/stores/advanceStore";
 import { format } from "date-fns";
 import {
   ArrowLeft, FileText, AlertTriangle, CheckCircle2, Upload,
-  Zap, ShieldAlert, FileOutput, Loader2, Lock, BookOpen,
+  Zap, ShieldAlert, FileOutput, Loader2, Lock, BookOpen, PackageOpen,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -15,6 +15,8 @@ import { Progress } from "@/components/ui/progress";
 import { Separator } from "@/components/ui/separator";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { toast } from "sonner";
+import VenuePacketSection from "@/components/bunk/VenuePacketSection";
+import AdvanceIntelligenceSection from "@/components/bunk/AdvanceIntelligenceSection";
 
 const SECTION_ORDER = [
   "EVENT_DETAILS", "PRODUCTION_CONTACT", "HOUSE_RIGGER_CONTACT", "SUMMARY",
@@ -95,6 +97,32 @@ export default function AdvanceShow() {
     enabled: !!id,
   });
 
+  // Venue packet status for banner
+  const { data: venueDocs } = useQuery({
+    queryKey: ["advance-venue-docs", id],
+    queryFn: async () => {
+      const { data, error } = await supabase.from("advance_venue_docs").select("processing_status").eq("show_advance_id", id!);
+      if (error) throw error;
+      return data as { processing_status: string }[];
+    },
+    enabled: !!id,
+  });
+
+  const { data: intelReport } = useQuery({
+    queryKey: ["advance-intelligence", id],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("advance_intelligence_reports")
+        .select("red_flags, missing_unknown")
+        .eq("show_advance_id", id!)
+        .order("generated_at", { ascending: false })
+        .limit(1);
+      if (error) throw error;
+      return data?.[0] as { red_flags: any[]; missing_unknown: any[] } | undefined;
+    },
+    enabled: !!id,
+  });
+
   const parseMutation = useMutation({
     mutationFn: async (sourceId: string) => {
       const { data, error } = await supabase.functions.invoke("advance-parse", {
@@ -150,8 +178,40 @@ export default function AdvanceShow() {
     return { key: sk, label: SECTION_LABELS[sk], total: sectionFields.length, confirmed };
   });
 
+  // Status banner logic
+  const noPackets = !venueDocs?.length;
+  const hasProcessing = venueDocs?.some(d => d.processing_status === "processing");
+  const hasRedFlags = (intelReport?.red_flags as any[])?.length > 0;
+  const hasMissing = (intelReport?.missing_unknown as any[])?.length > 0;
+
   return (
     <div className="max-w-5xl mx-auto space-y-6">
+      {/* Status Banners */}
+      {noPackets && (
+        <div className="flex items-center gap-2 px-3 py-2 rounded-md bg-muted/50 border border-border/50">
+          <PackageOpen className="h-4 w-4 text-muted-foreground" />
+          <span className="text-xs text-muted-foreground">No venue packet uploaded — upload a tech packet to unlock TELA analysis</span>
+        </div>
+      )}
+      {hasProcessing && (
+        <div className="flex items-center gap-2 px-3 py-2 rounded-md bg-primary/5 border border-primary/20">
+          <Loader2 className="h-4 w-4 text-primary animate-spin" />
+          <span className="text-xs text-primary">Analysis in progress...</span>
+        </div>
+      )}
+      {hasRedFlags && (
+        <div className="flex items-center gap-2 px-3 py-2 rounded-md bg-destructive/5 border border-destructive/20">
+          <ShieldAlert className="h-4 w-4 text-destructive" />
+          <span className="text-xs text-destructive">Red flags detected — review advance intelligence below</span>
+        </div>
+      )}
+      {hasMissing && !hasRedFlags && (
+        <div className="flex items-center gap-2 px-3 py-2 rounded-md bg-warning/5 border border-warning/20">
+          <AlertTriangle className="h-4 w-4 text-warning" />
+          <span className="text-xs text-warning">Missing critical data — check advance intelligence for unknowns</span>
+        </div>
+      )}
+
       {/* Header */}
       <div className="flex items-start gap-3">
         <Button variant="ghost" size="icon" className="shrink-0 mt-0.5" onClick={() => navigate("/bunk/advance")}>
@@ -274,6 +334,15 @@ export default function AdvanceShow() {
         </div>
       </div>
 
+      {/* Venue Packets */}
+      <VenuePacketSection
+        showAdvanceId={id!}
+        onAnalysisComplete={() => {
+          queryClient.invalidateQueries({ queryKey: ["advance-intelligence", id] });
+          queryClient.invalidateQueries({ queryKey: ["advance-venue-docs", id] });
+        }}
+      />
+
       {/* CTA Bar */}
       <Separator />
       <div className="flex flex-wrap gap-2">
@@ -307,6 +376,9 @@ export default function AdvanceShow() {
           </Link>
         </Button>
       </div>
+
+      {/* Advance Intelligence */}
+      <AdvanceIntelligenceSection showAdvanceId={id!} />
 
       {/* Parse Source Selection Dialog */}
       <Dialog open={parseOpen} onOpenChange={setParseOpen}>

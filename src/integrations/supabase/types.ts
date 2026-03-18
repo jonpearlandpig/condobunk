@@ -305,6 +305,75 @@ export type Database = {
           },
         ]
       }
+      advance_intelligence_reports: {
+        Row: {
+          comparison_results: Json | null
+          draft_advance_questions: Json | null
+          draft_internal_notes: Json | null
+          edited_internal_notes: Json | null
+          edited_questions: Json | null
+          generated_at: string
+          generated_by: string | null
+          green_lights: Json | null
+          id: string
+          missing_unknown: Json | null
+          red_flags: Json | null
+          show_advance_id: string
+          updated_at: string
+          venue_capability_summary: string | null
+          yellow_flags: Json | null
+        }
+        Insert: {
+          comparison_results?: Json | null
+          draft_advance_questions?: Json | null
+          draft_internal_notes?: Json | null
+          edited_internal_notes?: Json | null
+          edited_questions?: Json | null
+          generated_at?: string
+          generated_by?: string | null
+          green_lights?: Json | null
+          id?: string
+          missing_unknown?: Json | null
+          red_flags?: Json | null
+          show_advance_id: string
+          updated_at?: string
+          venue_capability_summary?: string | null
+          yellow_flags?: Json | null
+        }
+        Update: {
+          comparison_results?: Json | null
+          draft_advance_questions?: Json | null
+          draft_internal_notes?: Json | null
+          edited_internal_notes?: Json | null
+          edited_questions?: Json | null
+          generated_at?: string
+          generated_by?: string | null
+          green_lights?: Json | null
+          id?: string
+          missing_unknown?: Json | null
+          red_flags?: Json | null
+          show_advance_id?: string
+          updated_at?: string
+          venue_capability_summary?: string | null
+          yellow_flags?: Json | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "advance_intelligence_reports_show_advance_id_fkey"
+            columns: ["show_advance_id"]
+            isOneToOne: false
+            referencedRelation: "show_advances"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "advance_intelligence_reports_show_advance_id_fkey"
+            columns: ["show_advance_id"]
+            isOneToOne: false
+            referencedRelation: "v_show_advance_readiness"
+            referencedColumns: ["show_advance_id"]
+          },
+        ]
+      }
       advance_sources: {
         Row: {
           created_at: string
@@ -349,6 +418,112 @@ export type Database = {
           },
           {
             foreignKeyName: "advance_sources_show_advance_id_fkey"
+            columns: ["show_advance_id"]
+            isOneToOne: false
+            referencedRelation: "v_show_advance_readiness"
+            referencedColumns: ["show_advance_id"]
+          },
+        ]
+      }
+      advance_venue_docs: {
+        Row: {
+          document_category: string
+          file_name: string
+          file_path: string
+          file_type: string | null
+          id: string
+          processed_at: string | null
+          processing_error: string | null
+          processing_status: string
+          show_advance_id: string
+          uploaded_at: string
+          uploaded_by: string | null
+        }
+        Insert: {
+          document_category?: string
+          file_name: string
+          file_path: string
+          file_type?: string | null
+          id?: string
+          processed_at?: string | null
+          processing_error?: string | null
+          processing_status?: string
+          show_advance_id: string
+          uploaded_at?: string
+          uploaded_by?: string | null
+        }
+        Update: {
+          document_category?: string
+          file_name?: string
+          file_path?: string
+          file_type?: string | null
+          id?: string
+          processed_at?: string | null
+          processing_error?: string | null
+          processing_status?: string
+          show_advance_id?: string
+          uploaded_at?: string
+          uploaded_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "advance_venue_docs_show_advance_id_fkey"
+            columns: ["show_advance_id"]
+            isOneToOne: false
+            referencedRelation: "show_advances"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "advance_venue_docs_show_advance_id_fkey"
+            columns: ["show_advance_id"]
+            isOneToOne: false
+            referencedRelation: "v_show_advance_readiness"
+            referencedColumns: ["show_advance_id"]
+          },
+        ]
+      }
+      advance_venue_extractions: {
+        Row: {
+          document_id: string
+          extracted_data: Json
+          extraction_confidence: Json | null
+          id: string
+          processed_at: string
+          show_advance_id: string
+        }
+        Insert: {
+          document_id: string
+          extracted_data?: Json
+          extraction_confidence?: Json | null
+          id?: string
+          processed_at?: string
+          show_advance_id: string
+        }
+        Update: {
+          document_id?: string
+          extracted_data?: Json
+          extraction_confidence?: Json | null
+          id?: string
+          processed_at?: string
+          show_advance_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "advance_venue_extractions_document_id_fkey"
+            columns: ["document_id"]
+            isOneToOne: false
+            referencedRelation: "advance_venue_docs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "advance_venue_extractions_show_advance_id_fkey"
+            columns: ["show_advance_id"]
+            isOneToOne: false
+            referencedRelation: "show_advances"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "advance_venue_extractions_show_advance_id_fkey"
             columns: ["show_advance_id"]
             isOneToOne: false
             referencedRelation: "v_show_advance_readiness"

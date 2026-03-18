@@ -82,6 +82,57 @@ export interface AdvanceReadiness {
   readiness_status: ReadinessStatus;
 }
 
+export type VenueDocCategory = "tech_packet" | "production_book" | "rigging_guide" | "venue_map" | "power_sheet" | "equipment_list";
+export type VenueDocProcessingStatus = "uploaded" | "processing" | "complete" | "failed";
+
+export interface AdvanceVenueDoc {
+  id: string;
+  show_advance_id: string;
+  file_name: string;
+  file_path: string;
+  file_type: string | null;
+  document_category: VenueDocCategory;
+  uploaded_by: string | null;
+  uploaded_at: string;
+  processing_status: VenueDocProcessingStatus;
+  processing_error: string | null;
+  processed_at: string | null;
+}
+
+export interface AdvanceVenueExtraction {
+  id: string;
+  show_advance_id: string;
+  document_id: string;
+  extracted_data: Record<string, any>;
+  extraction_confidence: Record<string, any>;
+  processed_at: string;
+}
+
+export interface IntelligenceItem {
+  text: string;
+  category?: string;
+  confidence?: string;
+  source_doc?: string;
+}
+
+export interface AdvanceIntelligenceReport {
+  id: string;
+  show_advance_id: string;
+  venue_capability_summary: string | null;
+  comparison_results: any[];
+  green_lights: IntelligenceItem[];
+  yellow_flags: IntelligenceItem[];
+  red_flags: IntelligenceItem[];
+  missing_unknown: IntelligenceItem[];
+  draft_advance_questions: IntelligenceItem[];
+  draft_internal_notes: IntelligenceItem[];
+  edited_questions: IntelligenceItem[] | null;
+  edited_internal_notes: IntelligenceItem[] | null;
+  generated_at: string;
+  updated_at: string;
+  generated_by: string | null;
+}
+
 interface AdvanceStore {
   selectedShowId: string | null;
   setSelectedShowId: (id: string | null) => void;
