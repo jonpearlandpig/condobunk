@@ -334,6 +334,15 @@ export default function AdvanceShow() {
         </div>
       </div>
 
+      {/* Venue Packets */}
+      <VenuePacketSection
+        showAdvanceId={id!}
+        onAnalysisComplete={() => {
+          queryClient.invalidateQueries({ queryKey: ["advance-intelligence", id] });
+          queryClient.invalidateQueries({ queryKey: ["advance-venue-docs", id] });
+        }}
+      />
+
       {/* CTA Bar */}
       <Separator />
       <div className="flex flex-wrap gap-2">
@@ -367,6 +376,9 @@ export default function AdvanceShow() {
           </Link>
         </Button>
       </div>
+
+      {/* Advance Intelligence */}
+      <AdvanceIntelligenceSection showAdvanceId={id!} />
 
       {/* Parse Source Selection Dialog */}
       <Dialog open={parseOpen} onOpenChange={setParseOpen}>
