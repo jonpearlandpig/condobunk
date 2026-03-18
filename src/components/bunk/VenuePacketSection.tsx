@@ -88,9 +88,11 @@ export default function VenuePacketSection({ showAdvanceId, tourId, onAnalysisCo
   };
 
   const analyzeMutation = useMutation({
-    mutationFn: async () => {
+    mutationFn: async (docIds?: string[]) => {
+      const body: Record<string, unknown> = { show_advance_id: showAdvanceId };
+      if (docIds?.length) body.document_ids = docIds;
       const { data, error } = await supabase.functions.invoke("advance-venue-analyze", {
-        body: { show_advance_id: showAdvanceId },
+        body,
       });
       if (error) throw error;
       return data;
@@ -141,7 +143,7 @@ export default function VenuePacketSection({ showAdvanceId, tourId, onAnalysisCo
                 size="sm"
                 className="h-7 text-xs gap-1"
                 disabled={isProcessing}
-                onClick={() => analyzeMutation.mutate()}
+                onClick={() => analyzeMutation.mutate(docs?.map(d => d.id))}
               >
                 <RefreshCw className="h-3 w-3" />Re-run
               </Button>
@@ -152,7 +154,7 @@ export default function VenuePacketSection({ showAdvanceId, tourId, onAnalysisCo
                 size="sm"
                 className="h-7 text-xs gap-1"
                 disabled={isProcessing || !docs?.length}
-                onClick={() => analyzeMutation.mutate()}
+                onClick={() => analyzeMutation.mutate(undefined)}
               >
                 {isProcessing ? <Loader2 className="h-3 w-3 animate-spin" /> : <Zap className="h-3 w-3" />}
                 {isProcessing ? "Analyzing..." : "Run TELA Analysis"}
