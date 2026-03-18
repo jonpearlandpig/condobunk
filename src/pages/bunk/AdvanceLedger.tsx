@@ -469,20 +469,29 @@ export default function AdvanceLedger() {
     enabled: !!tourId,
   });
 
+  const advanceIds = useMemo(() => (advances ?? []).map((a) => a.id).sort(), [advances]);
+
   // Fetch field counts for captured/locked progress on list cards
   const { data: allFields } = useQuery({
-    queryKey: ["advance-fields-summary", tourId],
+    queryKey: ["advance-fields-summary", tourId, advanceIds],
     queryFn: async () => {
-      if (!tourId || !advances?.length) return [];
-      const ids = advances.map((a) => a.id);
-      const { data, error } = await supabase
-        .from("advance_fields")
-        .select("show_advance_id, current_value, status, locked_boolean")
-        .in("show_advance_id", ids);
-      if (error) throw error;
-      return data as Pick<AdvanceField, "show_advance_id" | "current_value" | "status" | "locked_boolean">[];
+      if (!tourId || !advanceIds.length) return [];
+      // Fetch in chunks to avoid the 1000-row limit
+      const allData: Pick<AdvanceField, "show_advance_id" | "current_value" | "status" | "locked_boolean">[] = [];
+      const chunkSize = 10; // ~400 fields per show × 10 = ~4000 max per chunk query
+      for (let i = 0; i < advanceIds.length; i += chunkSize) {
+        const chunk = advanceIds.slice(i, i + chunkSize);
+        const { data, error } = await supabase
+          .from("advance_fields")
+          .select("show_advance_id, current_value, status, locked_boolean")
+          .in("show_advance_id", chunk)
+          .limit(5000);
+        if (error) throw error;
+        if (data) allData.push(...(data as any));
+      }
+      return allData;
     },
-    enabled: !!tourId && !!advances?.length,
+    enabled: !!tourId && advanceIds.length > 0,
   });
 
   const fieldStats = useMemo(() => {
