@@ -282,10 +282,19 @@ export default function AdvanceShow() {
             <Card key={s.key} className="cursor-pointer hover:bg-accent/50 transition-colors" onClick={() => navigate(`/bunk/advance/${id}/fields`)}>
               <CardContent className="flex items-center gap-3 py-2.5 px-4">
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium">{s.label}</p>
-                  <div className="flex items-center gap-2 mt-1">
-                    <Progress value={s.total > 0 ? (s.confirmed / s.total) * 100 : 0} className="h-1.5 flex-1" />
-                    <span className="text-[10px] font-mono text-muted-foreground">{s.confirmed}/{s.total}</span>
+                  <div className="flex items-center justify-between">
+                    <p className="text-sm font-medium">{s.label}</p>
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] font-mono text-muted-foreground">{s.captured}/{s.total} captured</span>
+                      {s.locked > 0 && (
+                        <span className="text-[10px] font-mono text-success flex items-center gap-0.5">
+                          <Lock className="h-2.5 w-2.5" />{s.locked}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-1 mt-1">
+                    <Progress value={s.total > 0 ? (s.captured / s.total) * 100 : 0} className="h-1.5 flex-1" />
                   </div>
                 </div>
               </CardContent>
