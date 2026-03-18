@@ -33,9 +33,7 @@ const InviteAccept = () => {
     const fetchInvite = async () => {
       if (!token) { setInviteError("Invalid invite link."); setInviteLoading(false); return; }
       const { data, error } = await supabase
-        .from("tour_invites")
-        .select("id, tour_id, email, role, used_at, expires_at, tour_name")
-        .eq("token", token)
+        .rpc("get_invite_preview", { _token: token })
         .maybeSingle();
 
       if (error || !data) {
