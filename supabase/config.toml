@@ -55,3 +55,7 @@ verify_jwt = false
 [functions.advance-venue-analyze]
 verify_jwt = false
 wall_clock_limit = 300
+
+[functions.advance-rider-analyze]
+verify_jwt = false
+wall_clock_limit = 300

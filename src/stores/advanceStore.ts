@@ -101,7 +101,37 @@ export interface AdvanceVenueDoc {
   processed_at: string | null;
 }
 
+export interface TourProductionDoc {
+  id: string;
+  tour_id: string;
+  file_name: string;
+  file_path: string;
+  file_type: string | null;
+  document_category: TourDocCategory;
+  uploaded_by: string | null;
+  uploaded_at: string;
+  processing_status: TourDocProcessingStatus;
+  processing_error: string | null;
+  processed_at: string | null;
+}
+
+export interface TourProductionExtraction {
+  id: string;
+  tour_id: string;
+  document_id: string;
+  extracted_data: Record<string, any>;
+  extraction_confidence: Record<string, any>;
+  processed_at: string;
+}
+
 export interface AdvanceVenueExtraction {
+  id: string;
+  show_advance_id: string;
+  document_id: string;
+  extracted_data: Record<string, any>;
+  extraction_confidence: Record<string, any>;
+  processed_at: string;
+}
   id: string;
   show_advance_id: string;
   document_id: string;
