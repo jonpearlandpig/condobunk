@@ -593,6 +593,42 @@ RULES:
     const foundFields = Object.keys(mergedData);
     const missingFields = allFieldKeys.filter(k => !foundFields.includes(k));
 
+    // Load tour production requirements for fit-gap analysis
+    let tourRequirementsSection = "";
+    try {
+      const { data: tourExtractions } = await adminClient
+        .from("tour_production_extractions")
+        .select("extracted_data")
+        .eq("tour_id", showAdv.tour_id);
+
+      if (tourExtractions?.length) {
+        // Merge all tour extractions (rider + rigging plot)
+        const mergedTourReqs: Record<string, any> = {};
+        for (const ext of tourExtractions) {
+          const data = ext.extracted_data as Record<string, any>;
+          for (const [category, fields] of Object.entries(data)) {
+            if (fields && typeof fields === "object") {
+              mergedTourReqs[category] = { ...(mergedTourReqs[category] || {}), ...fields };
+            }
+          }
+        }
+        tourRequirementsSection = `
+
+TOUR PRODUCTION REQUIREMENTS (from Production Rider / Rigging Plot):
+${JSON.stringify(mergedTourReqs, null, 2)}
+
+CRITICAL FIT-GAP ANALYSIS INSTRUCTIONS:
+- Compare EVERY tour requirement against venue capabilities
+- Flag RED when venue cannot meet a tour requirement (e.g., tour needs 400A but venue has 200A)
+- Flag YELLOW when venue capability is unconfirmed for a tour requirement
+- Flag GREEN when venue clearly meets a tour requirement
+- Draft advance questions should address gaps between tour needs and venue specs
+- Be specific: "Tour requires 79 rigging points at 2,000 lb each — venue has X points at Y lb capacity"`;
+      }
+    } catch (e) {
+      console.warn("Failed to load tour production requirements:", e);
+    }
+
     const intelligencePrompt = `You are a production advance intelligence analyst for live touring.
 
 Given extracted venue data from technical packets, generate an advance intelligence report.
@@ -604,14 +640,14 @@ VENUE: ${showAdv.venue_name || "Unknown"}
 
 MISSING FIELDS (not found in any document):
 ${missingFields.join(", ")}
-
+${tourRequirementsSection}
 RULES:
-- Assess operational fit of this venue for a standard touring production
-- Green lights: items clearly supported
-- Yellow flags: items needing confirmation or potentially tight
-- Red flags: likely conflicts, restrictions, or production risks
+- Assess operational fit of this venue for THIS SPECIFIC TOUR's production requirements
+- Green lights: items clearly supported / tour requirements met
+- Yellow flags: items needing confirmation or potentially tight vs tour requirements
+- Red flags: likely conflicts, restrictions, or production risks — especially where venue specs fall short of tour requirements
 - Missing/unknown: critical items not confirmed in any packet
-- Draft advance questions: ready-to-send questions for venue production contact
+- Draft advance questions: ready-to-send questions for venue production contact, prioritizing gaps between tour needs and venue capabilities
 - Draft internal notes: notes for TM/PM/LD/Audio/Video/Carp/Logistics
 - Be specific and actionable — no vague platitudes
 - Reference actual extracted values where relevant`;
