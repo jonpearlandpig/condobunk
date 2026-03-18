@@ -264,12 +264,12 @@ export default function AdvanceShow() {
           <p className="text-[10px] text-muted-foreground font-mono tracking-wider">YELLOW FLAGS</p>
         </CardContent></Card>
         <Card><CardContent className="py-3 px-4 text-center">
-          <p className="text-2xl font-bold font-mono text-success">{lockedCritical}/{totalCritical}</p>
-          <p className="text-[10px] text-muted-foreground font-mono tracking-wider">CRITICAL LOCKED</p>
+          <p className="text-2xl font-bold font-mono">{capturedFields}/{totalFields}</p>
+          <p className="text-[10px] text-muted-foreground font-mono tracking-wider">CAPTURED</p>
         </CardContent></Card>
         <Card><CardContent className="py-3 px-4 text-center">
-          <p className="text-2xl font-bold font-mono">{sources?.length || 0}</p>
-          <p className="text-[10px] text-muted-foreground font-mono tracking-wider">SOURCES</p>
+          <p className="text-2xl font-bold font-mono text-success">{confirmedLocked}/{totalFields}</p>
+          <p className="text-[10px] text-muted-foreground font-mono tracking-wider">LOCKED</p>
         </CardContent></Card>
       </div>
 
