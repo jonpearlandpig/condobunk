@@ -1,37 +1,39 @@
 
 
-# Tighten Reminder Cron to Every 5 Minutes
+# Fix: Venue Tech Pack PDF Extraction Failure
 
-## What Changes
-The cron job `send-event-reminders-every-15min` currently runs at `:00`, `:15`, `:30`, `:45`. We'll update it to run every 5 minutes (`:00`, `:05`, `:10`, ..., `:55`), so scheduled reminders fire within ~5 minutes of their target time instead of ~15.
+## Root Cause
+The `advance-venue-analyze` edge function uses a primitive regex-based PDF text extractor (`extractTextFromBinaryPdf`) that only handles uncompressed `Tj`/`TJ` text operators. Most modern PDFs (including the Bryce Jordan Center production guide) use compressed content streams (FlateDecode), CIDFont encodings, or CMap-based text. This produces empty/garbled text, so the AI receives nothing useful and returns `{}`.
 
-## Steps
+Meanwhile, the `extract-document` function already solves this correctly — it sends the raw PDF binary as base64 to Gemini's multimodal endpoint (`data:application/pdf;base64,...`), letting the AI read the PDF natively.
 
-1. **Unschedule the existing cron job** (`jobid: 2`, named `send-event-reminders-every-15min`)
-2. **Create a new cron job** with a `*/5 * * * *` schedule and an updated name (`send-event-reminders-every-5min`)
-3. **Update the reminder window** in `supabase/functions/send-event-reminders/index.ts` -- change the `+-7.5 minute` dedup window to `+-2.5 minutes` so event reminders don't double-fire on the tighter cadence
+## Fix
+**File: `supabase/functions/advance-venue-analyze/index.ts`**
 
-## Technical Detail
+1. **Remove** the `extractTextFromBinaryPdf` function entirely
+2. **For PDF files**, send the binary as base64 to the AI using the multimodal `image_url` content format (same pattern as `extract-document`), instead of trying to extract text first
+3. **For non-PDF files** (xlsx, txt), keep the existing text-based extraction path
+4. Use chunked base64 encoding (matching `extract-document`'s approach) to avoid stack size errors on large files
 
-**SQL (run via query, not migration -- contains project-specific keys):**
-```sql
-SELECT cron.unschedule('send-event-reminders-every-15min');
+### Specific code changes
 
-SELECT cron.schedule(
-  'send-event-reminders-every-5min',
-  '*/5 * * * *',
-  $$
-  SELECT net.http_post(
-    url := '...functions/v1/send-event-reminders',
-    headers := '...'::jsonb,
-    body := '{}'::jsonb
-  ) AS request_id;
-  $$
-);
-```
+- In the document processing loop (around line 365-388), for PDFs: convert file bytes to base64 instead of calling `extractTextFromBinaryPdf`
+- In the AI call (around line 412-427), switch to multimodal message format when we have base64 data:
+  ```
+  messages: [
+    { role: "system", content: extractionPrompt },
+    { role: "user", content: [
+        { type: "text", text: `Document: ${doc.file_name}` },
+        { type: "image_url", image_url: { url: `data:application/pdf;base64,${base64Data}` } },
+    ]}
+  ]
+  ```
+- Keep text-based fallback for xlsx/txt files
 
-**Edge function change (`send-event-reminders/index.ts`):**
-- Line with `reminderWindow - 7.5` / `reminderWindow + 7.5` changes to `reminderWindow - 2.5` / `reminderWindow + 2.5`
+This is the same proven pattern used by `extract-document` for the last several weeks.
 
-This is a minimal change -- two SQL statements and one line in the edge function.
+## No other changes needed
+- Database schema unchanged
+- Frontend unchanged  
+- Intelligence report generation (step 2 of the function) already works — it just needs actual extracted data to analyze
 
