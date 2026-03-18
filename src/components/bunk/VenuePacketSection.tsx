@@ -88,9 +88,11 @@ export default function VenuePacketSection({ showAdvanceId, tourId, onAnalysisCo
   };
 
   const analyzeMutation = useMutation({
-    mutationFn: async () => {
+    mutationFn: async (docIds?: string[]) => {
+      const body: Record<string, unknown> = { show_advance_id: showAdvanceId };
+      if (docIds?.length) body.document_ids = docIds;
       const { data, error } = await supabase.functions.invoke("advance-venue-analyze", {
-        body: { show_advance_id: showAdvanceId },
+        body,
       });
       if (error) throw error;
       return data;
