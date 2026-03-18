@@ -132,13 +132,6 @@ export interface AdvanceVenueExtraction {
   extraction_confidence: Record<string, any>;
   processed_at: string;
 }
-  id: string;
-  show_advance_id: string;
-  document_id: string;
-  extracted_data: Record<string, any>;
-  extraction_confidence: Record<string, any>;
-  processed_at: string;
-}
 
 export interface IntelligenceItem {
   text: string;
