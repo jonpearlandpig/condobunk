@@ -91,7 +91,7 @@ export default function AdvanceIntelligenceSection({ showAdvanceId }: Props) {
           Advance Intelligence
         </h2>
         <span className="text-[10px] text-muted-foreground">
-          Last analyzed {format(new Date(report.generated_at), "MMM d, h:mm a")}
+          Last analyzed {(() => { const d = new Date(report.generated_at); return isNaN(d.getTime()) ? "Unknown" : format(d, "MMM d, h:mm a"); })()}
         </span>
       </div>
 

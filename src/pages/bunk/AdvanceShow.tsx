@@ -397,7 +397,7 @@ export default function AdvanceShow() {
               >
                 <p className="text-sm font-medium">{s.source_title || s.source_type}</p>
                 <p className="text-[10px] text-muted-foreground mt-0.5">
-                  {s.source_type} · {format(new Date(s.created_at), "MMM d, h:mm a")}
+                  {s.source_type} · {(() => { const d = new Date(s.created_at); return isNaN(d.getTime()) ? "Unknown" : format(d, "MMM d, h:mm a"); })()}
                 </p>
               </button>
             ))}
