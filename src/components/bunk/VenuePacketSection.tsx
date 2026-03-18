@@ -51,6 +51,11 @@ export default function VenuePacketSection({ showAdvanceId, tourId, onAnalysisCo
       if (error) throw error;
       return data as unknown as AdvanceVenueDoc[];
     },
+    refetchInterval: (query) => {
+      const data = query.state.data as AdvanceVenueDoc[] | undefined;
+      const hasProcessing = data?.some(d => d.processing_status === "processing");
+      return hasProcessing ? 3000 : false;
+    },
   });
 
   const uploadFile = async (file: File) => {
@@ -101,6 +106,8 @@ export default function VenuePacketSection({ showAdvanceId, tourId, onAnalysisCo
       queryClient.invalidateQueries({ queryKey: ["advance-venue-docs", showAdvanceId] });
       queryClient.invalidateQueries({ queryKey: ["advance-intelligence", showAdvanceId] });
       queryClient.invalidateQueries({ queryKey: ["advance-venue-extractions", showAdvanceId] });
+      queryClient.invalidateQueries({ queryKey: ["advance-fields"] });
+      queryClient.invalidateQueries({ queryKey: ["advance-readiness-single"] });
       onAnalysisComplete?.();
       toast.success("Analysis complete", {
         description: `${data.docs_processed} docs processed${data.docs_failed ? `, ${data.docs_failed} failed` : ""}`,

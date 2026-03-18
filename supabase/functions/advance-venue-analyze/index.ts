@@ -471,6 +471,49 @@ RULES:
       }
     }
 
+    /* ── 5b. Map extracted data → advance_fields ── */
+    // Load all advance fields for this show
+    const { data: advanceFields } = await adminClient
+      .from("advance_fields")
+      .select("id, field_key, status, locked_boolean")
+      .eq("show_advance_id", show_advance_id);
+
+    if (advanceFields?.length) {
+      // Merge all extraction results into one map (last doc wins per key)
+      const mergedExtracted: Record<string, { value: string; confidence: string }> = {};
+      for (const result of extractionResults) {
+        for (const [key, val] of Object.entries(result.extracted_data as Record<string, any>)) {
+          if (val !== null && val !== undefined && val !== "") {
+            mergedExtracted[key] = { value: String(val), confidence: "medium" };
+          }
+        }
+      }
+
+      let fieldsUpdated = 0;
+      for (const field of advanceFields) {
+        // Skip confirmed+locked fields (human decisions preserved)
+        if (field.status === "confirmed" && field.locked_boolean) continue;
+
+        const extracted = mergedExtracted[field.field_key];
+        if (!extracted) continue;
+
+        const confScore = extracted.confidence === "high" ? 0.9 : extracted.confidence === "medium" ? 0.7 : 0.5;
+        const flagLevel = confScore >= 0.7 ? "none" : "yellow";
+
+        await adminClient.from("advance_fields")
+          .update({
+            current_value: extracted.value,
+            status: "needs_confirmation",
+            confidence_score: confScore,
+            flag_level: flagLevel,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", field.id);
+        fieldsUpdated++;
+      }
+      console.log(`Mapped ${fieldsUpdated} extracted values to advance_fields`);
+    }
+
     if (docsProcessed === 0) {
       return new Response(JSON.stringify({
         error: "All documents failed to process",
