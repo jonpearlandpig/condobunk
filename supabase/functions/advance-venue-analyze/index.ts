@@ -527,12 +527,30 @@ RULES:
         }
       }
 
+      // Build reverse alias map: template key → all extraction keys that map to it
+      const reverseAliases: Record<string, string[]> = {};
+      for (const [extractionKey, templateKey] of Object.entries(FIELD_KEY_ALIASES)) {
+        if (!reverseAliases[templateKey]) reverseAliases[templateKey] = [];
+        reverseAliases[templateKey].push(extractionKey);
+      }
+
       let fieldsUpdated = 0;
       for (const field of advanceFields) {
         // Skip confirmed+locked fields (human decisions preserved)
         if (field.status === "confirmed" && field.locked_boolean) continue;
 
-        const extracted = mergedExtracted[field.field_key];
+        // Try exact match first, then check aliases
+        let extracted = mergedExtracted[field.field_key];
+        if (!extracted) {
+          // Check if any extraction key aliases to this template field_key
+          const aliasKeys = reverseAliases[field.field_key] || [];
+          for (const ak of aliasKeys) {
+            if (mergedExtracted[ak]) {
+              extracted = mergedExtracted[ak];
+              break;
+            }
+          }
+        }
         if (!extracted) continue;
 
         const confScore = extracted.confidence === "high" ? 0.9 : extracted.confidence === "medium" ? 0.7 : 0.5;
@@ -549,7 +567,7 @@ RULES:
           .eq("id", field.id);
         fieldsUpdated++;
       }
-      console.log(`Mapped ${fieldsUpdated} extracted values to advance_fields`);
+      console.log(`Mapped ${fieldsUpdated} extracted values to advance_fields (of ${advanceFields.length} total)`);
     }
 
     if (docsProcessed === 0) {
