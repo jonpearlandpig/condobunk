@@ -2,11 +2,11 @@ import { useState } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import type { ShowAdvance, AdvanceField, AdvanceFlag, AdvanceSource, AdvanceReadiness } from "@/stores/advanceStore";
+import type { ShowAdvance, AdvanceField, AdvanceFlag, AdvanceSource, AdvanceReadiness, AdvanceVenueDoc, AdvanceIntelligenceReport } from "@/stores/advanceStore";
 import { format } from "date-fns";
 import {
   ArrowLeft, FileText, AlertTriangle, CheckCircle2, Upload,
-  Zap, ShieldAlert, FileOutput, Loader2, Lock, BookOpen,
+  Zap, ShieldAlert, FileOutput, Loader2, Lock, BookOpen, PackageOpen,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -15,6 +15,8 @@ import { Progress } from "@/components/ui/progress";
 import { Separator } from "@/components/ui/separator";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { toast } from "sonner";
+import VenuePacketSection from "@/components/bunk/VenuePacketSection";
+import AdvanceIntelligenceSection from "@/components/bunk/AdvanceIntelligenceSection";
 
 const SECTION_ORDER = [
   "EVENT_DETAILS", "PRODUCTION_CONTACT", "HOUSE_RIGGER_CONTACT", "SUMMARY",
