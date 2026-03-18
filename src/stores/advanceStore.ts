@@ -83,6 +83,8 @@ export interface AdvanceReadiness {
 }
 
 export type VenueDocCategory = "tech_packet" | "production_book" | "rigging_guide" | "venue_map" | "power_sheet" | "equipment_list";
+export type TourDocCategory = "production_rider" | "rigging_plot" | "input_list" | "patch_list";
+export type TourDocProcessingStatus = "uploaded" | "processing" | "complete" | "failed";
 export type VenueDocProcessingStatus = "uploaded" | "processing" | "complete" | "failed";
 
 export interface AdvanceVenueDoc {
@@ -97,6 +99,29 @@ export interface AdvanceVenueDoc {
   processing_status: VenueDocProcessingStatus;
   processing_error: string | null;
   processed_at: string | null;
+}
+
+export interface TourProductionDoc {
+  id: string;
+  tour_id: string;
+  file_name: string;
+  file_path: string;
+  file_type: string | null;
+  document_category: TourDocCategory;
+  uploaded_by: string | null;
+  uploaded_at: string;
+  processing_status: TourDocProcessingStatus;
+  processing_error: string | null;
+  processed_at: string | null;
+}
+
+export interface TourProductionExtraction {
+  id: string;
+  tour_id: string;
+  document_id: string;
+  extracted_data: Record<string, any>;
+  extraction_confidence: Record<string, any>;
+  processed_at: string;
 }
 
 export interface AdvanceVenueExtraction {
