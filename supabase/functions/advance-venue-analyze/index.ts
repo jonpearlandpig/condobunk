@@ -12,45 +12,74 @@ const corsHeaders = {
 const VENUE_SCHEMA_CATEGORIES = {
   venue_identity: [
     "venue_name", "venue_address", "venue_city", "venue_state",
-    "venue_phone", "venue_website",
+    "venue_phone", "venue_website", "venue_mode", "onsale_capacity",
   ],
   contacts: [
     "production_contact_name", "production_contact_phone", "production_contact_email",
-    "house_rigger_name", "house_rigger_phone", "house_rigger_email",
+    "production_contact_notes",
+    "house_rigger_name", "house_rigger_phone", "house_rigger_email", "house_rigger_notes",
     "general_manager_name", "technical_director_name",
     "box_office_contact", "security_contact", "catering_contact",
   ],
   access_logistics: [
     "dock_address", "dock_access_notes", "truck_limitations", "truck_parking",
-    "bus_parking", "load_in_path", "freight_elevator_notes",
+    "bus_parking", "bus_arrival_time", "load_in_path", "freight_elevator_notes",
     "shore_power_available", "catering_truck_power_notes",
   ],
   schedule_rules: [
+    "load_in_call_time", "show_call", "show_times", "chair_set", "labor_call_back",
     "standard_load_in_time", "curfew", "noise_restrictions", "local_labor_notes",
-    "union_house", "union_notes", "credentials_process", "after_hours_rules",
+    "union_house", "union_venue", "union_notes", "credentials_process", "after_hours_rules",
   ],
   stage_rigging: [
-    "stage_width", "stage_depth", "stage_height", "trim_height", "low_steel",
+    "stage_width", "stage_depth", "stage_height", "trim_height",
+    "low_steel", "distance_to_low_steel",
     "rigging_capacity", "rigging_notes", "rigging_submission_deadline",
+    "rigging_overlay_submitted", "venue_cad_received",
   ],
   power_technical: [
-    "shore_power", "stage_power", "audio_power_notes", "lighting_power_notes",
+    "shore_power", "shore_power_notes", "stage_power",
+    "audio_power_notes", "lighting_power_notes",
     "tie_lines", "house_comms", "internet_availability",
+    "co2_allowed", "co2_confirmed",
+    "forklift_5k_confirmed", "forklift_3k_confirmed",
   ],
   lighting_audio_video: [
     "house_followspots", "robo_spots", "house_console_audio", "house_console_lighting",
     "projection_available", "led_wall_notes", "video_input_notes", "camera_policy",
+    "followspot_notes",
   ],
   atmospherics: [
-    "haze_allowed", "pyro_allowed", "co2_allowed", "flame_allowed",
+    "haze_allowed", "pyro_allowed", "flame_allowed",
     "confetti_allowed", "fx_notes",
   ],
   hospitality: [
     "dressing_rooms", "laundry", "showers", "catering_space", "hospitality_notes",
+    "lunch_headcount", "dinner_headcount",
+    "house_electrician_catering_truck",
+  ],
+  labor: [
+    "labor_call", "labor_notes", "labor_estimate_received",
+  ],
+  settlement: [
+    "estimated_labor_cost", "estimated_rigging_cost", "estimated_forklift_cost",
+    "estimated_power_cost", "settlement_notes", "cost_risk_notes",
   ],
   emergency: [
     "emergency_access_notes", "medical_notes", "restricted_areas", "special_restrictions",
   ],
+};
+
+/* ── Alias map: extraction keys → template field keys ── */
+const FIELD_KEY_ALIASES: Record<string, string> = {
+  low_steel: "distance_to_low_steel",
+  union_house: "union_venue",
+  standard_load_in_time: "load_in_call_time",
+  co2_allowed: "co2_confirmed",
+  shore_power: "shore_power_notes",
+  shore_power_available: "shore_power_notes",
+  catering_truck_power_notes: "house_electrician_catering_truck",
+  local_labor_notes: "labor_notes",
 };
 
 const SCHEMA_DESCRIPTION = Object.entries(VENUE_SCHEMA_CATEGORIES)
