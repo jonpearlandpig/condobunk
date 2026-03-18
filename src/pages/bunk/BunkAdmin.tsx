@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from "react";
-import { Settings, RefreshCw, Plus, Trash2, Copy, CheckCircle, XCircle, Clock, Loader2, Users, Mail, Link, UserPlus, Send, Eye, MessageSquareText, Contact } from "lucide-react";
+import { useNavigate } from "react-router-dom";
+import { Settings, RefreshCw, Plus, Trash2, Copy, CheckCircle, XCircle, Clock, Loader2, Users, Mail, Link, UserPlus, Send, Eye, MessageSquareText, Contact, BookOpen, ChevronRight } from "lucide-react";
 import { TourTextDashboard } from "@/components/bunk/TourTextDashboard";
 import { TourTextInbox } from "@/components/bunk/TourTextInbox";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
