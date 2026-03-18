@@ -171,6 +171,7 @@ const PendingUpgradeRequests = ({ tourId, ownerId, userId }: { tourId: string; o
 const BunkAdmin = () => {
   const { selectedTourId, selectedTour, isDemoMode } = useTour();
   const { user } = useAuth();
+  const navigate = useNavigate();
   const [integrations, setIntegrations] = useState<Integration[]>([]);
   const [syncLogs, setSyncLogs] = useState<SyncLog[]>([]);
   const [members, setMembers] = useState<TourMember[]>([]);
