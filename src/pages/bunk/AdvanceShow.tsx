@@ -243,9 +243,12 @@ export default function AdvanceShow() {
               {readiness?.critical_unresolved_count || 0} critical unresolved · {readiness?.red_flag_open_count || 0} red flags open
             </p>
           </div>
-          <div className="text-right">
-            <p className="text-2xl font-bold font-mono">{confirmedPct}%</p>
-            <p className="text-[10px] text-muted-foreground">fields locked</p>
+          <div className="text-right space-y-0.5">
+            <p className="text-2xl font-bold font-mono">{capturedPct}%</p>
+            <p className="text-[10px] text-muted-foreground">captured</p>
+            {confirmedLocked > 0 && (
+              <p className="text-[10px] text-success font-mono">{confirmedPct}% locked</p>
+            )}
           </div>
         </CardContent>
       </Card>
