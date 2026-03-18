@@ -94,8 +94,9 @@ export default function VenuePacketSection({ showAdvanceId, tourId, onAnalysisCo
 
   const analyzeMutation = useMutation({
     mutationFn: async (docIds?: string[]) => {
+      const validDocIds = docIds?.filter((id): id is string => typeof id === "string" && id.trim().length > 0) ?? [];
       const body: Record<string, unknown> = { show_advance_id: showAdvanceId };
-      if (docIds?.length) body.document_ids = docIds;
+      if (validDocIds.length) body.document_ids = validDocIds;
       const { data, error } = await supabase.functions.invoke("advance-venue-analyze", {
         body,
       });
@@ -137,6 +138,9 @@ export default function VenuePacketSection({ showAdvanceId, tourId, onAnalysisCo
   const hasUnprocessed = docs?.some(d => d.processing_status === "uploaded" || d.processing_status === "failed");
   const hasComplete = docs?.some(d => d.processing_status === "complete");
   const isProcessing = docs?.some(d => d.processing_status === "processing") || analyzeMutation.isPending;
+  const rerunnableDocIds = docs
+    ?.map((doc) => doc.id)
+    .filter((id): id is string => typeof id === "string" && id.trim().length > 0) ?? [];
 
   return (
     <Card>
@@ -149,8 +153,8 @@ export default function VenuePacketSection({ showAdvanceId, tourId, onAnalysisCo
                 variant="ghost"
                 size="sm"
                 className="h-7 text-xs gap-1"
-                disabled={isProcessing}
-                onClick={() => analyzeMutation.mutate(docs?.map(d => d.id))}
+                disabled={isProcessing || rerunnableDocIds.length === 0}
+                onClick={() => analyzeMutation.mutate(rerunnableDocIds)}
               >
                 <RefreshCw className="h-3 w-3" />Re-run
               </Button>
