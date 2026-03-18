@@ -591,6 +591,17 @@ export default function AdvanceLedger() {
                       <span className="font-mono text-[10px] text-muted-foreground/50">{adv.tid}</span>
                     </div>
                   </div>
+                  {(() => {
+                    const fs = fieldStats.get(adv.id);
+                    const capturedPct = fs && fs.total > 0 ? Math.round((fs.captured / fs.total) * 100) : 0;
+                    return fs ? (
+                      <div className="flex flex-col items-end gap-0.5 shrink-0 min-w-[72px]">
+                        <span className="text-xs font-mono text-muted-foreground">{fs.captured}/{fs.total}</span>
+                        <Progress value={capturedPct} className="h-1.5 w-16" />
+                        <span className="text-[10px] text-muted-foreground/60">captured</span>
+                      </div>
+                    ) : null;
+                  })()}
                   {r && (
                     <div className="flex items-center gap-3 text-xs shrink-0">
                       {r.critical_unresolved_count > 0 && <span className="text-destructive font-mono">{r.critical_unresolved_count} critical</span>}
