@@ -143,7 +143,7 @@ export default function VenuePacketSection({ showAdvanceId, tourId, onAnalysisCo
                 size="sm"
                 className="h-7 text-xs gap-1"
                 disabled={isProcessing}
-                onClick={() => analyzeMutation.mutate()}
+                onClick={() => analyzeMutation.mutate(docs?.map(d => d.id))}
               >
                 <RefreshCw className="h-3 w-3" />Re-run
               </Button>
