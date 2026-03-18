@@ -209,36 +209,16 @@ const intelligenceTool = {
   },
 };
 
-/* ── Text extraction helpers ── */
+/* ── Chunked base64 encoding (avoids stack overflow on large files) ── */
 
-function extractTextFromBinaryPdf(bytes: Uint8Array): string {
-  // Simple text extraction from PDF streams
-  const decoder = new TextDecoder("latin1");
-  const raw = decoder.decode(bytes);
-  const textChunks: string[] = [];
-
-  // Extract text between BT...ET blocks
-  const btEtRegex = /BT\s([\s\S]*?)ET/g;
-  let match;
-  while ((match = btEtRegex.exec(raw)) !== null) {
-    const block = match[1];
-    const tjRegex = /\(([^)]*)\)\s*Tj/g;
-    let tjMatch;
-    while ((tjMatch = tjRegex.exec(block)) !== null) {
-      textChunks.push(tjMatch[1]);
-    }
-    const tjArrayRegex = /\[([^\]]*)\]\s*TJ/g;
-    let tjArrMatch;
-    while ((tjArrMatch = tjArrayRegex.exec(block)) !== null) {
-      const inner = tjArrMatch[1];
-      const parts = inner.match(/\(([^)]*)\)/g);
-      if (parts) {
-        textChunks.push(parts.map((p: string) => p.slice(1, -1)).join(""));
-      }
-    }
+function uint8ArrayToBase64(bytes: Uint8Array): string {
+  const CHUNK = 8192;
+  let binary = "";
+  for (let i = 0; i < bytes.length; i += CHUNK) {
+    const slice = bytes.subarray(i, Math.min(i + CHUNK, bytes.length));
+    binary += String.fromCharCode(...slice);
   }
-
-  return textChunks.join(" ").replace(/\s+/g, " ").trim();
+  return btoa(binary);
 }
 
 serve(async (req) => {
