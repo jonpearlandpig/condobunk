@@ -97,6 +97,32 @@ export default function AdvanceShow() {
     enabled: !!id,
   });
 
+  // Venue packet status for banner
+  const { data: venueDocs } = useQuery({
+    queryKey: ["advance-venue-docs", id],
+    queryFn: async () => {
+      const { data, error } = await supabase.from("advance_venue_docs").select("processing_status").eq("show_advance_id", id!);
+      if (error) throw error;
+      return data as { processing_status: string }[];
+    },
+    enabled: !!id,
+  });
+
+  const { data: intelReport } = useQuery({
+    queryKey: ["advance-intelligence", id],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("advance_intelligence_reports")
+        .select("red_flags, missing_unknown")
+        .eq("show_advance_id", id!)
+        .order("generated_at", { ascending: false })
+        .limit(1);
+      if (error) throw error;
+      return data?.[0] as { red_flags: any[]; missing_unknown: any[] } | undefined;
+    },
+    enabled: !!id,
+  });
+
   const parseMutation = useMutation({
     mutationFn: async (sourceId: string) => {
       const { data, error } = await supabase.functions.invoke("advance-parse", {
