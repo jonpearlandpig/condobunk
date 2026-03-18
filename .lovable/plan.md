@@ -1,37 +1,43 @@
 
 
-# Tighten Reminder Cron to Every 5 Minutes
+# Share Venue Tech Pack Analysis Across Same-Venue Shows
 
-## What Changes
-The cron job `send-event-reminders-every-15min` currently runs at `:00`, `:15`, `:30`, `:45`. We'll update it to run every 5 minutes (`:00`, `:05`, `:10`, ..., `:55`), so scheduled reminders fire within ~5 minutes of their target time instead of ~15.
+## Problem
+When a tour has multiple performances at the same venue (e.g., 3 nights at Hippodrome Theatre), you currently need to upload and analyze the tech pack separately for each show advance. The venue's physical specs don't change between performances.
 
-## Steps
+## Approach
+After the edge function finishes analyzing docs for one show advance, propagate the extracted field values and intelligence report to all other show advances at the same venue within the same tour.
 
-1. **Unschedule the existing cron job** (`jobid: 2`, named `send-event-reminders-every-15min`)
-2. **Create a new cron job** with a `*/5 * * * *` schedule and an updated name (`send-event-reminders-every-5min`)
-3. **Update the reminder window** in `supabase/functions/send-event-reminders/index.ts` -- change the `+-7.5 minute` dedup window to `+-2.5 minutes` so event reminders don't double-fire on the tighter cadence
+### Changes
 
-## Technical Detail
+**`supabase/functions/advance-venue-analyze/index.ts`** (single file change):
 
-**SQL (run via query, not migration -- contains project-specific keys):**
-```sql
-SELECT cron.unschedule('send-event-reminders-every-15min');
+After the field mapping step (line ~571) and after the intelligence report upsert (line ~694), add a propagation step:
 
-SELECT cron.schedule(
-  'send-event-reminders-every-5min',
-  '*/5 * * * *',
-  $$
-  SELECT net.http_post(
-    url := '...functions/v1/send-event-reminders',
-    headers := '...'::jsonb,
-    body := '{}'::jsonb
-  ) AS request_id;
-  $$
-);
-```
+1. **Find sibling show advances** at the same venue within the same tour:
+   ```sql
+   SELECT id FROM show_advances
+   WHERE tour_id = $tour_id
+     AND venue_name = $venue_name
+     AND id != $current_show_advance_id
+   ```
 
-**Edge function change (`send-event-reminders/index.ts`):**
-- Line with `reminderWindow - 7.5` / `reminderWindow + 7.5` changes to `reminderWindow - 2.5` / `reminderWindow + 2.5`
+2. **Copy field values** to sibling advances: For each sibling, load its `advance_fields`, and for any field that is still `not_provided` (never touched), copy over `current_value`, `status`, `confidence_score`, and `flag_level` from the source show's fields. Skip any field that is already populated, confirmed, or locked — preserving per-show human overrides.
 
-This is a minimal change -- two SQL statements and one line in the edge function.
+3. **Copy venue docs references**: Insert matching `advance_venue_docs` rows for siblings (pointing to same `file_path` in storage) so the docs appear in their UI without re-upload. Use `ON CONFLICT DO NOTHING` logic by checking existing file paths.
+
+4. **Copy extractions**: Insert `advance_venue_extractions` rows for siblings referencing the same document data.
+
+5. **Copy intelligence report**: Upsert the same intelligence report to sibling advances, preserving any existing `edited_questions`/`edited_internal_notes` on siblings.
+
+6. **Log propagation**: Add a decision log entry on each sibling noting "Venue data propagated from [source show date]".
+
+### Key rules
+- Only propagate to shows with the **same `venue_name`** in the **same `tour_id`**
+- Never overwrite fields that already have values (`current_value IS NOT NULL`) or are confirmed/locked
+- Venue-specific fields only (all 8 sections are venue-scoped, so this is safe)
+- Show-specific fields like `day_and_date` are excluded by the "don't overwrite populated" rule since they're seeded per-show
+
+### No frontend changes needed
+The existing UI will automatically reflect the propagated data — fields will show as "captured" via the progress bars we just built, and the venue packet section will show the shared docs.
 
