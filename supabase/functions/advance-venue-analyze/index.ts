@@ -255,6 +255,12 @@ serve(async (req) => {
       });
     }
 
+    const rawDocumentIds = Array.isArray(document_ids) ? document_ids : [];
+    const validDocumentIds = rawDocumentIds.filter(
+      (id): id is string => typeof id === "string" && id.trim().length > 0,
+    );
+    const hadInvalidDocumentIds = rawDocumentIds.length > 0 && validDocumentIds.length === 0;
+
     const adminClient = createClient(supabaseUrl, serviceRole);
 
     /* ── 3. Verify membership ── */
@@ -274,7 +280,7 @@ serve(async (req) => {
         status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
-    if (!["TA", "MGMT"].includes(membership[0].role)) {
+    if (![("TA"), ("MGMT")].includes(membership[0].role)) {
       return new Response(JSON.stringify({ error: "Admin or management role required" }), {
         status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
@@ -286,8 +292,11 @@ serve(async (req) => {
       .select("*")
       .eq("show_advance_id", show_advance_id);
 
-    if (document_ids?.length) {
-      docsQuery = docsQuery.in("id", document_ids);
+    if (validDocumentIds.length) {
+      docsQuery = docsQuery.in("id", validDocumentIds);
+    } else if (hadInvalidDocumentIds) {
+      console.warn("Received invalid document_ids payload; falling back to re-runnable docs", rawDocumentIds);
+      docsQuery = docsQuery.in("processing_status", ["uploaded", "failed", "complete"]);
     } else {
       docsQuery = docsQuery.in("processing_status", ["uploaded", "failed"]);
     }
