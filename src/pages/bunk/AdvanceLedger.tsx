@@ -4,7 +4,8 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { useTour } from "@/hooks/useTour";
-import type { ShowAdvance, AdvanceReadiness } from "@/stores/advanceStore";
+import type { ShowAdvance, AdvanceReadiness, AdvanceField } from "@/stores/advanceStore";
+import { Progress } from "@/components/ui/progress";
 import { format } from "date-fns";
 import {
   Plus, CalendarDays, MapPin, ChevronRight, Loader2, BookOpen,
@@ -468,6 +469,35 @@ export default function AdvanceLedger() {
     enabled: !!tourId,
   });
 
+  // Fetch field counts for captured/locked progress on list cards
+  const { data: allFields } = useQuery({
+    queryKey: ["advance-fields-summary", tourId],
+    queryFn: async () => {
+      if (!tourId || !advances?.length) return [];
+      const ids = advances.map((a) => a.id);
+      const { data, error } = await supabase
+        .from("advance_fields")
+        .select("show_advance_id, current_value, status, locked_boolean")
+        .in("show_advance_id", ids);
+      if (error) throw error;
+      return data as Pick<AdvanceField, "show_advance_id" | "current_value" | "status" | "locked_boolean">[];
+    },
+    enabled: !!tourId && !!advances?.length,
+  });
+
+  const fieldStats = useMemo(() => {
+    const map = new Map<string, { total: number; captured: number; locked: number }>();
+    if (!allFields) return map;
+    for (const f of allFields) {
+      let s = map.get(f.show_advance_id);
+      if (!s) { s = { total: 0, captured: 0, locked: 0 }; map.set(f.show_advance_id, s); }
+      s.total++;
+      if (f.current_value != null && f.current_value !== "") s.captured++;
+      if (f.status === "confirmed" && f.locked_boolean) s.locked++;
+    }
+    return map;
+  }, [allFields]);
+
   const readinessMap = new Map(readiness?.map((r) => [r.show_advance_id, r]));
 
   const createMutation = useMutation({
@@ -561,6 +591,17 @@ export default function AdvanceLedger() {
                       <span className="font-mono text-[10px] text-muted-foreground/50">{adv.tid}</span>
                     </div>
                   </div>
+                  {(() => {
+                    const fs = fieldStats.get(adv.id);
+                    const capturedPct = fs && fs.total > 0 ? Math.round((fs.captured / fs.total) * 100) : 0;
+                    return fs ? (
+                      <div className="flex flex-col items-end gap-0.5 shrink-0 min-w-[72px]">
+                        <span className="text-xs font-mono text-muted-foreground">{fs.captured}/{fs.total}</span>
+                        <Progress value={capturedPct} className="h-1.5 w-16" />
+                        <span className="text-[10px] text-muted-foreground/60">captured</span>
+                      </div>
+                    ) : null;
+                  })()}
                   {r && (
                     <div className="flex items-center gap-3 text-xs shrink-0">
                       {r.critical_unresolved_count > 0 && <span className="text-destructive font-mono">{r.critical_unresolved_count} critical</span>}
