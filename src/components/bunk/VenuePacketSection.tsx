@@ -154,7 +154,7 @@ export default function VenuePacketSection({ showAdvanceId, tourId, onAnalysisCo
                 size="sm"
                 className="h-7 text-xs gap-1"
                 disabled={isProcessing || !docs?.length}
-                onClick={() => analyzeMutation.mutate()}
+                onClick={() => analyzeMutation.mutate(undefined)}
               >
                 {isProcessing ? <Loader2 className="h-3 w-3 animate-spin" /> : <Zap className="h-3 w-3" />}
                 {isProcessing ? "Analyzing..." : "Run TELA Analysis"}
