@@ -51,6 +51,11 @@ export default function VenuePacketSection({ showAdvanceId, tourId, onAnalysisCo
       if (error) throw error;
       return data as unknown as AdvanceVenueDoc[];
     },
+    refetchInterval: (query) => {
+      const data = query.state.data as AdvanceVenueDoc[] | undefined;
+      const hasProcessing = data?.some(d => d.processing_status === "processing");
+      return hasProcessing ? 3000 : false;
+    },
   });
 
   const uploadFile = async (file: File) => {
