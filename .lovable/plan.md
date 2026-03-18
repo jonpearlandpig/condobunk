@@ -1,37 +1,44 @@
 
 
-# Tighten Reminder Cron to Every 5 Minutes
+# Fix: Venue Packet Upload RLS Failure
 
-## What Changes
-The cron job `send-event-reminders-every-15min` currently runs at `:00`, `:15`, `:30`, `:45`. We'll update it to run every 5 minutes (`:00`, `:05`, `:10`, ..., `:55`), so scheduled reminders fire within ~5 minutes of their target time instead of ~15.
+## Root Cause
 
-## Steps
+The storage policy on `document-files` expects the **first folder** in the file path to be a `tour_id` (line 28: `tm.tour_id::text = (storage.foldername(name))[1]`). But the upload path is `advance-packets/{show_advance_id}/...` — a show_advance_id, not a tour_id. The policy match fails, blocking the upload.
 
-1. **Unschedule the existing cron job** (`jobid: 2`, named `send-event-reminders-every-15min`)
-2. **Create a new cron job** with a `*/5 * * * *` schedule and an updated name (`send-event-reminders-every-5min`)
-3. **Update the reminder window** in `supabase/functions/send-event-reminders/index.ts` -- change the `+-7.5 minute` dedup window to `+-2.5 minutes` so event reminders don't double-fire on the tighter cadence
+There may also be a secondary issue: the `advance_venue_docs` table INSERT doesn't set `uploaded_by`, which is nullable so it won't fail, but should be set for provenance.
 
-## Technical Detail
+## Fix
 
-**SQL (run via query, not migration -- contains project-specific keys):**
-```sql
-SELECT cron.unschedule('send-event-reminders-every-15min');
+### 1. Change the upload path to use `{tour_id}` as the first folder
 
-SELECT cron.schedule(
-  'send-event-reminders-every-5min',
-  '*/5 * * * *',
-  $$
-  SELECT net.http_post(
-    url := '...functions/v1/send-event-reminders',
-    headers := '...'::jsonb,
-    body := '{}'::jsonb
-  ) AS request_id;
-  $$
-);
+In `VenuePacketSection.tsx`, the component needs access to the `tour_id` for the show advance. It can either:
+- Accept `tourId` as a prop (preferred — the parent `AdvanceShow.tsx` already fetches the show which has `tour_id`)
+- Or look it up from the show advance record
+
+Then change the file path from:
+```
+advance-packets/{showAdvanceId}/{timestamp}_{filename}
+```
+to:
+```
+{tourId}/advance-packets/{showAdvanceId}/{timestamp}_{filename}
 ```
 
-**Edge function change (`send-event-reminders/index.ts`):**
-- Line with `reminderWindow - 7.5` / `reminderWindow + 7.5` changes to `reminderWindow - 2.5` / `reminderWindow + 2.5`
+This satisfies the existing storage policy without any migration.
 
-This is a minimal change -- two SQL statements and one line in the edge function.
+### 2. Pass `tourId` from `AdvanceShow.tsx` to `VenuePacketSection`
+
+The parent already has `show.tour_id`. Add it as a prop.
+
+### 3. Set `uploaded_by` on insert
+
+Add the current user's ID to the `advance_venue_docs` insert for provenance tracking.
+
+## Files Changed
+
+- **`src/components/bunk/VenuePacketSection.tsx`**: Accept `tourId` prop, update file path to `{tourId}/advance-packets/...`, set `uploaded_by` on insert
+- **`src/pages/bunk/AdvanceShow.tsx`**: Pass `tourId={show.tour_id}` to `VenuePacketSection`
+
+No migrations needed.
 
