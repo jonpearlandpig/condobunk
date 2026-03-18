@@ -707,6 +707,185 @@ RULES:
       owner_operator: "TELA",
     });
 
+    /* ── 8. Propagate to sibling show advances at same venue ── */
+    if (showAdv.venue_name) {
+      try {
+        const { data: siblings } = await adminClient
+          .from("show_advances")
+          .select("id, event_date")
+          .eq("tour_id", showAdv.tour_id)
+          .eq("venue_name", showAdv.venue_name)
+          .neq("id", show_advance_id);
+
+        if (siblings?.length) {
+          console.log(`Propagating venue data to ${siblings.length} sibling show(s) at ${showAdv.venue_name}`);
+
+          // Load source show's current advance_fields (the ones we just updated)
+          const { data: sourceFields } = await adminClient
+            .from("advance_fields")
+            .select("field_key, section_key, current_value, status, confidence_score, flag_level, canonical_label, section_criticality, field_criticality, money_sensitive_boolean")
+            .eq("show_advance_id", show_advance_id);
+
+          // Only propagate fields that have values
+          const populatedSourceFields = (sourceFields || []).filter(
+            (f: any) => f.current_value != null && f.current_value !== ""
+          );
+
+          // Load all docs for this show advance (to copy references)
+          const { data: sourceDocs } = await adminClient
+            .from("advance_venue_docs")
+            .select("*")
+            .eq("show_advance_id", show_advance_id)
+            .eq("processing_status", "complete");
+
+          // Load all extractions for this show advance
+          const { data: sourceExtractions } = await adminClient
+            .from("advance_venue_extractions")
+            .select("*")
+            .eq("show_advance_id", show_advance_id);
+
+          // Load source intelligence report
+          const { data: sourceIntel } = await adminClient
+            .from("advance_intelligence_reports")
+            .select("*")
+            .eq("show_advance_id", show_advance_id)
+            .limit(1);
+
+          const sourceEvent = showAdv.event_date || "source show";
+
+          for (const sibling of siblings) {
+            // 8a. Copy field values — only fill not_provided, non-locked fields
+            if (populatedSourceFields.length) {
+              const { data: siblingFields } = await adminClient
+                .from("advance_fields")
+                .select("id, field_key, current_value, status, locked_boolean")
+                .eq("show_advance_id", sibling.id);
+
+              if (siblingFields?.length) {
+                const siblingMap = new Map(siblingFields.map((f: any) => [f.field_key, f]));
+                let sibFieldsUpdated = 0;
+
+                for (const src of populatedSourceFields) {
+                  const sib = siblingMap.get(src.field_key);
+                  if (!sib) continue;
+                  // Skip if sibling field is already populated, confirmed, or locked
+                  if (sib.current_value != null && sib.current_value !== "") continue;
+                  if (sib.status === "confirmed" || sib.locked_boolean) continue;
+
+                  await adminClient.from("advance_fields")
+                    .update({
+                      current_value: src.current_value,
+                      status: src.status,
+                      confidence_score: src.confidence_score,
+                      flag_level: src.flag_level,
+                      updated_at: new Date().toISOString(),
+                    })
+                    .eq("id", sib.id);
+                  sibFieldsUpdated++;
+                }
+                console.log(`Propagated ${sibFieldsUpdated} field values to sibling ${sibling.id}`);
+              }
+            }
+
+            // 8b. Copy venue doc references (same file_path, different show_advance_id)
+            if (sourceDocs?.length) {
+              for (const srcDoc of sourceDocs) {
+                // Check if this file_path already exists for this sibling
+                const { data: existingDoc } = await adminClient
+                  .from("advance_venue_docs")
+                  .select("id")
+                  .eq("show_advance_id", sibling.id)
+                  .eq("file_path", srcDoc.file_path)
+                  .limit(1);
+
+                if (!existingDoc?.length) {
+                  const { data: newDoc } = await adminClient
+                    .from("advance_venue_docs")
+                    .insert({
+                      show_advance_id: sibling.id,
+                      file_name: srcDoc.file_name,
+                      file_path: srcDoc.file_path,
+                      file_type: srcDoc.file_type,
+                      document_category: srcDoc.document_category,
+                      processing_status: "complete",
+                      processed_at: srcDoc.processed_at,
+                      uploaded_by: srcDoc.uploaded_by,
+                    })
+                    .select("id")
+                    .single();
+
+                  // 8c. Copy extractions for this doc
+                  if (newDoc && sourceExtractions?.length) {
+                    const matchingExtractions = sourceExtractions.filter(
+                      (e: any) => e.document_id === srcDoc.id
+                    );
+                    for (const ext of matchingExtractions) {
+                      await adminClient.from("advance_venue_extractions").insert({
+                        show_advance_id: sibling.id,
+                        document_id: newDoc.id,
+                        extracted_data: ext.extracted_data,
+                        extraction_confidence: ext.extraction_confidence,
+                      });
+                    }
+                  }
+                }
+              }
+            }
+
+            // 8d. Copy intelligence report (preserve sibling's edited_* columns)
+            if (sourceIntel?.length) {
+              const src = sourceIntel[0];
+              const { data: existingSibIntel } = await adminClient
+                .from("advance_intelligence_reports")
+                .select("id, edited_questions, edited_internal_notes")
+                .eq("show_advance_id", sibling.id)
+                .limit(1);
+
+              const intelPayload = {
+                show_advance_id: sibling.id,
+                venue_capability_summary: src.venue_capability_summary,
+                comparison_results: src.comparison_results,
+                green_lights: src.green_lights,
+                yellow_flags: src.yellow_flags,
+                red_flags: src.red_flags,
+                missing_unknown: src.missing_unknown,
+                draft_advance_questions: src.draft_advance_questions,
+                draft_internal_notes: src.draft_internal_notes,
+                generated_at: new Date().toISOString(),
+                updated_at: new Date().toISOString(),
+                generated_by: userId,
+              };
+
+              if (existingSibIntel?.length) {
+                await adminClient.from("advance_intelligence_reports")
+                  .update(intelPayload)
+                  .eq("id", existingSibIntel[0].id);
+              } else {
+                await adminClient.from("advance_intelligence_reports")
+                  .insert(intelPayload);
+              }
+            }
+
+            // 8e. Log propagation in sibling's decision log
+            await adminClient.from("advance_decision_log").insert({
+              show_advance_id: sibling.id,
+              tai_d: `TAID-PROP-${Date.now()}`,
+              action_type: "source_added",
+              field_key: null,
+              prior_value: null,
+              new_value: `Venue data propagated from ${sourceEvent}`,
+              rationale: `Same venue (${showAdv.venue_name}) — tech pack data shared across performances`,
+              created_by: userId,
+              owner_operator: "TELA",
+            });
+          }
+        }
+      } catch (propErr: any) {
+        console.error("Venue propagation error (non-fatal):", propErr?.message);
+        // Non-fatal — the source show still succeeded
+      }
+    }
+
     return new Response(JSON.stringify({
       docs_processed: docsProcessed,
       docs_failed: docsFailed,
