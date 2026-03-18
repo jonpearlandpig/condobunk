@@ -58,7 +58,7 @@ export default function VenuePacketSection({ showAdvanceId, tourId, onAnalysisCo
     try {
       const timestamp = Date.now();
       const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
-      const filePath = `advance-packets/${showAdvanceId}/${timestamp}_${safeName}`;
+      const filePath = `${tourId}/advance-packets/${showAdvanceId}/${timestamp}_${safeName}`;
 
       const { error: uploadErr } = await supabase.storage
         .from("document-files")
