@@ -469,6 +469,35 @@ export default function AdvanceLedger() {
     enabled: !!tourId,
   });
 
+  // Fetch field counts for captured/locked progress on list cards
+  const { data: allFields } = useQuery({
+    queryKey: ["advance-fields-summary", tourId],
+    queryFn: async () => {
+      if (!tourId || !advances?.length) return [];
+      const ids = advances.map((a) => a.id);
+      const { data, error } = await supabase
+        .from("advance_fields")
+        .select("show_advance_id, current_value, status, locked_boolean")
+        .in("show_advance_id", ids);
+      if (error) throw error;
+      return data as Pick<AdvanceField, "show_advance_id" | "current_value" | "status" | "locked_boolean">[];
+    },
+    enabled: !!tourId && !!advances?.length,
+  });
+
+  const fieldStats = useMemo(() => {
+    const map = new Map<string, { total: number; captured: number; locked: number }>();
+    if (!allFields) return map;
+    for (const f of allFields) {
+      let s = map.get(f.show_advance_id);
+      if (!s) { s = { total: 0, captured: 0, locked: 0 }; map.set(f.show_advance_id, s); }
+      s.total++;
+      if (f.current_value != null && f.current_value !== "") s.captured++;
+      if (f.status === "confirmed" && f.locked_boolean) s.locked++;
+    }
+    return map;
+  }, [allFields]);
+
   const readinessMap = new Map(readiness?.map((r) => [r.show_advance_id, r]));
 
   const createMutation = useMutation({
