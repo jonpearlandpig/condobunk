@@ -111,6 +111,9 @@ export const TourTextInbox = ({ tourId }: { tourId: string }) => {
         },
         (payload) => {
           const newMsg = payload.new as InboundMsg;
+          // Only prepend if the message falls within the active time-range window
+          const windowStart = Date.now() - hours * 3600000;
+          if (new Date(newMsg.created_at).getTime() < windowStart) return;
           newMsgIds.current.add(newMsg.id);
           setMessages((prev) => [newMsg, ...prev]);
           // Clear animation after 3s
@@ -124,7 +127,7 @@ export const TourTextInbox = ({ tourId }: { tourId: string }) => {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [tourId]);
+  }, [tourId, hours]);
 
   // Filter by category
   const filtered = activeCategory === "all"
@@ -145,14 +148,22 @@ export const TourTextInbox = ({ tourId }: { tourId: string }) => {
   const msgsLastHour = messages.filter((m) => now - new Date(m.created_at).getTime() < 3600000).length;
   const topCategory = Object.entries(categoryCounts).sort((a, b) => b[1] - a[1])[0];
 
-  // Find paired outbound reply for a message
+  // Pre-index outbounds by normalized phone for O(1) reply lookup
+  const outboundsByPhone = new Map<string, OutboundMsg[]>();
+  for (const o of outbounds) {
+    const key = o.to_phone.replace(/\D/g, "").slice(-10);
+    if (!outboundsByPhone.has(key)) outboundsByPhone.set(key, []);
+    outboundsByPhone.get(key)!.push(o);
+  }
+
+  // Find paired outbound reply for a message — O(1) map lookup instead of O(n) scan
   const findReply = (msg: InboundMsg): OutboundMsg | null => {
     const phone = msg.from_phone.replace(/\D/g, "").slice(-10);
     const msgTime = new Date(msg.created_at).getTime();
-    return outbounds.find((o) => {
-      const oPhone = o.to_phone.replace(/\D/g, "").slice(-10);
+    const candidates = outboundsByPhone.get(phone) || [];
+    return candidates.find((o) => {
       const oTime = new Date(o.created_at).getTime();
-      return oPhone === phone && oTime > msgTime && oTime - msgTime < 300000; // within 5 min
+      return oTime > msgTime && oTime - msgTime < 300000; // within 5 min
     }) || null;
   };
 

@@ -556,7 +556,7 @@ async function matchPhoneToTour(
     .select("tour_id, name, role, scope, phone, tours!inner(id, status)")
     .eq("scope", "TOUR")
     .eq("tours.status", "ACTIVE")
-    .not("phone", "is", null);
+    .like("phone", `%${normalized}`);
 
   if (matchedContacts) {
     const phoneMatches = matchedContacts.filter((c: any) => {
@@ -587,7 +587,7 @@ async function matchPhoneToTour(
   const { data: profileMatch } = await admin
     .from("profiles")
     .select("id, display_name, phone")
-    .not("phone", "is", null);
+    .like("phone", `%${normalized}`);
 
   if (profileMatch) {
     for (const profile of profileMatch) {

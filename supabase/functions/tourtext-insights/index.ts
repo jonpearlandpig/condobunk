@@ -135,9 +135,11 @@ Deno.serve(async (req) => {
     let clusters: any[] = [];
 
     if (inbound.length >= 3 && LOVABLE_API_KEY) {
-      const questions = inbound.map((m: any) => m.message_text).join("\n- ");
+      // Cap at 100 messages and truncate each to 200 chars to keep the prompt within model limits
+      const sampleMessages = inbound.slice(0, 100);
+      const questions = sampleMessages.map((m: any) => m.message_text.slice(0, 200)).join("\n- ");
 
-      const clusterPrompt = `You are analyzing TourText SMS inquiries from touring crew members. Below are ${inbound.length} questions received in the last ${hours} hours.
+      const clusterPrompt = `You are analyzing TourText SMS inquiries from touring crew members. Below are ${sampleMessages.length} questions received in the last ${hours} hours.
 
 Group these questions by semantic similarity into topic clusters. For each cluster:
 1. Name the topic concisely (2-5 words)
