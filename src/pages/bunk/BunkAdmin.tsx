@@ -88,11 +88,11 @@ const PendingUpgradeRequests = ({ tourId, ownerId, userId }: { tourId: string; o
     if (!tourId || !isOwner) return;
     setLoadingReqs(true);
     const { data } = await supabase
-      .from("upgrade_requests" as any)
+      .from("upgrade_requests")
       .select("*")
       .eq("tour_id", tourId)
       .order("requested_at", { ascending: false });
-    setRequests((data as any[]) || []);
+    setRequests(data || []);
     setLoadingReqs(false);
   }, [tourId, isOwner]);
 
@@ -104,13 +104,13 @@ const PendingUpgradeRequests = ({ tourId, ownerId, userId }: { tourId: string; o
   const resolved = requests.filter((r: any) => r.status !== "PENDING");
 
   const handleApprove = async (requestId: string) => {
-    const { error } = await supabase.rpc("approve_upgrade_request" as any, { _request_id: requestId });
+    const { error } = await supabase.rpc("approve_upgrade_request", { _request_id: requestId });
     if (error) toast.error(error.message);
     else { toast.success("User upgraded to full access!"); loadRequests(); }
   };
 
   const handleDeny = async (requestId: string) => {
-    const { error } = await supabase.rpc("deny_upgrade_request" as any, { _request_id: requestId });
+    const { error } = await supabase.rpc("deny_upgrade_request", { _request_id: requestId });
     if (error) toast.error(error.message);
     else { toast.success("Request denied"); loadRequests(); }
   };
@@ -993,11 +993,11 @@ const DemoUsersSection = () => {
     const load = async () => {
       setLoading(true);
       const { data } = await supabase
-        .from("demo_activations" as any)
+        .from("demo_activations")
         .select("*")
         .order("activated_at", { ascending: false })
         .limit(50);
-      setDemoUsers((data as any[]) || []);
+      setDemoUsers(data || []);
       setLoading(false);
     };
     load();

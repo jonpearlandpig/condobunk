@@ -32,8 +32,8 @@ const SiteContact = () => {
   const onSubmit = async (values: FormValues) => {
     setSubmitting(true);
     const { error } = await supabase
-      .from("site_inquiries" as any)
-      .insert([values] as any);
+      .from("site_inquiries")
+      .insert([values]);
 
     setSubmitting(false);
     if (error) {

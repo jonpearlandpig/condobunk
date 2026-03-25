@@ -26,6 +26,7 @@ import AdvanceSources from "./pages/bunk/AdvanceSources";
 import AdvanceConflicts from "./pages/bunk/AdvanceConflicts";
 import AdvanceExport from "./pages/bunk/AdvanceExport";
 import NotFound from "./pages/NotFound";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
 import SiteLayout from "./components/site/SiteLayout";
 import SiteLanding from "./pages/site/SiteLanding";
 import SiteFeatures from "./pages/site/SiteFeatures";
@@ -33,7 +34,15 @@ import SiteAbout from "./pages/site/SiteAbout";
 import SitePricing from "./pages/site/SitePricing";
 import SiteContact from "./pages/site/SiteContact";
 
-const queryClient = new QueryClient();
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      staleTime: 30_000,
+      retry: 1,
+      refetchOnWindowFocus: false,
+    },
+  },
+});
 
 const RootRedirect = () => {
   // If there are auth params in the URL (OAuth callback), let Supabase process them
@@ -65,7 +74,9 @@ const App = () => (
               path="/bunk"
               element={
                 <ProtectedRoute>
-                  <BunkLayout />
+                  <ErrorBoundary>
+                    <BunkLayout />
+                  </ErrorBoundary>
                 </ProtectedRoute>
               }
             >
@@ -87,7 +98,6 @@ const App = () => (
               <Route path="advance/:id/conflicts" element={<AdvanceConflicts />} />
               <Route path="advance/:id/export" element={<AdvanceExport />} />
             </Route>
-            <Route path="*" element={<NotFound />} />
             <Route path="/site" element={<SiteLayout />}>
               <Route index element={<SiteLanding />} />
               <Route path="features" element={<SiteFeatures />} />
@@ -95,6 +105,7 @@ const App = () => (
               <Route path="pricing" element={<SitePricing />} />
               <Route path="contact" element={<SiteContact />} />
             </Route>
+            <Route path="*" element={<NotFound />} />
           </Routes>
         </AuthProvider>
       </BrowserRouter>

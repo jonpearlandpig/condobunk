@@ -63,12 +63,12 @@ const BunkChat = () => {
       // Load messages
       (async () => {
         const { data } = await supabase
-          .from("tela_messages" as any)
+          .from("tela_messages")
           .select("id, role, content, created_at")
           .eq("thread_id", threadId)
           .order("created_at", { ascending: true });
         if (data) {
-          setMessages((data as any[]).map((m) => ({ role: m.role, content: m.content, id: m.id })));
+          setMessages(data.map((m) => ({ role: m.role as Msg["role"], content: m.content, id: m.id })));
         }
       })();
     } else if (!threadId) {
@@ -105,14 +105,14 @@ const BunkChat = () => {
 
     // Check if title is still the default (truncated first user message)
     const { data: thread } = await supabase
-      .from("tela_threads" as any)
+      .from("tela_threads")
       .select("title")
       .eq("id", threadId)
       .maybeSingle();
     if (!thread) return;
     const firstUserMsg = msgs.find((m) => m.role === "user");
     const defaultTitle = firstUserMsg?.content.trim().slice(0, 60) || "New conversation";
-    if ((thread as any).title !== defaultTitle && (thread as any).title !== "New conversation") return;
+    if (thread.title !== defaultTitle && thread.title !== "New conversation") return;
 
     // Fire-and-forget
     const url = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/generate-thread-title`;
@@ -149,11 +149,11 @@ const BunkChat = () => {
   const saveMessage = useCallback(async (threadId: string, role: string, content: string): Promise<string | null> => {
     const { data, error } = await supabase
       .from("tela_messages" as any)
-      .insert({ thread_id: threadId, role, content } as any)
+      .insert({ thread_id: threadId, role, content })
       .select("id")
       .single();
     if (error) { console.error("[tela_messages] save error:", error); return null; }
-    return (data as any).id;
+    return data.id;
   }, []);
 
   const sendMessage = useCallback(async (text: string) => {

@@ -70,18 +70,18 @@ export const GuestListManager = ({ tourId }: GuestListManagerProps) => {
     setLoading(true);
     const [allotRes, reqRes] = await Promise.all([
       supabase
-        .from("guest_list_allotments" as any)
+        .from("guest_list_allotments")
         .select("*")
         .eq("tour_id", tourId)
         .order("event_date", { ascending: true }),
       supabase
-        .from("guest_list_requests" as any)
+        .from("guest_list_requests")
         .select("*")
         .eq("tour_id", tourId)
         .order("created_at", { ascending: false }),
     ]);
-    setAllotments((allotRes.data as any[]) || []);
-    setRequests((reqRes.data as any[]) || []);
+    setAllotments(allotRes.data || []);
+    setRequests(reqRes.data || []);
     setLoading(false);
   }, [tourId]);
 
@@ -116,15 +116,15 @@ export const GuestListManager = ({ tourId }: GuestListManagerProps) => {
 
     if (editAllotment.id) {
       const { error } = await supabase
-        .from("guest_list_allotments" as any)
-        .update(payload as any)
+        .from("guest_list_allotments")
+        .update(payload)
         .eq("id", editAllotment.id);
       if (error) toast.error(error.message);
       else toast.success("Allotment updated");
     } else {
       const { error } = await supabase
-        .from("guest_list_allotments" as any)
-        .insert(payload as any);
+        .from("guest_list_allotments")
+        .insert(payload);
       if (error) toast.error(error.message);
       else toast.success("Allotment created");
     }
@@ -135,7 +135,7 @@ export const GuestListManager = ({ tourId }: GuestListManagerProps) => {
   };
 
   const handleDeleteAllotment = async (id: string) => {
-    const { error } = await supabase.from("guest_list_allotments" as any).delete().eq("id", id);
+    const { error } = await supabase.from("guest_list_allotments").delete().eq("id", id);
     if (error) toast.error(error.message);
     else { toast.success("Allotment deleted"); load(); }
   };
@@ -200,7 +200,7 @@ export const GuestListManager = ({ tourId }: GuestListManagerProps) => {
       created_by: user.id,
     }));
 
-    const { error } = await supabase.from("guest_list_allotments" as any).insert(inserts as any);
+    const { error } = await supabase.from("guest_list_allotments").insert(inserts);
     if (error) toast.error(error.message);
     else toast.success(`Created ${inserts.length} allotment${inserts.length !== 1 ? "s" : ""}`);
     setAutoCreating(false);

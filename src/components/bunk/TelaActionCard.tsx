@@ -18,12 +18,12 @@ const TelaActionCard = ({ action }: TelaActionCardProps) => {
 
   const logOutcome = async (outcome: "approved" | "dismissed") => {
     if (!user || !selectedTourId) return;
-    await supabase.from("tela_action_log" as any).insert({
+    await supabase.from("tela_action_log").insert({
       tour_id: selectedTourId,
       user_id: user.id,
       action_type: action.type,
       outcome,
-    } as any);
+    });
   };
 
   const handleClick = () => {

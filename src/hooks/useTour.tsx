@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect } from "react";
+import { createContext, useContext, useState, useEffect, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 
@@ -50,11 +50,13 @@ export const TourProvider = ({ children }: { children: React.ReactNode }) => {
   const [isDemoMode, setIsDemoMode] = useState(false);
   const [demoExpiresAt, setDemoExpiresAt] = useState<string | null>(null);
   const [upgradeRequested, setUpgradeRequested] = useState(false);
+  const selectedTourIdRef = useRef(selectedTourId);
+  useEffect(() => { selectedTourIdRef.current = selectedTourId; }, [selectedTourId]);
 
   const autoMatchContacts = async () => {
     if (!user) return;
     try {
-      const { data, error } = await supabase.rpc("claim_contact_tours" as any);
+      const { data, error } = await supabase.rpc("claim_contact_tours");
       if (error) {
         console.error("claim_contact_tours failed:", error);
         return;
@@ -84,7 +86,7 @@ export const TourProvider = ({ children }: { children: React.ReactNode }) => {
       if (allDemo) {
         // Fetch expiry from demo_activations
         const { data: activation } = await supabase
-          .from("demo_activations" as any)
+          .from("demo_activations")
           .select("expires_at")
           .eq("user_id", user.id)
           .is("deactivated_at", null)
@@ -92,7 +94,7 @@ export const TourProvider = ({ children }: { children: React.ReactNode }) => {
           .order("activated_at", { ascending: false })
           .limit(1)
           .maybeSingle();
-        setDemoExpiresAt((activation as any)?.expires_at || null);
+        setDemoExpiresAt(activation?.expires_at || null);
       } else {
         setDemoExpiresAt(null);
       }
@@ -115,7 +117,7 @@ export const TourProvider = ({ children }: { children: React.ReactNode }) => {
     if (data) {
       setTours(data as Tour[]);
       const ids = data.map(t => t.id);
-      if (!selectedTourId || !ids.includes(selectedTourId)) {
+      if (!selectedTourIdRef.current || !ids.includes(selectedTourIdRef.current)) {
         setSelectedTourId(data.length > 0 ? data[0].id : "");
       }
       await checkDemoMode(ids);
@@ -125,9 +127,9 @@ export const TourProvider = ({ children }: { children: React.ReactNode }) => {
 
   const activateDemo = async (): Promise<boolean> => {
     try {
-      const { data, error } = await supabase.rpc("activate_demo_mode" as any);
+      const { data, error } = await supabase.rpc("activate_demo_mode");
       if (error) throw error;
-      const result = data as any;
+      const result = data as { already_active?: boolean; user_email?: string; user_name?: string; expires_at?: string };
 
       // Send notification to jonathan (fire-and-forget)
       if (!result.already_active) {
@@ -153,7 +155,7 @@ export const TourProvider = ({ children }: { children: React.ReactNode }) => {
     try {
       // Check if already requested
       const { data: existing } = await supabase
-        .from("upgrade_requests" as any)
+        .from("upgrade_requests")
         .select("id, status")
         .eq("user_id", user.id)
         .eq("status", "PENDING")
@@ -170,16 +172,16 @@ export const TourProvider = ({ children }: { children: React.ReactNode }) => {
         .eq("id", user.id)
         .single();
 
-      // Insert request for each demo tour
+      // Insert request for each demo tour in a single round-trip
       const tourIds = tours.map(t => t.id);
-      for (const tourId of tourIds) {
-        await supabase.from("upgrade_requests" as any).insert({
+      await supabase.from("upgrade_requests").insert(
+        tourIds.map(tourId => ({
           user_id: user.id,
           user_email: profile?.email || user.email,
           user_name: profile?.display_name || user.user_metadata?.full_name,
           tour_id: tourId,
-        });
-      }
+        }))
+      );
 
       // Notify via edge function (fire-and-forget)
       supabase.functions.invoke("notify-demo-activation", {
@@ -202,7 +204,7 @@ export const TourProvider = ({ children }: { children: React.ReactNode }) => {
   const checkUpgradeStatus = async () => {
     if (!user) return;
     const { data } = await supabase
-      .from("upgrade_requests" as any)
+      .from("upgrade_requests")
       .select("id")
       .eq("user_id", user.id)
       .eq("status", "PENDING")
@@ -212,7 +214,7 @@ export const TourProvider = ({ children }: { children: React.ReactNode }) => {
 
   const exitDemo = async () => {
     try {
-      await supabase.rpc("deactivate_demo_mode" as any);
+      await supabase.rpc("deactivate_demo_mode");
       setIsDemoMode(false);
       setDemoExpiresAt(null);
       setTours([]);

@@ -26,14 +26,14 @@ export function useTelaThreads() {
     const ids = tourIdsStr.split(",");
     setLoading(true);
     const { data, error } = await supabase
-      .from("tela_threads" as any)
+      .from("tela_threads")
       .select("*")
       .eq("user_id", user.id)
       .in("tour_id", ids)
       .order("updated_at", { ascending: false })
       .limit(10);
     if (error) console.error("[tela_threads] fetch error:", error);
-    setThreads((data as any as TelaThread[]) || []);
+    setThreads((data as TelaThread[]) || []);
     setLoading(false);
   }, [user, tourIdsStr]);
 
@@ -66,12 +66,12 @@ export function useTelaThreads() {
     async (tourId: string, title: string): Promise<string | null> => {
       if (!user) return null;
       const { data, error } = await supabase
-        .from("tela_threads" as any)
-        .insert({ tour_id: tourId, user_id: user.id, title } as any)
+        .from("tela_threads")
+        .insert({ tour_id: tourId, user_id: user.id, title })
         .select("id")
         .single();
       if (error) { console.error("[tela_threads] create error:", error); return null; }
-      return (data as any).id;
+      return data.id;
     },
     [user]
   );
@@ -79,8 +79,8 @@ export function useTelaThreads() {
   const renameThread = useCallback(
     async (threadId: string, title: string) => {
       await supabase
-        .from("tela_threads" as any)
-        .update({ title } as any)
+        .from("tela_threads")
+        .update({ title })
         .eq("id", threadId);
     },
     []
@@ -89,7 +89,7 @@ export function useTelaThreads() {
   const deleteThread = useCallback(
     async (threadId: string) => {
       await supabase
-        .from("tela_threads" as any)
+        .from("tela_threads")
         .delete()
         .eq("id", threadId);
     },
@@ -99,8 +99,8 @@ export function useTelaThreads() {
   const touchThread = useCallback(
     async (threadId: string) => {
       await supabase
-        .from("tela_threads" as any)
-        .update({ updated_at: new Date().toISOString() } as any)
+        .from("tela_threads")
+        .update({ updated_at: new Date().toISOString() })
         .eq("id", threadId);
     },
     []

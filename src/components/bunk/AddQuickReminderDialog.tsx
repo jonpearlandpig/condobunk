@@ -105,14 +105,14 @@ const AddQuickReminderDialog = ({ open, onOpenChange }: AddQuickReminderDialogPr
     }
 
     setSaving(true);
-    const { error } = await supabase.from("scheduled_messages" as any).insert({
+    const { error } = await supabase.from("scheduled_messages").insert({
       user_id: user!.id,
       tour_id: selectedTourId,
       to_phone: normalizePhone(phone),
       message_text: message.trim(),
       send_at: sendAtDate.toISOString(),
       is_self: isSelf,
-    } as any);
+    });
 
     setSaving(false);
     if (error) {

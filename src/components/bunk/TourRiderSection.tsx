@@ -40,7 +40,7 @@ export default function TourRiderSection({ tourId }: Props) {
     queryKey: ["tour-production-docs", tourId],
     queryFn: async () => {
       const { data, error } = await supabase
-        .from("tour_production_docs" as any)
+        .from("tour_production_docs")
         .select("*")
         .eq("tour_id", tourId)
         .order("uploaded_at", { ascending: false });
@@ -69,7 +69,7 @@ export default function TourRiderSection({ tourId }: Props) {
 
       const ext = file.name.split(".").pop()?.toLowerCase() || "";
       const { error: insertErr } = await supabase
-        .from("tour_production_docs" as any)
+        .from("tour_production_docs")
         .insert({
           tour_id: tourId,
           file_name: file.name,
@@ -77,7 +77,7 @@ export default function TourRiderSection({ tourId }: Props) {
           file_type: ext,
           document_category: selectedCategory,
           uploaded_by: user?.id,
-        } as any);
+        });
       if (insertErr) throw insertErr;
 
       queryClient.invalidateQueries({ queryKey: ["tour-production-docs", tourId] });
@@ -115,7 +115,7 @@ export default function TourRiderSection({ tourId }: Props) {
       if (doc) {
         await supabase.storage.from("document-files").remove([doc.file_path]);
       }
-      const { error } = await supabase.from("tour_production_docs" as any).delete().eq("id", docId) as any;
+      const { error } = await supabase.from("tour_production_docs").delete().eq("id", docId);
       if (error) throw error;
     },
     onSuccess: () => {
