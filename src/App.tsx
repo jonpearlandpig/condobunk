@@ -19,6 +19,7 @@ import BunkAdmin from "./pages/bunk/BunkAdmin";
 import BunkSetup from "./pages/bunk/BunkSetup";
 import BunkArtifacts from "./pages/bunk/BunkArtifacts";
 import BunkChangeLog from "./pages/bunk/BunkChangeLog";
+import BunkNotificationSettings from "./pages/bunk/BunkNotificationSettings";
 import AdvanceLedger from "./pages/bunk/AdvanceLedger";
 import AdvanceShow from "./pages/bunk/AdvanceShow";
 import AdvanceFields from "./pages/bunk/AdvanceFields";
@@ -91,6 +92,7 @@ const App = () => (
               <Route path="setup" element={<BunkSetup />} />
               <Route path="artifacts" element={<BunkArtifacts />} />
               <Route path="changelog" element={<BunkChangeLog />} />
+              <Route path="notifications" element={<BunkNotificationSettings />} />
               <Route path="advance" element={<AdvanceLedger />} />
               <Route path="advance/:id" element={<AdvanceShow />} />
               <Route path="advance/:id/fields" element={<AdvanceFields />} />

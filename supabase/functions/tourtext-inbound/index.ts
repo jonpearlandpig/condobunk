@@ -7,6 +7,8 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type, x-twilio-signature, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
+const DEBUG = Deno.env.get("DEBUG") === "true";
+
 // --- US State name → abbreviation map ---
 const STATE_NAME_TO_ABBREV: Record<string, string> = {
   alabama: "AL", alaska: "AK", arizona: "AZ", arkansas: "AR", california: "CA",
@@ -669,7 +671,9 @@ Deno.serve(async (req) => {
 
     // --- Validate Twilio signature ---
     const twilioSignature = req.headers.get("x-twilio-signature") || "";
-    const requestUrl = `${supabaseUrl}/functions/v1/tourtext-inbound`;
+    // Use the actual request URL so signature validation works regardless of
+    // whether the webhook is configured on the default Supabase domain or a custom one
+    const requestUrl = req.url;
 
     const isValid = await validateTwilioSignature(
       requestUrl,
@@ -683,8 +687,20 @@ Deno.serve(async (req) => {
       return new Response("Forbidden", { status: 403, headers: corsHeaders });
     }
 
-    // --- Match phone number to contact → tour ---
+    // --- Per-sender rate limit: max 10 messages per minute ---
     const normalized = normalizePhone(fromPhone);
+    const rateCutoff = new Date(Date.now() - 60_000).toISOString();
+    const { count: recentCount } = await admin
+      .from("sms_inbound")
+      .select("*", { count: "exact", head: true })
+      .like("from_phone", `%${normalized}`)
+      .gte("created_at", rateCutoff);
+    if ((recentCount ?? 0) >= 10) {
+      console.error(`Rate limit exceeded for ${normalized}`);
+      return emptyTwiml();
+    }
+
+    // --- Match phone number to contact → tour ---
     const { tourId: matchedTourId, senderName, senderRole } = await matchPhoneToTour(admin, normalized);
 
     // Auto-categorize using topic keywords
@@ -711,13 +727,7 @@ Deno.serve(async (req) => {
 
     if (!matchedTourId) {
       const replyText = "Sorry, this number isn't linked to any active tour. Contact your Tour Admin to be added.";
-      await sendTwilioSms(fromPhone, replyText, TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_PHONE_NUMBER);
-      await admin.from("sms_outbound").insert({
-        to_phone: fromPhone,
-        message_text: replyText,
-        tour_id: null,
-        status: "sent",
-      });
+      await deliverSms(admin, fromPhone, replyText, null, TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_PHONE_NUMBER);
       return emptyTwiml();
     }
 
@@ -785,13 +795,7 @@ If the message says "+1" or "plus one" after a name, that means 2 tickets total 
                 const smsReply = glData.sms_reply || "Your guest list request has been received.";
 
                 if (glData.status !== "APPROVED") {
-                  await sendTwilioSms(fromPhone, smsReply, TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_PHONE_NUMBER);
-                  await admin.from("sms_outbound").insert({
-                    to_phone: fromPhone,
-                    message_text: smsReply,
-                    tour_id: matchedTourId,
-                    status: "sent",
-                  });
+                  await deliverSms(admin, fromPhone, smsReply, matchedTourId, TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_PHONE_NUMBER);
                 }
 
                 return emptyTwiml();
@@ -803,13 +807,7 @@ If the message says "+1" or "plus one" after a name, that means 2 tickets total 
               if (!ticket_count) missing.push("how many tickets");
 
               const askReply = `Got it! Just need a few details: ${missing.join(", ")}?`;
-              await sendTwilioSms(fromPhone, askReply, TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_PHONE_NUMBER);
-              await admin.from("sms_outbound").insert({
-                to_phone: fromPhone,
-                message_text: askReply,
-                tour_id: matchedTourId,
-                status: "sent",
-              });
+              await deliverSms(admin, fromPhone, askReply, matchedTourId, TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_PHONE_NUMBER);
               return emptyTwiml();
             }
           }
@@ -921,7 +919,7 @@ If the message says "+1" or "plus one" after a name, that means 2 tickets total 
       }
     }
 
-    console.log("DIAG: Smart Context:", JSON.stringify({
+    if (DEBUG) console.log("DIAG: Smart Context:", JSON.stringify({
       targetCities,
       effectiveCities,
       effectiveVenue,
@@ -954,15 +952,9 @@ If the message says "+1" or "plus one" after a name, that means 2 tickets total 
         }
       }
       const deterministicReply = results.join("\n");
-      console.log("DIAG: Deterministic schedule reply:", deterministicReply);
+      if (DEBUG) console.log("DIAG: Deterministic schedule reply:", deterministicReply);
 
-      await sendTwilioSms(fromPhone, deterministicReply, TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_PHONE_NUMBER);
-      await admin.from("sms_outbound").insert({
-        to_phone: fromPhone,
-        message_text: deterministicReply,
-        tour_id: matchedTourId,
-        status: "sent",
-      });
+      await deliverSms(admin, fromPhone, deterministicReply, matchedTourId, TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_PHONE_NUMBER);
       return emptyTwiml();
     }
 
@@ -985,19 +977,13 @@ If the message says "+1" or "plus one" after a name, that means 2 tickets total 
         }
       }
       const deterministicReply = results.join("\n");
-      console.log("DIAG: Location-only schedule reply (no inherited topic):", JSON.stringify({
+      if (DEBUG) console.log("DIAG: Location-only schedule reply (no inherited topic):", JSON.stringify({
         branch: "deterministic_schedule_location_only",
         cities: effectiveCities,
         reply: deterministicReply,
       }));
 
-      await sendTwilioSms(fromPhone, deterministicReply, TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_PHONE_NUMBER);
-      await admin.from("sms_outbound").insert({
-        to_phone: fromPhone,
-        message_text: deterministicReply,
-        tour_id: matchedTourId,
-        status: "sent",
-      });
+      await deliverSms(admin, fromPhone, deterministicReply, matchedTourId, TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_PHONE_NUMBER);
       return emptyTwiml();
     }
 
@@ -1039,7 +1025,7 @@ If the message says "+1" or "plus one" after a name, that means 2 tickets total 
           const after = new Date(anchorD); after.setDate(after.getDate() + 2);
           startDate = before.toISOString().split("T")[0];
           endDate = after.toISOString().split("T")[0];
-          console.log("DIAG: Anchor-date window:", JSON.stringify({
+          if (DEBUG) console.log("DIAG: Anchor-date window:", JSON.stringify({
             anchorDate: anchor.event_date,
             anchorCity: anchor.city,
             anchorVenue: anchor.venue,
@@ -1167,13 +1153,7 @@ If the message says "+1" or "plus one" after a name, that means 2 tickets total 
 
       const confirmMsg = `Hey ${senderName}! This is TELA for ${tourLabel}. I have you as ${roleLabel}. Text YES to confirm, or let me know if anything's off.`;
 
-      await sendTwilioSms(fromPhone, confirmMsg, TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_PHONE_NUMBER);
-      await admin.from("sms_outbound").insert({
-        to_phone: fromPhone,
-        message_text: confirmMsg,
-        tour_id: matchedTourId,
-        status: "sent",
-      });
+      await deliverSms(admin, fromPhone, confirmMsg, matchedTourId, TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_PHONE_NUMBER);
 
       console.log(`First-contact confirmation sent to ${senderName} (${fromPhone}) for tour ${tourLabel}`);
       return emptyTwiml();
@@ -1190,26 +1170,14 @@ If the message says "+1" or "plus one" after a name, that means 2 tickets total 
 
       if (affirmatives.test(msgLower)) {
         const welcomeMsg = "Confirmed! You're all set. Ask me anything about the tour — schedule, venues, contacts, hotels. I'm here 24/7.";
-        await sendTwilioSms(fromPhone, welcomeMsg, TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_PHONE_NUMBER);
-        await admin.from("sms_outbound").insert({
-          to_phone: fromPhone,
-          message_text: welcomeMsg,
-          tour_id: matchedTourId,
-          status: "sent",
-        });
+        await deliverSms(admin, fromPhone, welcomeMsg, matchedTourId, TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_PHONE_NUMBER);
         console.log(`Identity confirmed by ${senderName} (${fromPhone})`);
         return emptyTwiml();
       }
 
       if (negatives.test(msgLower)) {
         const deniedMsg = "No worries. Reach out to your Tour Admin to update your info.";
-        await sendTwilioSms(fromPhone, deniedMsg, TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_PHONE_NUMBER);
-        await admin.from("sms_outbound").insert({
-          to_phone: fromPhone,
-          message_text: deniedMsg,
-          tour_id: matchedTourId,
-          status: "sent",
-        });
+        await deliverSms(admin, fromPhone, deniedMsg, matchedTourId, TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_PHONE_NUMBER);
         console.log(`Identity denied by ${fromPhone}`);
         return emptyTwiml();
       }
@@ -1244,13 +1212,7 @@ If the message says "+1" or "plus one" after a name, that means 2 tickets total 
         const artifactReply = toPlaintext(matchedArtifact.content || matchedArtifact.title);
         console.log(`Deterministic artifact match: "${matchedArtifact.title}" for message "${messageBody}"`);
 
-        await sendTwilioSms(fromPhone, artifactReply, TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_PHONE_NUMBER);
-        await admin.from("sms_outbound").insert({
-          to_phone: fromPhone,
-          message_text: artifactReply,
-          tour_id: matchedTourId,
-          status: "sent",
-        });
+        await deliverSms(admin, fromPhone, artifactReply, matchedTourId, TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_PHONE_NUMBER);
         return emptyTwiml();
       }
     }
@@ -1264,7 +1226,7 @@ If the message says "+1" or "plus one" after a name, that means 2 tickets total 
     // (B) If no direct tech keywords but inherited topic is venue_tech, use inherited keywords
     if (matchedVenueTechTopics.length === 0 && inheritedTopic === "venue_tech" && inheritedTopicKeywords.length > 0) {
       matchedVenueTechTopics = inheritedTopicKeywords;
-      console.log("DIAG: Topic carryover activated — inherited venue-tech keywords:", inheritedTopicKeywords);
+      if (DEBUG) console.log("DIAG: Topic carryover activated — inherited venue-tech keywords:", inheritedTopicKeywords);
     }
 
     if (matchedVenueTechTopics.length > 0 && (effectiveCities.length > 0 || effectiveVenue || effectiveDates.length > 0)) {
@@ -1285,7 +1247,7 @@ If the message says "+1" or "plus one" after a name, that means 2 tickets total 
         }
 
         const deterministicReply = `${cityLabel}${dateLabel ? ` (${dateLabel})` : ""}:\n${parts.join("\n")}`;
-        console.log("DIAG: DETERMINISTIC VENUE-TECH REPLY:", JSON.stringify({
+        if (DEBUG) console.log("DIAG: DETERMINISTIC VENUE-TECH REPLY:", JSON.stringify({
           intent: matchedVenueTechTopics.slice(0, 5),
           vanId: targetVan.id,
           city: targetVan.city,
@@ -1298,27 +1260,15 @@ If the message says "+1" or "plus one" after a name, that means 2 tickets total 
           targetVanIncluded: true,
         }));
 
-        await sendTwilioSms(fromPhone, deterministicReply, TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_PHONE_NUMBER);
-        await admin.from("sms_outbound").insert({
-          to_phone: fromPhone,
-          message_text: deterministicReply,
-          tour_id: matchedTourId,
-          status: "sent",
-        });
+        await deliverSms(admin, fromPhone, deterministicReply, matchedTourId, TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_PHONE_NUMBER);
         return emptyTwiml();
       } else if (effectiveCities.length === 0 && !effectiveVenue && effectiveDates.length === 0) {
         const clarifyReply = "Which city or date are you asking about?";
-        await sendTwilioSms(fromPhone, clarifyReply, TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_PHONE_NUMBER);
-        await admin.from("sms_outbound").insert({
-          to_phone: fromPhone,
-          message_text: clarifyReply,
-          tour_id: matchedTourId,
-          status: "sent",
-        });
-        console.log("DIAG: VENUE-TECH: no venue resolved, asked clarification", JSON.stringify({ intent: matchedVenueTechTopics.slice(0, 5) }));
+        await deliverSms(admin, fromPhone, clarifyReply, matchedTourId, TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_PHONE_NUMBER);
+        if (DEBUG) console.log("DIAG: VENUE-TECH: no venue resolved, asked clarification", JSON.stringify({ intent: matchedVenueTechTopics.slice(0, 5) }));
         return emptyTwiml();
       }
-      console.log("DIAG: VENUE-TECH: city/venue resolved but no VAN match, falling through to LLM", JSON.stringify({
+      if (DEBUG) console.log("DIAG: VENUE-TECH: city/venue resolved but no VAN match, falling through to LLM", JSON.stringify({
         intent: matchedVenueTechTopics.slice(0, 5),
         cities: effectiveCities,
         venue: effectiveVenue,
@@ -1379,7 +1329,7 @@ If the message says "+1" or "plus one" after a name, that means 2 tickets total 
     if (!vansSection) vansSection = "(No VAN data for this date range)";
 
     const targetVanIncluded = targetVanForPacking ? includedVanIds.has(`${targetVanForPacking.venue_name}-${targetVanForPacking.event_date}`) : false;
-    console.log("DIAG: VAN packing:", JSON.stringify({
+    if (DEBUG) console.log("DIAG: VAN packing:", JSON.stringify({
       targetVan: targetVanForPacking ? `${targetVanForPacking.venue_name} (${targetVanForPacking.city})` : null,
       targetIncluded: targetVanIncluded,
       totalVansIncluded: includedVanIds.size,
@@ -1539,7 +1489,7 @@ ${akbContext}`,
       const errText = await aiResponse.text();
       console.error("AI gateway error:", errText);
       const fallback = "Sorry, I'm having trouble right now. Try again in a moment.";
-      await sendTwilioSms(fromPhone, fallback, TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_PHONE_NUMBER);
+      await deliverSms(admin, fromPhone, fallback, matchedTourId, TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_PHONE_NUMBER);
       return emptyTwiml();
     }
 
@@ -1547,23 +1497,14 @@ ${akbContext}`,
     const rawReply = aiData.choices?.[0]?.message?.content || "I don't have an answer for that right now.";
     const smsReply = toPlaintext(rawReply);
 
-    console.log("DIAG: LLM fallback used, branch=llm", JSON.stringify({
+    if (DEBUG) console.log("DIAG: LLM fallback used, branch=llm", JSON.stringify({
       effectiveCities,
       effectiveVenue,
       inheritedTopic,
       historyMessagesIncluded: chatMessages.length - 2, // minus system + current
     }));
 
-    // --- Send SMS reply via Twilio REST API (sole delivery path) ---
-    await sendTwilioSms(fromPhone, smsReply, TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_PHONE_NUMBER);
-
-    // Log outbound SMS
-    await admin.from("sms_outbound").insert({
-      to_phone: fromPhone,
-      message_text: smsReply,
-      tour_id: matchedTourId,
-      status: "sent",
-    });
+    await deliverSms(admin, fromPhone, smsReply, matchedTourId, TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_PHONE_NUMBER);
 
     // Always return empty TwiML to prevent double-SMS
     return emptyTwiml();
@@ -1596,7 +1537,34 @@ async function sendTwilioSms(
   if (!response.ok) {
     const errText = await response.text();
     console.error("Twilio send error:", response.status, errText);
+    throw new Error(`Twilio send failed: ${response.status} ${errText}`);
   }
+}
+
+// --- Deliver SMS and log to sms_outbound (handles failure gracefully) ---
+async function deliverSms(
+  // deno-lint-ignore no-explicit-any
+  admin: any,
+  to: string,
+  body: string,
+  tourId: string | null,
+  accountSid: string,
+  authToken: string,
+  from: string,
+): Promise<void> {
+  let status: "sent" | "failed" = "sent";
+  try {
+    await sendTwilioSms(to, body, accountSid, authToken, from);
+  } catch (err) {
+    console.error("deliverSms failed:", err);
+    status = "failed";
+  }
+  await admin.from("sms_outbound").insert({
+    to_phone: to,
+    message_text: body,
+    tour_id: tourId,
+    status,
+  });
 }
 
 // --- Always return empty TwiML (prevents double-SMS) ---

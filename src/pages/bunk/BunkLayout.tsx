@@ -1,8 +1,8 @@
-import { Outlet, useSearchParams } from "react-router-dom";
+import { Outlet, useSearchParams, useNavigate } from "react-router-dom";
 import BunkSidebar from "@/components/bunk/BunkSidebar";
 import MobileBottomNav from "@/components/bunk/MobileBottomNav";
 import { SidebarProvider, useSidebar } from "@/components/ui/sidebar";
-import { LogOut, Camera } from "lucide-react";
+import { LogOut, Camera, Bell } from "lucide-react";
 import whiteBunks from "@/assets/white_condobunks.png";
 import { useAuth } from "@/hooks/useAuth";
 import { TourProvider, useTour } from "@/hooks/useTour";
@@ -41,6 +41,7 @@ const SidebarLogoTrigger = ({ hasUnread }: { hasUnread?: boolean }) => {
 
 const BunkLayoutInner = () => {
   const { user, signOut } = useAuth();
+  const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const isWelcome = searchParams.get("welcome") === "1";
   const isMobile = useIsMobile();
@@ -170,6 +171,10 @@ const BunkLayoutInner = () => {
                 <DropdownMenuItem onClick={() => fileInputRef.current?.click()} className="cursor-pointer">
                   <Camera className="h-3.5 w-3.5 mr-2" />
                   Change photo
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => navigate("/bunk/notifications")} className="cursor-pointer">
+                  <Bell className="h-3.5 w-3.5 mr-2" />
+                  Notification settings
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem onClick={signOut} className="text-destructive focus:text-destructive cursor-pointer">
