@@ -1,0 +1,16 @@
+schema_version: "1.0"
+system_id: CONDOBUNK
+classification: canonical_product_repository
+canonical_repository: true
+status: active
+owner: Jon Hartman
+may_receive_changes: true
+donor_to: null
+successor: null
+governance_version: "Pearl & Pig Governance v0.2"
+approved_on: "2026-07-25"
+restrictions:
+  - owner_scoping_required
+  - advance_records_must_preserve_source_lineage
+  - destructive_schema_changes_require_migration_proof
+notes: "Canonical CondoBunk product repository."
